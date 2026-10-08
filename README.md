@@ -1,5 +1,9 @@
 # BuildingWebViewer
 
+[在线打开查看器](https://sen2maker.github.io/BuildingWebViewer/) · [GitHub 源码仓库](https://github.com/Sen2Maker/BuildingWebViewer)
+
+在线版直接打开上述链接即可，无需启动本地服务；进入工具后再选择自己电脑中的文件或文件夹。
+
 用于建筑三维结果检查的轻量网页工具，包含 **LOD 模型查看器、线框模型查看器、独立点云查看器**，以及一个待开发入口。原生 HTML / CSS / JavaScript + WebGL，无 npm 依赖、无在线 CDN。
 
 项目和 ZIP **不包含模型或点云数据**。所有页面都从空白状态开始，不读取默认目录、不恢复上次选择；数据由你在网页中手动选择，在你的浏览器内处理。部署到 GitHub Pages 后也采用相同方式，模型和点云不会上传至 GitHub。
@@ -144,7 +148,9 @@ git commit -m "Initial BuildingWebViewer project"
 
 ### 上传代码并部署为网页
 
-项目已经提供自动部署配置，但需要先创建你自己的 GitHub 仓库。本地初始化 Git 不会自动创建远程仓库，也不会自动把文件上传到 GitHub。
+本项目的公开仓库是 `Sen2Maker/BuildingWebViewer`，默认分支为 `main`，已启用 GitHub Actions 发布 Pages。维护此仓库时，修改、提交并推送 `main` 即会自动更新网页。
+
+下面的步骤用于在你自己的 GitHub 账号下部署一份副本；现有仓库不需要重复创建或配置。本地初始化 Git 不会自动创建远程仓库，也不会自动上传文件。
 
 1. 登录 GitHub，新建名为 **BuildingWebViewer** 的空仓库。若希望使用免费 GitHub Pages，选择 **Public**。不要勾选初始化 README、`.gitignore` 或 License，因为本地已经有项目和提交历史。
 2. 在本项目目录运行下面的命令，将 `YOUR_GITHUB_USERNAME` 替换为实际 GitHub 用户名。推送时使用你已配置的 GitHub 身份验证方式：
