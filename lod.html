@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LOD 模型查看器</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-icon" aria-hidden="true">▥</div>
+    <div><h1>LOD 模型查看器</h1><p>本地 OBJ 模型 · 手动选择数据</p></div>
+    <div class="header-right"><a href="index.html" class="back-home">← 工具首页</a><span class="local-tag"><i></i> 本地预览</span><span id="total-count">尚未选择文件夹</span></div>
+  </header>
+  <div class="workspace">
+    <aside class="sidebar" aria-label="选择楼栋">
+      <div class="sidebar-heading"><h2>选择楼栋</h2><span id="selection-count">0 / 24</span></div>
+      <div class="folder-section"><button id="choose-folder">选择模型文件夹…</button><input id="folder-input" type="file" webkitdirectory multiple hidden><p id="folder-status">选择含 OBJ 的目录 · 文件仅在本机读取</p></div>
+      <div class="batch-section">
+        <label for="batch-ids">输入要查看的编号</label>
+        <textarea id="batch-ids" rows="2" placeholder="输入编号，多个编号用逗号分隔；留空可清空画面"></textarea>
+        <div class="button-row"><button class="primary" id="replace-selection">查看这些楼栋</button><button id="add-selection">追加</button></div>
+      </div>
+      <div class="list-heading"><label for="search">全部楼栋</label><button class="text-button" id="random-selection">随机看 6 栋</button></div>
+      <input id="search" type="search" placeholder="搜索模型编号" autocomplete="off">
+      <div class="list-meta"><span id="filter-count">加载中</span><button class="text-button" id="clear-selection">清空选择</button></div>
+      <div id="model-list" class="model-list" aria-label="楼栋列表"></div>
+      <div class="pagination"><button id="previous-page" aria-label="上一页">←</button><span id="page-info">—</span><button id="next-page" aria-label="下一页">→</button></div>
+      <details class="source-details"><summary>模型来源</summary><p id="source-path"></p><p>仅在手动选择文件夹后读取 OBJ，不会自动连接任何数据目录。</p></details>
+    </aside>
+    <main>
+      <div class="main-heading"><div><h2>模型预览</h2><p id="scene-stats" aria-live="polite">正在准备查看器</p></div><div class="button-row"><button id="previous-group" title="查看上一组编号">上一组</button><button id="next-group" title="查看下一组编号">下一组</button><button id="screenshot">保存截图 ↓</button></div></div>
+      <div id="selected-models" class="selected-models" aria-label="已选楼栋"></div>
+      <div class="toolbar">
+        <div class="segmented" aria-label="视角"><button data-view="iso" class="active" aria-pressed="true">立体</button><button data-view="top" aria-pressed="false">俯视</button><button data-view="front" aria-pressed="false">正视</button></div>
+        <button id="fit-view" title="快捷键 F">适应窗口</button>
+        <span class="toolbar-divider"></span>
+        <label>显示 <select id="display-mode"><option value="solid">实体</option><option value="solid-wire">实体 + 三角网</option><option value="wire">线框</option></select></label>
+        <label>比例 <select id="scale-mode"><option value="real">实际比例</option><option value="normalized">统一展示大小</option></select></label>
+        <label>配色 <select id="color-mode"><option value="surface">屋顶 / 墙面</option><option value="building">按楼栋</option></select></label>
+        <label class="check-label"><input id="show-edges" type="checkbox" checked>轮廓边</label>
+        <label class="check-label"><input id="show-labels" type="checkbox" checked>编号</label>
+        <label class="check-label"><input id="show-grid" type="checkbox" checked>网格</label>
+      </div>
+      <div class="viewport" id="viewport">
+        <canvas id="scene" aria-label="所选楼栋的三维模型；拖动旋转、滚轮缩放、右键拖动平移"></canvas>
+        <div class="scene-note"><strong id="layout-title">等比例陈列</strong><span id="layout-note">独立模型重新排列 · 非实际地理位置</span></div>
+        <div id="model-labels" class="model-labels"></div>
+        <div id="empty-state" class="empty-state"><span>▥</span><h3>选择几栋，仔细看看</h3><p>先选择模型文件夹，再勾选左侧楼栋。</p></div>
+        <div id="loading" class="loading" role="status" hidden><i></i><span>正在读取模型…</span></div>
+        <div id="error" class="error-banner" role="alert" hidden><span></span><button id="retry">重新加载</button><button id="dismiss-error" aria-label="关闭提示">×</button></div>
+        <div class="viewport-bottom"><div class="legend" id="legend"><span><i class="roof"></i>屋顶 / 坡面</span><span><i class="wall"></i>墙面</span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div>
+      </div>
+      <footer><span>拖动旋转 <b>·</b> 滚轮缩放 <b>·</b> 右键 / Shift 拖动平移 <b>·</b> F 适应窗口</span><span>点击编号可单独查看 · 最多 24 栋</span></footer>
+    </main>
+  </div>
+  <script defer src="viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+// Run from the project directory: node point-io.test.mjs
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const source = fs.readFileSync(new URL('./point-io.js', import.meta.url), 'utf8');
+const {parsePointCloud, parseWireOBJ} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const bytes = text => new TextEncoder().encode(text);
+const cloud = (text, name = 'sample.xyz', options) => parsePointCloud(bytes(text), name, options);
+let checks = 0;
+function check(name, work) { work(); checks++; console.log('PASS', name); }
+
+check('OBJ polyline / negative index / face fallback', () => {
+  const vertices = 'v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\n';
+  assert.deepEqual(parseWireOBJ(vertices + 'l -4 -3 -2\nl 2 1').edges, [[0, 1], [1, 2]]);
+  assert.equal(parseWireOBJ(vertices + 'f 1 2 3 4').edges.length, 4);
+  assert.equal(parseWireOBJ(vertices + 'l 1 2\nf 1 2 3 4').edges.length, 1);
+  for (const text of ['', 'v NaN 0 0\nl 1 1', vertices + 'l 0 1', vertices + 'l 1 5', vertices + 'l -5 -1']) assert.throws(() => parseWireOBJ(text));
+});
+check('Double precision and unknown columns remain independent attributes', () => {
+  const value = cloud('832129.50060046 816457.03489984 17.94589928 0.58543605\n832129.37269985 816457.06679993 17.43709992 0.54385465', 'pc.xyz');
+  assert(value.positions instanceof Float64Array);
+  assert.equal(value.positions[0], 832129.50060046);
+  assert.equal(value.count, 2); assert.equal(value.totalCount, 2);
+  assert(value.fields.column_4 instanceof Float32Array); assert.equal(value.rgb, null);
+  const six = cloud('1 2 3 255 0 0'); assert.equal(six.rgb, null); assert.equal(six.fields.column_6[0], 0);
+});
+check('CSV header / comments / reordered XYZ / named colors', () => {
+  const value = cloud('z,x,y,intensity,r,g,b\n3,1,2,0.4,255,128,0\n6,4,5,0.9,0,0,255', 'color.csv');
+  assert.deepEqual([...value.positions], [1, 2, 3, 4, 5, 6]);
+  assert.equal(value.rgb[0], 1); assert.equal(value.rgb[2], 0);
+  assert.equal(value.fields.intensity.length, 2);
+  const unit = cloud('# x y z r g b\n1 2 3 0.5 0.25 1'); assert.deepEqual([...unit.rgb], [0.5, 0.25, 1]);
+  assert.deepEqual([...cloud('"x","y","z"\n"1","2","3"', 'quoted.csv').positions], [1, 2, 3]);
+  assert.throws(() => cloud('1,,2,3', 'missing.csv'));
+});
+check('PTS count and deterministic sample / sampled bounds', () => {
+  const value = cloud('5\n0 0 0\n1 100 0\n2 2 0\n3 3 0\n4 4 0', 'points.pts', {maxPoints: 3});
+  assert.equal(value.count, 3); assert.equal(value.totalCount, 5);
+  assert.deepEqual([...value.positions], [0, 0, 0, 2, 2, 0, 4, 4, 0]);
+  assert.deepEqual(value.bounds, [[0, 0, 0], [4, 4, 0]]);
+  for (const field of Object.values(value.fields)) assert.equal(field.length, 3);
+  assert(value.notes.some(note => note.includes('样本范围')));
+  assert.throws(() => cloud('2\n0 0 0', 'broken.pts'));
+});
+check('PLY ASCII list faces and properties', () => {
+  const value = cloud('ply\nformat ascii 1.0\nelement vertex 2\nproperty double x\nproperty double y\nproperty double z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n1000000.0001 2 3 1 0 0\n4 5 6 0 255 0\n3 0 1 0\n', 'mesh.ply');
+  assert.equal(value.positions[0], 1000000.0001); assert.equal(value.rgb[0], Math.fround(1 / 255)); assert.equal(value.rgb[4], 1);
+});
+function binaryPLY(little) {
+  const header = bytes(`ply\nformat binary_${little ? 'little' : 'big'}_endian 1.0\nelement vertex 2\nproperty double x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n`);
+  const result = new Uint8Array(header.length + 38); result.set(header); const view = new DataView(result.buffer);
+  for (let i = 0; i < 2; i++) { const at = header.length + 19 * i; view.setFloat64(at, 832000.12345678 + i, little); view.setFloat32(at + 8, 2 + i, little); view.setFloat32(at + 12, 3 + i, little); result.set([255, 128, 0], at + 16); }
+  return result;
+}
+for (const little of [true, false]) check(`PLY binary ${little ? 'little' : 'big'} endian`, () => {
+  const input = binaryPLY(little), value = parsePointCloud(input, 'binary.ply');
+  assert.equal(value.positions[0], 832000.12345678); assert.equal(value.positions[3], 832001.12345678); assert.equal(value.rgb[0], 1);
+  assert.throws(() => parsePointCloud(input.subarray(0, input.length - 1), 'broken.ply'));
+});
+check('PCD ASCII scalar + COUNT vector + packed RGB float', () => {
+  const colorBuffer = new ArrayBuffer(4); const dv = new DataView(colorBuffer); dv.setUint32(0, 0x00ff8000, true); const encoded = dv.getFloat32(0, true);
+  const value = cloud(`VERSION .7\nFIELDS x y z intensity rgb normal\nSIZE 4 4 4 4 4 4\nTYPE F F F F F F\nCOUNT 1 1 1 1 1 3\nWIDTH 1\nHEIGHT 1\nPOINTS 1\nDATA ascii\n1 2 3 0.4 ${encoded} 0 0 1\n`, 'sample.pcd');
+  assert.equal(value.rgb[0], 1); assert.equal(value.rgb[1], Math.fround(128 / 255)); assert.equal(value.fields.normal_3[0], 1);
+});
+check('PCD binary float64 coordinates / uint32 rgba', () => {
+  const header = bytes('VERSION .7\nFIELDS x y z rgba\nSIZE 8 4 4 4\nTYPE F F F U\nWIDTH 1\nHEIGHT 1\nPOINTS 1\nDATA binary\n');
+  const input = new Uint8Array(header.length + 20); input.set(header); const view = new DataView(input.buffer);
+  view.setFloat64(header.length, 832000.12345678, true); view.setFloat32(header.length + 8, 2, true); view.setFloat32(header.length + 12, 3, true); view.setUint32(header.length + 16, 0xffff8000, true);
+  const value = parsePointCloud(input, 'sample.pcd'); assert.equal(value.positions[0], 832000.12345678); assert.equal(value.rgb[0], 1); assert.equal(value.rgb[1], Math.fround(128 / 255));
+});
+check('Malformed inputs and unsupported compression fail explicitly', () => {
+  for (const text of ['', '1 2', '1 2 Infinity', '1 2 3\n4 5', 'x y z x\n1 2 3 4']) assert.throws(() => cloud(text));
+  assert.throws(() => cloud('1 2 3', 'sample.xyz', {maxPoints: 0}));
+  assert.throws(() => cloud('VERSION .7\nDATA binary_compressed\n', 'sample.pcd'), /binary_compressed/);
+  assert.throws(() => cloud('anything', 'sample.laz'), /LAS\/LAZ/);
+});
+console.log(`${checks} checks passed.`);
