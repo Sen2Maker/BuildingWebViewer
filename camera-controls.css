@@ -1,1 +1,49 @@
-.camera-controls{margin:0 0 12px;border:1px solid #dce5e3;border-radius:8px;background:#fff;font-size:11px;color:#566d73;flex-shrink:0}.camera-controls>summary{padding:9px 12px;cursor:pointer;font-weight:600;color:#41635e}.camera-controls>summary:focus-visible{outline:2px solid #3e9687;outline-offset:2px}.camera-controls-body{padding:0 12px 12px;max-height:390px;overflow:auto}.camera-controls-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:2px 0 10px}.camera-preserve{display:flex;align-items:center;gap:7px;cursor:pointer}.camera-preserve input{width:14px;height:14px}.camera-view-height{color:#81928f;font-variant-numeric:tabular-nums}.camera-controls-grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px}.camera-number-field{display:flex;flex-direction:column;gap:5px;min-width:0}.camera-number-field>span:first-child{font-size:10px;color:#70837f}.camera-number-row{display:flex;min-width:0}.camera-number-row input{width:100%;min-width:0;border-radius:0;padding:5px 4px;text-align:center;font-size:11px;font-variant-numeric:tabular-nums;-moz-appearance:textfield}.camera-number-row input::-webkit-inner-spin-button,.camera-number-row input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.camera-number-row button{padding:4px 7px;min-width:25px;border-radius:5px 0 0 5px;font-size:14px;flex-shrink:0}.camera-number-row button:last-child{border-radius:0 5px 5px 0}.camera-number-row button:first-child{border-right:0}.camera-number-row button:last-child{border-left:0}.camera-controls-help{font-size:10px;line-height:1.6;color:#81928c;margin:9px 0 10px}.camera-bookmark-row{display:flex;gap:8px;flex-wrap:wrap}.camera-bookmark-row input,.camera-bookmark-row select{font-size:11px;padding:7px 8px;flex:1;min-width:130px;max-width:100%}.camera-bookmark-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.camera-bookmark-actions button{font-size:11px;padding:6px 9px}.camera-controls-status{font-size:11px;line-height:1.6;color:#40735d;overflow-wrap:anywhere;margin-top:7px;min-height:0}.camera-controls-status:empty{display:none}.camera-controls-error{color:#a76335}.camera-controls input:disabled{background:#f5f7f6;color:#a3afab}@media(max-width:1150px){.camera-controls-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}}@media(max-width:700px){.camera-controls-body{padding-inline:9px;max-height:400px}.camera-controls-grid{gap:8px}.camera-controls-bar{gap:6px}.camera-view-height{font-size:10px}.camera-bookmark-actions button{flex:1 0 auto}.camera-bookmark-row input,.camera-bookmark-row select{min-width:120px}}
+.camera-controls,.camera-bookmarks{font-size:12px;color:#53666d;min-width:0;font-variant-numeric:tabular-nums}
+.camera-controls{margin:0 0 12px;border:1px solid #dce5e3;border-radius:8px;background:#fff;flex-shrink:0}
+.camera-controls>summary{padding:10px 12px;cursor:pointer;font-weight:600;color:#41635e}
+.camera-controls>summary:focus-visible,.camera-advanced>summary:focus-visible{outline:2px solid #3e9687;outline-offset:2px}
+.camera-controls-body{padding:0 12px 12px}
+.camera-controls-docked{margin:0;border:0;border-radius:0;background:transparent}
+.camera-controls-docked .camera-controls-body{padding:0}
+.camera-controls-bar{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:2px 0 18px}
+.camera-preserve{display:flex;align-items:center;gap:7px;cursor:pointer;line-height:1.5}
+.camera-preserve input{width:14px;height:14px;margin:0;flex-shrink:0;accent-color:#408478}
+.camera-view-height{font-size:10px;color:#81928f;overflow-wrap:anywhere}
+.camera-controls-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+.camera-number-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(136px,158px);align-items:center;gap:7px 9px;min-width:0}
+.camera-number-field>span:first-child{font-size:11px;color:#617570;line-height:1.5}
+.camera-number-row{display:flex;min-width:0}
+.camera-number-row input{width:100%;min-width:0;box-sizing:border-box;border:1px solid #d8e1de;border-radius:0;padding:6px 3px;text-align:center;font-size:12px;color:#344d49;background:#fff;font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.camera-number-row input::-webkit-inner-spin-button,.camera-number-row input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.camera-number-row button{padding:5px 7px;min-width:25px;border:1px solid #d8e1de;background:#f7f9f8;color:#46665f;border-radius:5px 0 0 5px;font-size:15px;flex-shrink:0;cursor:pointer}
+.camera-number-row button:last-child{border-radius:0 5px 5px 0;border-left:0}
+.camera-number-row button:first-child{border-right:0}
+.camera-slider{grid-column:1/-1;appearance:auto;display:block;width:100%;min-width:0;height:18px;padding:0;margin:0;background:transparent;border:0;accent-color:#408478;cursor:pointer}
+.camera-slider-endpoints{grid-column:1/-1;display:flex;justify-content:space-between;margin-top:-6px;color:#889691;font-size:10px;pointer-events:none}
+.camera-advanced{margin-top:20px;border-top:1px solid #e4eae7;padding-top:12px}
+.camera-advanced>summary{font-size:11px;color:#5e746d;font-weight:600;cursor:pointer;padding:2px 0}
+.camera-advanced[open]>summary{margin-bottom:14px}
+.camera-advanced .camera-controls-grid{gap:11px}
+.camera-advanced .camera-number-field{grid-template-columns:minmax(0,1fr)}
+.camera-advanced .camera-number-row{width:100%}
+.camera-controls-help{font-size:10px;line-height:1.65;color:#81928c;margin:12px 0 0}
+.camera-bookmarks{display:flex;flex-direction:column;gap:10px}
+.camera-controls-body>.camera-bookmarks{margin-top:20px;padding-top:16px;border-top:1px solid #e4eae7}
+.camera-bookmark-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#48635a}
+.camera-bookmark-heading strong{font-weight:600}
+.camera-bookmark-count{font-size:10px;color:#789086;background:#edf4f0;padding:3px 7px;border-radius:10px;white-space:nowrap}
+.camera-bookmark-storage{margin:0;color:#73867e;font-size:11px;line-height:1.7}
+.camera-bookmarks>input[type=text],.camera-bookmarks>select{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;font-size:12px;padding:8px;border:1px solid #d6e1dc;border-radius:6px;background:#fff;color:#3f5950}
+.camera-bookmarks>select{height:132px;padding:4px}
+.camera-bookmarks>select option{padding:5px 7px;border-radius:3px}
+.camera-bookmark-meta{font-size:10px;line-height:1.7;white-space:pre-line;overflow-wrap:anywhere;color:#70837b;margin:0;min-height:34px}
+.camera-bookmark-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.camera-bookmark-actions button,.camera-bookmark-files button{font-size:11px;padding:8px 6px;border:1px solid #d7e1dc;background:#fff;color:#476457;border-radius:5px;cursor:pointer;min-width:0}
+.camera-bookmark-actions button:first-child{grid-column:1/-1;background:#e9f3ee;border-color:#bed6c9;font-weight:600}
+.camera-bookmark-files{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;border-top:1px solid #e4eae7;padding-top:12px;margin-top:3px}
+.camera-controls-status{font-size:11px;line-height:1.65;color:#40735d;overflow-wrap:anywhere;margin:9px 0 0;min-height:0}
+.camera-controls-status:empty{display:none}
+.camera-controls-error{color:#a76335}
+.camera-controls input:disabled,.camera-controls button:disabled,.camera-bookmarks button:disabled{color:#a3afab;cursor:default;opacity:.6}
+.camera-number-row input:focus-visible,.camera-bookmarks input:focus-visible,.camera-bookmarks select:focus-visible,.camera-slider:focus-visible{outline:2px solid #75a99b;outline-offset:2px}
+@media(max-width:380px){.camera-number-field{grid-template-columns:minmax(0,1fr) minmax(125px,145px);gap:6px}.camera-number-row input{font-size:11px}.camera-number-row button{padding-inline:6px}}

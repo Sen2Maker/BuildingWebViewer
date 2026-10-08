@@ -9,18 +9,18 @@ import zipfile
 HERE = Path(__file__).resolve().parent
 SITE_FILES = [
     'index.html', 'hub.css', 'lod.html', 'wireframe.html', 'pointcloud.html',
-    'styles.css', 'cloud.css', 'viewer-controls.css', 'camera-controls.css', 'viewer.js', 'cloud-app.bundle.js',
+    'styles.css', 'cloud.css', 'viewer-controls.css', 'camera-controls.css', 'viewer-layout.css', 'viewer.js', 'cloud-app.bundle.js',
 ]
 FILES = SITE_FILES + [
     'renderer.js', 'obj-parser.js', 'app.js',
     'cloud-app.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js',
-    'palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-cache.js', 'cloud-cache.test.mjs', 'camera-controls.test.mjs', 'renderer.test.mjs',
+    'viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-cache.js', 'cloud-cache.test.mjs', 'camera-controls.test.mjs', 'renderer.test.mjs',
     'server.py', 'start.sh', 'build.py', 'README.md', 'DESIGN_NOTES.md', 'point-io.test.mjs', 'cloud-renderer.test.mjs', 'cloud-combine.test.mjs',
     '.gitignore', '.gitattributes', '.github/workflows/pages.yml',
 ]
 BUNDLES = {
-    'viewer.js': ['palettes.js', 'palette-controls.js', 'camera-controls.js', 'renderer.js', 'obj-parser.js', 'app.js'],
-    'cloud-app.bundle.js': ['palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js', 'cloud-cache.js', 'cloud-app.js'],
+    'viewer.js': ['viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'renderer.js', 'obj-parser.js', 'app.js'],
+    'cloud-app.bundle.js': ['viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js', 'cloud-cache.js', 'cloud-app.js'],
 }
 
 

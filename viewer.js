@@ -2,6 +2,70 @@
 (() => {
 'use strict';
 
+// Source: viewer-layout.js
+/** A shared, non-modal inspector: the canvas remains usable while editing. */
+function mountViewerLayout({root = document} = {}) {
+  const panel = root.getElementById('viewer-inspector');
+  if (!panel) return null;
+  const workspace = panel.parentElement;
+  const triggers = [...root.querySelectorAll('[data-open-settings]')];
+  const tabs = [...panel.querySelectorAll('[data-settings-tab]')];
+  const sections = [...panel.querySelectorAll('[data-settings-panel]')];
+  const closeButton = panel.querySelector('[data-close-settings]');
+  let current = 'display', returnFocus = null;
+
+  function select(name, focus = false) {
+    if (!tabs.some(tab => tab.dataset.settingsTab === name)) return;
+    current = name;
+    for (const tab of tabs) {
+      const active = tab.dataset.settingsTab === name;
+      tab.setAttribute('aria-selected', String(active)); tab.tabIndex = active ? 0 : -1;
+      if (active && focus) tab.focus();
+    }
+    for (const section of sections) section.hidden = section.dataset.settingsPanel !== name;
+    for (const trigger of triggers) {
+      const active = !panel.hidden && trigger.dataset.openSettings === name;
+      trigger.setAttribute('aria-expanded', String(active));
+      trigger.classList.toggle('active', active);
+    }
+    // A second disclosure inside the display tab would hide the very controls
+    // the user has just asked to open. Standalone palette panels remain unchanged.
+    const palette = panel.querySelector('.palette-panel');
+    if (palette) palette.open = true;
+  }
+  function close() {
+    if (panel.hidden) return;
+    const hadFocus = panel.contains(root.activeElement);
+    panel.hidden = true; workspace.classList.remove('inspector-open'); select(current);
+    if (hadFocus) returnFocus?.focus();
+  }
+  function open(name, trigger = null) {
+    returnFocus = trigger || returnFocus;
+    panel.hidden = false; workspace.classList.add('inspector-open'); select(name, true);
+  }
+  for (const trigger of triggers) trigger.addEventListener('click', () => {
+    const name = trigger.dataset.openSettings;
+    if (!panel.hidden && name === current) close(); else open(name, trigger);
+  });
+  for (const [index, tab] of tabs.entries()) {
+    tab.addEventListener('click', () => select(tab.dataset.settingsTab));
+    tab.addEventListener('keydown', event => {
+      const target = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+        : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+      if (target < 0) return;
+      event.preventDefault(); select(tabs[target].dataset.settingsTab, true);
+    });
+  }
+  closeButton.addEventListener('click', close);
+  root.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !event.defaultPrevented && !panel.hidden) { event.preventDefault(); close(); }
+  });
+  select(current);
+  return {open, close};
+}
+
+
 // Source: palettes.js
 /** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
 const PALETTE_DEFINITIONS = Object.freeze({
@@ -182,7 +246,8 @@ function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene 
 function cameraBookmark(record, space, index) {
   if (!cameraObject(record) || typeof record.name !== 'string' || !record.name.trim() || record.name.length > 80) throw Error('书签名称需为 1–80 个字符');
   return {id: typeof record.id === 'string' && record.id.trim() && record.id.length <= 128 ? record.id : `import-${index}`,
-    name: record.name.trim(), snapshot: validateCameraSnapshot(record.snapshot, {space, checkScene: false})};
+    name: record.name.trim(), snapshot: validateCameraSnapshot(record.snapshot, {space, checkScene: false}),
+    ...(typeof record.updatedAt === 'string' && record.updatedAt.length <= 64 && Number.isFinite(Date.parse(record.updatedAt)) ? {updatedAt: record.updatedAt} : {})};
 }
 
 function parseCameraBookmarks(input, space) {
@@ -203,27 +268,42 @@ function serializeCameraBookmarks(bookmarks, space, preserveView = true) {
 
 /**
  * Returns {preserveView, capture, restore, refresh, destroy}.
- * After changing data, restore(saved, {checkScene:false}) implements the explicit
- * preserve-view switch; bookmark loads retain strict LOD scene checking.
+ * Pass a separate bookmarkContainer to mount camera and bookmarks in two tabs.
+ * restore(saved, {checkScene:false}) preserves a view after changing data;
+ * bookmark loads retain strict LOD scene checking.
  */
-function mountCameraControls({container, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
+function mountCameraControls({container, bookmarkContainer = null, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
   cameraSpace(space);
   if (!container || typeof getViewers !== 'function') throw Error('相机面板需要挂载容器和 getViewers');
   const doc = container.ownerDocument, win = doc.defaultView || globalThis;
+  const separateBookmarks = bookmarkContainer && bookmarkContainer !== container;
   const key = `BuildingWebViewer.camera-bookmarks.v1.${space}`;
-  const watches = new Map(), inputs = new Map(), cleanups = [];
+  const limits = space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  const watches = new Map(), inputs = new Map(), sliders = new Map(), dragging = new Set();
   let bookmarks = [], preserveView = true, selectedBookmark = '', disposed = false, frame = null, idCounter = 0;
+  const pendingBookmarks = new Map();
+  let pendingPreserve = null;
   const el = (tag, text, className) => { const node = doc.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
-  const panel = el('details', undefined, 'camera-controls'), summary = el('summary', '精确相机与视角书签');
+  const panel = el(separateBookmarks ? 'section' : 'details', undefined, `camera-controls${separateBookmarks ? ' camera-controls-docked' : ''}`);
   const body = el('div', undefined, 'camera-controls-body'), status = el('p', '', 'camera-controls-status'); status.setAttribute('role', 'status');
-  panel.append(summary, body); container.replaceChildren(panel);
-  const message = (text = '', error = false) => { status.textContent = text; status.classList.toggle('camera-controls-error', error); };
+  if (!separateBookmarks) panel.append(el('summary', '精确相机与视角书签'));
+  panel.append(body); container.replaceChildren(panel);
+  const bookPanel = el('section', undefined, 'camera-bookmarks');
+  if (separateBookmarks) bookmarkContainer.replaceChildren(bookPanel);
+  const bookStatus = separateBookmarks ? el('p', '', 'camera-controls-status') : status;
+  bookStatus.setAttribute('role', 'status');
+  const message = (text = '', error = false) => {
+    for (const node of new Set([status, bookStatus])) { node.textContent = text; node.classList.toggle('camera-controls-error', error); }
+  };
   const attempt = callback => { try { return callback(); } catch (error) { message(error.message || String(error), true); return null; } };
   const controls = [], bar = el('div', undefined, 'camera-controls-bar'), preserveLabel = el('label', undefined, 'camera-preserve');
   const preserveInput = el('input'); preserveInput.type = 'checkbox'; preserveInput.checked = true;
+  preserveInput.setAttribute('aria-label', '增删文件时保持当前视角');
   preserveLabel.append(preserveInput, doc.createTextNode('增删文件时保持当前视角'));
   const heightLabel = el('span', '', 'camera-view-height'); bar.append(preserveLabel, heightLabel); body.append(bar);
   const grid = el('div', undefined, 'camera-controls-grid'); body.append(grid);
+  const advanced = el('details', undefined, 'camera-advanced'), advancedGrid = el('div', undefined, 'camera-controls-grid');
+  advanced.append(el('summary', '高级：平移与目标点'), advancedGrid); body.append(advanced);
   const specifications = [
     ['azimuth', '方位角（°）', .1], ['elevation', '仰角（°）', .1], ['zoom', '缩放倍率', .05],
     ['pan0', '水平平移', .1], ['pan1', '垂直平移', .1],
@@ -246,6 +326,7 @@ function mountCameraControls({container, getViewers, space, getScene = () => nul
   function inputValue(snapshot, name) {
     return name.startsWith('pan') ? snapshot.camera.pan[Number(name.slice(3))] : name.startsWith('target') ? snapshot.camera.target[Number(name.slice(6))] : snapshot.camera[name];
   }
+  function displayNumber(value, name) { return name.startsWith('target') ? String(value) : String(Number(value.toPrecision(12))); }
   function snapshotWithInput(name, raw) {
     const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再调整相机');
     if (!String(raw).trim()) throw Error('相机参数不能为空');
@@ -256,16 +337,31 @@ function mountCameraControls({container, getViewers, space, getScene = () => nul
     return validateCameraSnapshot(snapshot, {space, scene: uiScene()});
   }
   function applyInput(name, raw) { restore(snapshotWithInput(name, raw)); message(''); }
+  function sliderPosition(name, value, slider) {
+    if (name === 'zoom') return Math.max(0, Math.min(1000, 1000 * Math.log(value / limits.minZoom) / Math.log(limits.maxZoom / limits.minZoom)));
+    // +180 and -180 are identical; keep the right endpoint stable while dragging.
+    if (name === 'azimuth' && value === -180 && Number(slider.value) === 180) return 180;
+    return value;
+  }
+  function sliderNumber(name, raw) {
+    const value = Number(raw), slider = sliders.get(name);
+    if (!String(raw).trim() || !Number.isFinite(value) || value < Number(slider.min) || value > Number(slider.max)) throw Error('滑块数值超出范围');
+    if (name !== 'zoom') return value;
+    if (value === 0) return limits.minZoom;
+    if (value === 1000) return limits.maxZoom;
+    return limits.minZoom * Math.exp(value / 1000 * Math.log(limits.maxZoom / limits.minZoom));
+  }
   for (const [name, label, step] of specifications) {
-    const group = el('label', undefined, 'camera-number-field'), caption = el('span', label), row = el('span', undefined, 'camera-number-row');
+    const basic = ['azimuth', 'elevation', 'zoom'].includes(name);
+    const group = el('div', undefined, `camera-number-field${basic ? ' camera-slider-field' : ''}`), caption = el('span', label), row = el('span', undefined, 'camera-number-row');
     const minus = el('button', '−'), input = el('input'), plus = el('button', '+');
     for (const button of [minus, plus]) { button.type = 'button'; button.setAttribute('aria-label', `${button === minus ? '减小' : '增大'}${label}`); }
     input.type = 'number'; input.step = String(step); input.setAttribute('aria-label', label); input.autocomplete = 'off';
+    if (name === 'elevation') { input.min = String(limits.minElevation); input.max = '90'; }
+    if (name === 'zoom') { input.min = String(limits.minZoom); input.max = String(limits.maxZoom); }
     input.addEventListener('input', () => {
-      // Partial edits (empty, a minus sign, or temporarily out of range) must
-      // leave the current camera intact; change reports any final error.
-      let snapshot;
-      try { snapshot = snapshotWithInput(name, input.value); } catch { return; }
+      // Partial edits must leave the current camera intact; change reports errors.
+      let snapshot; try { snapshot = snapshotWithInput(name, input.value); } catch { return; }
       attempt(() => { restore(snapshot); message(''); });
     });
     input.addEventListener('change', () => attempt(() => applyInput(name, input.value)));
@@ -273,37 +369,89 @@ function mountCameraControls({container, getViewers, space, getScene = () => nul
     for (const [button, direction] of [[minus, -1], [plus, 1]]) button.addEventListener('click', event => {
       event.preventDefault(); attempt(() => {
         const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再调整相机');
-        const next = inputValue(snapshot, name) + direction * step;
-        applyInput(name, Number(next.toPrecision(15)));
+        applyInput(name, Number((inputValue(snapshot, name) + direction * step).toPrecision(15)));
       });
     });
-    row.append(minus, input, plus); group.append(caption, row); grid.append(group);
-    inputs.set(name, input); controls.push(minus, input, plus);
+    row.append(minus, input, plus); group.append(caption, row);
+    if (basic) {
+      const slider = el('input', undefined, 'camera-slider'); slider.type = 'range';
+      slider.min = String(name === 'zoom' ? 0 : name === 'azimuth' ? -180 : limits.minElevation);
+      slider.max = String(name === 'zoom' ? 1000 : name === 'azimuth' ? 180 : 90);
+      slider.step = name === 'zoom' ? '1' : '.1'; slider.setAttribute('aria-label', `${label}滑块`);
+      slider.addEventListener('pointerdown', () => dragging.add(name));
+      const finish = () => { dragging.delete(name); scheduleRefresh(); };
+      for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'change', 'blur']) slider.addEventListener(event, finish);
+      slider.addEventListener('input', () => attempt(() => applyInput(name, sliderNumber(name, slider.value))));
+      const endpoints = el('div', undefined, 'camera-slider-endpoints');
+      endpoints.append(el('span', name === 'zoom' ? `${limits.minZoom}×` : `${slider.min}°`), el('span', name === 'zoom' ? `${limits.maxZoom}×` : `${slider.max}°`));
+      group.append(slider, endpoints); sliders.set(name, slider); controls.push(slider);
+    }
+    (basic ? grid : advancedGrid).append(group); inputs.set(name, input); controls.push(minus, input, plus);
   }
   const help = el('p', space === 'raw-world'
-    ? '平移按屏幕水平/垂直方向，数值单位与原坐标一致。导入视角不移动点云或线框。'
-    : 'LOD 使用重新排列后的目标坐标；书签仅适用于相同楼栋顺序和比例模式。', 'camera-controls-help');
-  body.append(help);
-  const bookmarkRow = el('div', undefined, 'camera-bookmark-row'), bookmarkName = el('input'), bookmarkSelect = el('select');
-  bookmarkName.type = 'text'; bookmarkName.maxLength = 80; bookmarkName.placeholder = '书签名称'; bookmarkName.setAttribute('aria-label', '视角书签名称');
-  bookmarkSelect.setAttribute('aria-label', '已保存视角');
-  bookmarkRow.append(bookmarkName, bookmarkSelect); body.append(bookmarkRow);
+    ? '平移按屏幕水平/垂直方向，单位与原坐标一致。目标点保留原始坐标精度。'
+    : '目标点使用 LOD 排列坐标；书签适用于相同楼栋顺序和比例模式。', 'camera-controls-help');
+  advanced.append(help);
+  body.append(el('p', '拖动滑块可连续调整；数字输入与鼠标操作实时同步。缩放滑块采用对数刻度。', 'camera-controls-help'), status);
+  // In the combined legacy layout bookmarks follow the camera, not precede it.
+  if (!separateBookmarks) body.append(bookPanel);
+  const bookHeading = el('div', undefined, 'camera-bookmark-heading'), bookCount = el('span', '', 'camera-bookmark-count');
+  bookCount.setAttribute('aria-label', '已保存书签数量'); bookHeading.append(el('strong', '本机视角书签'), bookCount);
+  const storageHelp = el('p', '保存在此浏览器，下次打开仍可使用。可导出 JSON 备份或转移到其他浏览器。', 'camera-bookmark-storage');
+  const bookmarkName = el('input'), bookmarkSelect = el('select');
+  bookmarkName.type = 'text'; bookmarkName.maxLength = 80; bookmarkName.placeholder = '输入视角名称'; bookmarkName.setAttribute('aria-label', '视角书签名称');
+  bookmarkSelect.size = 5; bookmarkSelect.setAttribute('aria-label', '已保存视角');
+  const bookmarkMeta = el('p', '', 'camera-bookmark-meta'); bookmarkMeta.setAttribute('aria-label', '选中书签信息');
+  bookPanel.append(bookHeading, storageHelp, bookmarkSelect, bookmarkMeta, bookmarkName);
   const actions = el('div', undefined, 'camera-bookmark-actions');
   const action = text => { const button = el('button', text); button.type = 'button'; actions.append(button); return button; };
-  const saveButton = action('保存 / 更新书签'), loadButton = action('加载书签'), deleteButton = action('删除书签');
-  const exportButton = action('导出 JSON'), importButton = action('导入 JSON');
+  const saveButton = action('保存新书签'), loadButton = action('加载所选'), updateButton = action('更新视角'), renameButton = action('重命名'), deleteButton = action('删除所选');
+  const files = el('div', undefined, 'camera-bookmark-files');
+  const exportButton = el('button', '导出 JSON'), importButton = el('button', '导入 JSON');
+  exportButton.type = importButton.type = 'button'; files.append(exportButton, importButton);
   const importInput = el('input'); importInput.type = 'file'; importInput.accept = '.json,application/json'; importInput.hidden = true;
-  body.append(actions, importInput, status);
+  bookPanel.append(actions, files, importInput); if (separateBookmarks) bookPanel.append(bookStatus);
+  function storageUnavailable() {
+    storageHelp.textContent = '当前浏览器无法持久保存；本次书签仍可使用，请导出 JSON 备份。';
+    message(storageHelp.textContent, true);
+  }
+  function syncStored({notifyDeleted = true} = {}) {
+    try {
+      const stored = win.localStorage.getItem(key);
+      const latest = stored ? parseCameraBookmarks(stored, space) : {bookmarks: [], preserveView: true};
+      // Rebase only unsaved local edits, never this panel's entire cached array.
+      const merged = new Map(latest.bookmarks.map(bookmark => [bookmark.id, bookmark]));
+      for (const [id, bookmark] of pendingBookmarks) { if (bookmark) merged.set(id, bookmark); else merged.delete(id); }
+      bookmarks = [...merged.values()];
+      preserveView = pendingPreserve ?? latest.preserveView; preserveInput.checked = preserveView;
+      const deleted = selectedBookmark && !merged.has(selectedBookmark);
+      updateBookmarks();
+      // Keep the name input untouched: it may contain an unfinished draft.
+      if (deleted && notifyDeleted) message('所选书签已在另一页面删除，请重新选择；当前视角未改变。', true);
+      return true;
+    } catch { storageUnavailable(); return false; }
+  }
   function persist() {
-    try { win.localStorage.setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView)); return true; }
-    catch { message('浏览器无法持久保存书签；本次仍可使用，请导出 JSON 备份。', true); return false; }
+    // Read again at the write boundary, including after asynchronous imports.
+    // When reading fails, do not overwrite records we cannot safely reconcile.
+    if (!syncStored()) return false;
+    try {
+      win.localStorage.setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView));
+      pendingBookmarks.clear(); pendingPreserve = null;
+      storageHelp.textContent = '保存在此浏览器，下次打开仍可使用。可导出 JSON 备份或转移到其他浏览器。'; return true;
+    } catch { storageUnavailable(); return false; }
   }
   function updateBookmarks() {
-    bookmarkSelect.replaceChildren(); const empty = el('option', bookmarks.length ? '选择一个视角书签' : '暂无视角书签'); empty.value = ''; bookmarkSelect.append(empty);
+    bookmarkSelect.replaceChildren();
+    if (!bookmarks.length) { const empty = el('option', '暂无书签'); empty.value = ''; bookmarkSelect.append(empty); }
     for (const bookmark of bookmarks) { const option = el('option', bookmark.name); option.value = bookmark.id; bookmarkSelect.append(option); }
-    if (bookmarks.some(bookmark => bookmark.id === selectedBookmark)) bookmarkSelect.value = selectedBookmark;
-    else selectedBookmark = '';
-    loadButton.disabled = !available() || !selectedBookmark; deleteButton.disabled = !selectedBookmark; exportButton.disabled = !bookmarks.length;
+    const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark);
+    if (!selected) selectedBookmark = '';
+    bookmarkSelect.value = selectedBookmark;
+    bookCount.textContent = `${bookmarks.length} / ${CAMERA_MAX_BOOKMARKS}`;
+    bookmarkMeta.textContent = selected ? `${selected.name}\n更新：${selected.updatedAt ? new Date(selected.updatedAt).toLocaleString('zh-CN', {hour12: false}) : '未记录（旧版书签）'}` : '选择书签后可加载、更新、重命名或删除。';
+    loadButton.disabled = updateButton.disabled = !available() || !selectedBookmark;
+    renameButton.disabled = deleteButton.disabled = !selectedBookmark; exportButton.disabled = !bookmarks.length;
   }
   function scheduleRefresh() {
     if (disposed || frame !== null) return;
@@ -322,37 +470,76 @@ function mountCameraControls({container, getViewers, space, getScene = () => nul
     watchViewers(); const snapshot = attempt(capture), enabled = Boolean(snapshot);
     controls.forEach(control => { control.disabled = !enabled; }); saveButton.disabled = !enabled;
     if (snapshot) {
-      for (const [name, input] of inputs) if (doc.activeElement !== input) input.value = name.startsWith('target') ? String(inputValue(snapshot, name)) : String(Number(inputValue(snapshot, name).toPrecision(12)));
+      for (const [name, input] of inputs) if (doc.activeElement !== input) input.value = displayNumber(inputValue(snapshot, name), name);
+      for (const [name, slider] of sliders) {
+        if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
+        slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? ' 倍' : ' 度'}`);
+      }
       heightLabel.textContent = `可视高度 ${(snapshot.camera.baseHeight / snapshot.camera.zoom).toPrecision(6)}（原坐标单位）`;
-    } else { for (const input of inputs.values()) if (doc.activeElement !== input) input.value = ''; heightLabel.textContent = '加载数据后可调整'; }
-    loadButton.disabled = !enabled || !selectedBookmark;
+    } else {
+      dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
+      heightLabel.textContent = '加载数据后可调整';
+    }
+    loadButton.disabled = updateButton.disabled = !enabled || !selectedBookmark;
   }
-  preserveInput.addEventListener('change', () => { preserveView = preserveInput.checked; persist(); });
+  const finishDragging = () => { if (dragging.size) { dragging.clear(); scheduleRefresh(); } };
+  win.addEventListener?.('pointerup', finishDragging); win.addEventListener?.('pointercancel', finishDragging);
+  function freshId() {
+    let id; do { id = win.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${++idCounter}`; }
+    while (bookmarks.some(bookmark => bookmark.id === id)); return id;
+  }
+  function validName() {
+    const name = bookmarkName.value.trim(); if (!name || name.length > 80) throw Error('请填写 1–80 个字符的书签名称'); return name;
+  }
+  function uniqueName(name) {
+    let result = name, number = 2;
+    while (bookmarks.some(bookmark => bookmark.name === result)) { const suffix = ` (${number++})`; result = name.slice(0, 80 - suffix.length) + suffix; }
+    return result;
+  }
+  preserveInput.addEventListener('change', () => {
+    const requested = preserveInput.checked; syncStored();
+    pendingPreserve = requested; preserveView = requested; preserveInput.checked = requested; persist();
+  });
   bookmarkSelect.addEventListener('change', () => {
     selectedBookmark = bookmarkSelect.value;
     const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark); if (selected) bookmarkName.value = selected.name;
     updateBookmarks();
   });
   saveButton.addEventListener('click', () => attempt(() => {
+    syncStored();
     const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再保存视角');
-    const name = bookmarkName.value.trim(); if (!name || name.length > 80) throw Error('请填写 1–80 个字符的书签名称');
-    const existing = bookmarks.find(bookmark => bookmark.name === name);
-    if (existing) existing.snapshot = snapshot;
-    else {
-      if (bookmarks.length >= CAMERA_MAX_BOOKMARKS) throw Error('最多保存 100 个书签，请先删除不需要的视角');
-      bookmarks.push({id: `${Date.now()}-${++idCounter}`, name, snapshot});
-    }
-    selectedBookmark = (existing || bookmarks.at(-1)).id; updateBookmarks();
-    if (persist()) message(`已保存视角“${name}”。`);
+    if (bookmarks.length >= CAMERA_MAX_BOOKMARKS) throw Error('最多保存 100 个书签，请先删除不需要的视角');
+    const name = uniqueName(validName()), record = {id: freshId(), name, snapshot, updatedAt: new Date().toISOString()};
+    bookmarks.push(record); pendingBookmarks.set(record.id, record); selectedBookmark = record.id; bookmarkName.value = name; updateBookmarks();
+    if (persist()) message(`已保存新书签“${name}”，下次打开仍可使用。`);
   }));
   loadButton.addEventListener('click', () => attempt(() => {
+    syncStored();
     const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (bookmark) restore(bookmark.snapshot);
   }));
+  updateButton.addEventListener('click', () => attempt(() => {
+    syncStored();
+    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (!bookmark) return;
+    const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再更新视角');
+    bookmark.snapshot = snapshot; bookmark.updatedAt = new Date().toISOString(); pendingBookmarks.set(bookmark.id, bookmark); updateBookmarks();
+    if (persist()) message(`已更新“${bookmark.name}”的视角。`);
+  }));
+  renameButton.addEventListener('click', () => attempt(() => {
+    syncStored();
+    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (!bookmark) return;
+    const name = validName();
+    if (bookmarks.some(record => record.id !== bookmark.id && record.name === name)) throw Error('已有同名书签，请使用其他名称');
+    bookmark.name = name; bookmark.updatedAt = new Date().toISOString(); pendingBookmarks.set(bookmark.id, bookmark); updateBookmarks();
+    if (persist()) message(`已重命名为“${name}”。`);
+  }));
   deleteButton.addEventListener('click', () => {
-    bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; updateBookmarks();
+    syncStored(); if (!selectedBookmark) return;
+    pendingBookmarks.set(selectedBookmark, null);
+    bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; bookmarkName.value = ''; updateBookmarks();
     if (persist()) message('书签已删除。');
   });
   exportButton.addEventListener('click', () => attempt(() => {
+    syncStored();
     const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
     const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
     win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message('相机书签 JSON 已导出，不含模型数据。');
@@ -364,28 +551,31 @@ function mountCameraControls({container, getViewers, space, getScene = () => nul
       if (file.size > 1024 * 1024) throw Error('相机 JSON 超过 1 MB，请检查是否选择了正确文件');
       const incoming = parseCameraBookmarks(await file.text(), space);
       if (disposed) return;
+      syncStored();
       if (bookmarks.length + incoming.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error('导入后超过 100 个书签，请先删除不需要的视角');
-      const existingNames = new Set(bookmarks.map(bookmark => bookmark.name));
       for (const bookmark of incoming.bookmarks) {
-        let name = bookmark.name, number = 2;
-        while (existingNames.has(name)) { const suffix = ` (${number++})`; name = bookmark.name.slice(0, 80 - suffix.length) + suffix; }
-        existingNames.add(name); bookmarks.push({...bookmark, name, id: `${Date.now()}-${++idCounter}`});
+        const record = {...bookmark, name: uniqueName(bookmark.name), id: freshId(), updatedAt: bookmark.updatedAt || new Date().toISOString()};
+        bookmarks.push(record); pendingBookmarks.set(record.id, record);
       }
       selectedBookmark = incoming.bookmarks.length ? bookmarks.at(-1).id : selectedBookmark;
-      updateBookmarks(); if (persist()) message(`已导入 ${incoming.bookmarks.length} 个书签；选择书签后点击“加载书签”应用。`);
+      if (selectedBookmark) bookmarkName.value = bookmarks.find(bookmark => bookmark.id === selectedBookmark).name;
+      updateBookmarks(); if (persist()) message(`已导入 ${incoming.bookmarks.length} 个书签；选择后点击“加载所选”应用。`);
     } catch (error) { message(error.message || String(error), true); }
   });
-  try {
-    const stored = win.localStorage.getItem(key);
-    if (stored) { const parsed = parseCameraBookmarks(stored, space); bookmarks = parsed.bookmarks; preserveView = parsed.preserveView; }
-  } catch { message('未能读取本机相机书签，可导入 JSON 备份。', true); }
+  const onStorage = event => {
+    if (!disposed && (event.key === key || event.key === null)) syncStored();
+  };
+  win.addEventListener?.('storage', onStorage);
+  syncStored({notifyDeleted: false});
   preserveInput.checked = preserveView; updateBookmarks(); refresh();
   return {
     get preserveView() { return preserveView; }, capture, restore, refresh,
     destroy() {
       disposed = true; if (frame !== null) win.cancelAnimationFrame(frame);
       for (const [viewer, {original, wrapped}] of watches) if (viewer.render === wrapped) viewer.render = original;
-      cleanups.forEach(cleanup => cleanup()); panel.remove(); watches.clear();
+      win.removeEventListener?.('storage', onStorage);
+      win.removeEventListener?.('pointerup', finishDragging); win.removeEventListener?.('pointercancel', finishDragging);
+      panel.remove(); if (separateBookmarks) bookPanel.remove(); watches.clear(); dragging.clear();
     },
   };
 }
@@ -870,6 +1060,7 @@ function parseOBJ(text, id, bytes = 0) {
 
 
 
+
 const $ = (id) => document.getElementById(id);
 const MAX_SELECTED = 24, PAGE_SIZE = 50;
 const number = (value) => Number(value).toLocaleString('zh-CN');
@@ -1155,7 +1346,7 @@ document.addEventListener('keydown', event => {
 function ensureViewer() {
   if (!viewer) viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});
   if (!paletteControls && $('palette-controls')) paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: updateOptions});
-  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
+  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
   options = {...options, ...paletteControls?.getOptions()};
   viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
@@ -1194,6 +1385,7 @@ $('folder-input').onchange = event => { folderReady(event.target.files); event.t
 function init() {
   try {
     ensureViewer();
+    mountViewerLayout();
     $('total-count').textContent = '尚未选择文件夹';
     $('source-path').textContent = '尚未选择文件夹。关闭或刷新网页后，请手动重新选择。';
     $('folder-status').textContent = '选择含 OBJ 的目录 · 文件仅在本机读取';

@@ -11,6 +11,7 @@
 | [CloudCompare 显示设置](https://cloudcompare.org/doc/wiki/index.php/Display%5CDisplay_settings) | 文档介绍 VBO、交互时简化显示与动态标量颜色显示等设置 | 本次采用 GPU 资源复用、配色参数与几何分离；没有把交互时简化直接等同于永久删点 |
 | [CloudCompare 色标管理](https://www.cloudcompare.org/doc/wiki/index.php/Scalar_fields%5CColor_Scales_Manager) | 多色标，以及相对/绝对数值范围 | 多种色带、反转、自动/固定数值范围 |
 | [CloudCompare 视口实体](https://www.cloudcompare.org/doc/wiki/index.php/Entities#Viewport) | 视口可保存并恢复 | 命名视角与可移植的 JSON 导入/导出 |
+| [CloudCompare 相机设置](https://cloudcompare.org/doc/wiki/index.php/Display%5CCamera_settings) | 独立参数面板，以及保存/恢复相机方向 | 收起式设置抽屉；角度、缩放滑块与数字双向同步，书签独立管理 |
 | [CloudCompare 投影模式](https://www.cloudcompare.org/doc/wiki/index.php/Display_modes) | 区分正交与透视相机 | 当前维持正交模型，保存观察中心、角度、平移与尺度 |
 
 资料核查于 2026-10-08；CloudCompare 的部分 wiki 页面描述较旧版本，以上仅

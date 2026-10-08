@@ -6,7 +6,7 @@
   <title>LOD 模型查看器</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="viewer-controls.css"><link rel="stylesheet" href="camera-controls.css"></head>
+<link rel="stylesheet" href="viewer-controls.css"><link rel="stylesheet" href="camera-controls.css"><link rel="stylesheet" href="viewer-layout.css"></head>
 <body>
   <header class="app-header">
     <a class="back-home" href="index.html" aria-label="返回工具首页">←</a>
@@ -33,19 +33,11 @@
     <main>
       <div class="main-heading"><div><h2>模型预览</h2><p id="scene-stats" aria-live="polite">正在准备查看器</p></div><div class="button-row"><button id="previous-group" title="查看上一组编号">上一组</button><button id="next-group" title="查看下一组编号">下一组</button><button id="screenshot">保存截图 ↓</button></div></div>
       <div id="selected-models" class="selected-models" aria-label="已选楼栋"></div>
-      <div class="toolbar">
+      <div class="toolbar viewer-toolbar">
         <div class="segmented" aria-label="视角"><button data-view="iso" class="active" aria-pressed="true">立体</button><button data-view="top" aria-pressed="false">俯视</button><button data-view="front" aria-pressed="false">正视</button></div>
         <button id="fit-view" title="快捷键 F">适应窗口</button>
-        <span class="toolbar-divider"></span>
-        <label>显示 <select id="display-mode"><option value="solid">实体</option><option value="solid-wire">实体 + 三角网</option><option value="wire">线框</option></select></label>
-        <label>比例 <select id="scale-mode"><option value="real">实际比例</option><option value="normalized">统一展示大小</option></select></label>
-        <label>配色 <select id="color-mode"><option value="surface">屋顶 / 墙面</option><option value="height">高度色带</option><option value="building">按楼栋</option></select></label>
-        <label class="check-label"><input id="show-edges" type="checkbox" checked>轮廓边</label>
-        <label class="check-label"><input id="show-labels" type="checkbox" checked>编号</label>
-        <label class="check-label"><input id="show-grid" type="checkbox" checked>网格</label>
-      </div>
-      <div id="palette-controls"></div><div id="camera-controls"></div>
-<div class="viewport" id="viewport">
+        <div class="inspector-shortcuts" aria-label="查看器设置入口"><button type="button" data-open-settings="display" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="19" r="2" fill="currentColor" stroke="none"/></svg><span>显示</span></button><button type="button" data-open-settings="camera" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l2-3h4l2 3h4v14H4V6z"/><circle cx="12" cy="12" r="4"/></svg><span>相机</span></button><button type="button" data-open-settings="bookmarks" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span>书签</span></button></div></div>
+      <div class="viewport" id="viewport">
         <canvas id="scene" aria-label="所选楼栋的三维模型；拖动旋转、滚轮缩放、右键拖动平移"></canvas>
         <div class="scene-note"><strong id="layout-title">等比例陈列</strong><span id="layout-note">独立模型重新排列 · 非实际地理位置</span></div>
         <div id="model-labels" class="model-labels"></div>
@@ -56,6 +48,20 @@
       </div>
       <footer><span>拖动旋转 <b>·</b> 滚轮缩放 <b>·</b> 右键 / Shift 拖动平移 <b>·</b> F 适应窗口</span><span>点击编号可单独查看 · 最多 24 栋</span></footer>
     </main>
+<aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
+  <div class="inspector-heading"><div><p>VIEW SETTINGS</p><h2>查看器设置</h2></div><button type="button" data-close-settings aria-label="收起设置面板" title="收起 · Esc">×</button></div>
+  <div class="inspector-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="settings-tab-display" data-settings-tab="display" aria-controls="settings-panel-display" aria-selected="true" tabindex="0">显示</button><button type="button" role="tab" id="settings-tab-camera" data-settings-tab="camera" aria-controls="settings-panel-camera" aria-selected="false" tabindex="-1">相机</button><button type="button" role="tab" id="settings-tab-bookmarks" data-settings-tab="bookmarks" aria-controls="settings-panel-bookmarks" aria-selected="false" tabindex="-1">书签</button></div>
+  <div class="inspector-content">
+    <section role="tabpanel" id="settings-panel-display" data-settings-panel="display" aria-labelledby="settings-tab-display"><section class="inspector-section"><h3>模型显示</h3><div class="inspector-options"><label>显示 <select id="display-mode"><option value="solid">实体</option><option value="solid-wire">实体 + 三角网</option><option value="wire">线框</option></select></label>
+        <label>比例 <select id="scale-mode"><option value="real">实际比例</option><option value="normalized">统一展示大小</option></select></label>
+        <label>配色 <select id="color-mode"><option value="surface">屋顶 / 墙面</option><option value="height">高度色带</option><option value="building">按楼栋</option></select></label>
+        <label class="check-label"><input id="show-edges" type="checkbox" checked>轮廓边</label>
+        <label class="check-label"><input id="show-labels" type="checkbox" checked>编号</label>
+        <label class="check-label"><input id="show-grid" type="checkbox" checked>网格</label></div></section><section class="inspector-section"><h3>色带与数值范围</h3><div id="palette-controls"></div></section></section>
+    <section role="tabpanel" id="settings-panel-camera" data-settings-panel="camera" aria-labelledby="settings-tab-camera" hidden><div id="camera-controls"></div></section>
+    <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
+  </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
+</aside>
   </div>
   <script defer src="viewer.js"></script>
 </body>

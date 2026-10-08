@@ -1,3 +1,4 @@
+import { mountViewerLayout } from './viewer-layout.js';
 import { CloudViewer } from './cloud-renderer.js';
 import { CloudFileCache } from './cloud-cache.js';
 import { describePointClouds } from './cloud-combine.js';
@@ -549,8 +550,9 @@ import { mountCameraControls } from './camera-controls.js';
   try {
     initViewers();
     paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: update});
-    cameraControls = mountCameraControls({container: $('camera-controls'), getViewers: () => viewers.slice(0, activeViewerCount()),
+    cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewers.slice(0, activeViewerCount()),
       space: 'raw-world', getScene: () => ({ids: isWire ? [active?.id].filter(Boolean) : [...selectedCloudEntries].map(entry => entry.id)}), pauseSync});
+    mountViewerLayout();
     clear(); update();
   } catch (cause) { error(cause.message); }
 })();

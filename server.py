@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlsplit
 
 HERE = Path(__file__).resolve().parent
 HTML_FILES = ('index.html', 'lod.html', 'wireframe.html', 'pointcloud.html')
-CSS_FILES = ('hub.css', 'styles.css', 'cloud.css', 'viewer-controls.css', 'camera-controls.css')
+CSS_FILES = ('hub.css', 'styles.css', 'cloud.css', 'viewer-controls.css', 'camera-controls.css', 'viewer-layout.css')
 JS_FILES = ('viewer.js', 'renderer.js', 'obj-parser.js', 'app.js',
             'cloud-app.bundle.js', 'cloud-app.js', 'cloud-renderer.js', 'point-io.js')
 STATIC_FILES = {'/': ('index.html', 'text/html; charset=utf-8')}

@@ -1,3 +1,4 @@
+import { mountViewerLayout } from './viewer-layout.js';
 import { MeshViewer } from './renderer.js';
 import { parseOBJ } from './obj-parser.js';
 import { mountCameraControls } from './camera-controls.js';
@@ -288,7 +289,7 @@ document.addEventListener('keydown', event => {
 function ensureViewer() {
   if (!viewer) viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});
   if (!paletteControls && $('palette-controls')) paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: updateOptions});
-  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
+  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
   options = {...options, ...paletteControls?.getOptions()};
   viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
@@ -327,6 +328,7 @@ $('folder-input').onchange = event => { folderReady(event.target.files); event.t
 function init() {
   try {
     ensureViewer();
+    mountViewerLayout();
     $('total-count').textContent = '尚未选择文件夹';
     $('source-path').textContent = '尚未选择文件夹。关闭或刷新网页后，请手动重新选择。';
     $('folder-status').textContent = '选择含 OBJ 的目录 · 文件仅在本机读取';
