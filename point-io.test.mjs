@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source = fs.readFileSync(new URL('./point-io.js', import.meta.url), 'utf8');
-const {parsePointCloud, readPointCloud, parseWireOBJ} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {parsePointCloud, readPointCloud, samplePointCloud, parseWireOBJ} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const bytes = text => new TextEncoder().encode(text);
 const cloud = (text, name = 'sample.xyz', options) => parsePointCloud(bytes(text), name, options);
 let checks = 0;
@@ -41,19 +41,22 @@ check('CSV header / comments / reordered XYZ / named colors', () => {
   assert.deepEqual([...cloud('"x","y","z"\n"1","2","3"', 'quoted.csv').positions], [1, 2, 3]);
   assert.throws(() => cloud('1,,2,3', 'missing.csv'));
 });
-check('PTS count and deterministic sample / full bounds include unsampled extremes', () => {
+check('PTS count and deterministic reservoir / full bounds include unsampled extremes', () => {
   const value = cloud('5\n0 0 0\n1 100 0\n2 2 0\n3 3 0\n4 4 0', 'points.pts', {maxPoints: 3});
   assert.equal(value.count, 3); assert.equal(value.totalCount, 5);
-  assert.deepEqual([...value.positions], [0, 0, 0, 2, 2, 0, 4, 4, 0]);
+  assert.equal(new Set(value.sampleIndices).size, 3);
+  const original = [[0, 0, 0], [1, 100, 0], [2, 2, 0], [3, 3, 0], [4, 4, 0]];
+  assert.deepEqual([...value.positions], [...value.sampleIndices].flatMap(index => original[index]));
+  assert.deepEqual(value, cloud('5\n0 0 0\n1 100 0\n2 2 0\n3 3 0\n4 4 0', 'points.pts', {maxPoints: 3}));
   assert.deepEqual(value.bounds, [[0, 0, 0], [4, 100, 0]]);
   for (const field of Object.values(value.fields)) assert.equal(field.length, 3);
   assert(value.notes.some(note => note.includes('全部原始点')));
   assert.throws(() => cloud('2\n0 0 0', 'broken.pts'));
 });
-check('Text passes preserve comments, final lines and invalid unsampled rows', () => {
+check('Text single pass preserves comments, final lines and invalid unsampled rows', () => {
   const value = cloud('\uFEFF# header\r\n# z x y strength\r\n3 1 2 4 # first\r\n\r\n// skipped\r\n6 4 5 7', 'sample.xyz', {maxPoints: 1});
   assert.equal(value.totalCount, 2);
-  assert.deepEqual([...value.positions], [1, 2, 3]);
+  assert.deepEqual([...value.positions], value.sampleIndices[0] === 0 ? [1, 2, 3] : [4, 5, 6]);
   assert.deepEqual(value.bounds, [[1, 2, 3], [4, 5, 6]]);
   assert.throws(() => cloud('0 0 0\n1 NaN 2\n3 3 3', 'bad.xyz', {maxPoints: 2}), /第 2 行/);
   assert.throws(() => cloud('0 0 0\n1 2\n3 3 3', 'bad.xyz', {maxPoints: 2}), /数量不一致/);
@@ -86,7 +89,7 @@ check('PCD binary float64 coordinates / uint32 rgba', () => {
 });
 check('Malformed inputs and unsupported compression fail explicitly', () => {
   for (const text of ['', '1 2', '1 2 Infinity', '1 2 3\n4 5', 'x y z x\n1 2 3 4']) assert.throws(() => cloud(text));
-  assert.throws(() => cloud('1 2 3', 'sample.xyz', {maxPoints: 0}));
+  for (const maxPoints of [-1, .5, Infinity, NaN]) assert.throws(() => cloud('1 2 3', 'sample.xyz', {maxPoints}));
   assert.throws(() => cloud('VERSION .7\nDATA binary_compressed\n', 'sample.pcd'), /binary_compressed/);
   assert.throws(() => cloud('anything', 'sample.laz'), /LAS\/LAZ/);
 });
@@ -113,8 +116,10 @@ await checkAsync('Chunked TXT preserves UTF-8, BOM, CRLF, comments, attributes a
     const file = blobFile(text), progress = [];
     const value = await readPointCloud(file, {maxPoints: 1, onProgress: event => progress.push({...event})});
     assert.deepEqual(value, cloud(text, file.name, {maxPoints: 1}));
-    assert(file.reads.every(([start, end]) => end - start <= chunkBytes));
-    for (const phase of ['count', 'parse']) {
+    assert(file.reads.every(([start, end], index) => end - start <= chunkBytes && start === (index ? file.reads[index - 1][1] : 0)));
+    assert.equal(file.reads.at(-1)[1], file.size);
+    assert(progress.every(event => event.phase === 'parse'), 'No counting/pre-scan progress');
+    for (const phase of ['parse']) {
       const updates = progress.filter(item => item.phase === phase);
       assert(updates.length >= 2);
       assert.equal(updates.at(-1).loaded, file.size);
@@ -128,7 +133,7 @@ await checkAsync('Numeric rows can cross chunks; full bounds include unsampled e
   const file = blobFile(text), value = await readPointCloud(file, {maxPoints: 2});
   assert.deepEqual(value, cloud(text, file.name, {maxPoints: 2}));
   assert.deepEqual(value.bounds, [[0, 0, 0], [2, 100, 0]]);
-  assert.deepEqual([...value.fields.column_4], [.25, .75]);
+  assert.deepEqual([...value.fields.column_4], [...value.sampleIndices].map(index => [.25, .5, .75][index]));
 });
 await checkAsync('Streamed headers, CSV, PTS, empty inputs and invalid unsampled rows match sync parser', async () => {
   for (const [name, text] of [
@@ -143,11 +148,11 @@ await checkAsync('Streamed headers, CSV, PTS, empty inputs and invalid unsampled
     ['0 0 0 1\n1 2 3\n3 3 3 1', /数量不一致/],
   ]) await assert.rejects(readPointCloud(blobFile(text), {maxPoints: 2}), pattern);
   await assert.rejects(readPointCloud(blobFile('2\n0 0 0', 'broken.pts')), /PTS/);
-  await assert.rejects(readPointCloud(blobFile('1 2 3'), {maxPoints: 0}), /maxPoints/);
+  await assert.rejects(readPointCloud(blobFile('1 2 3'), {maxPoints: -1}), /maxPoints/);
   await assert.rejects(readPointCloud(blobFile('1 2 3', 'unsupported.laz')), /LAS\/LAZ/);
 });
-await checkAsync('Cancellation interrupts both passes and does not continue reading', async () => {
-  for (const phase of ['count', 'parse']) {
+await checkAsync('Cancellation interrupts the only pass and does not continue reading', async () => {
+  for (const phase of ['parse']) {
     const controller = new AbortController();
     const file = blobFile('1 2 3 .5\n'.repeat(250000));
     let readsAtAbort = null;
@@ -166,8 +171,9 @@ await checkAsync('Cancellation interrupts both passes and does not continue read
 });
 await checkAsync('Read failures and overlong single lines are explicit, never called empty', async () => {
   let reads = 0;
-  const file = {name: 'unreadable.txt', size: 10, slice() { return {arrayBuffer() {
-    if (++reads === 1) return Promise.resolve(bytes('1 2 3 .50\n').buffer);
+  const first = bytes('0 0 0\n'.repeat(Math.ceil(chunkBytes / 6))).subarray(0, chunkBytes);
+  const file = {name: 'unreadable.txt', size: chunkBytes + 1, slice() { return {arrayBuffer() {
+    if (++reads === 1) return Promise.resolve(first.buffer.slice(first.byteOffset, first.byteOffset + first.byteLength));
     return Promise.reject(new Error('disk read failed'));
   }}; }};
   await assert.rejects(readPointCloud(file), /disk read failed/);
@@ -179,5 +185,76 @@ await checkAsync('Blob reader retains PLY/PCD sniffing and binary compatibility'
   }
   const text = 'VERSION .7\nFIELDS x y z intensity\nSIZE 4 4 4 4\nTYPE F F F F\nWIDTH 1\nHEIGHT 1\nPOINTS 1\nDATA ascii\n1 2 3 .5\n';
   assert.deepEqual(await readPointCloud(blobFile(text, 'sample.pcd', {wholeRead: true})), cloud(text, 'sample.pcd'));
+});
+
+
+check('Zero and default limits preserve all points beyond the previous implicit limit', () => {
+  const total = 500003, value = cloud('1 2 3\n'.repeat(total));
+  assert.equal(value.count, total); assert.equal(value.totalCount, total);
+  assert.equal(value.positions.length, total * 3);
+  assert.deepEqual(Array.from(value.positions.subarray(-3)), [1, 2, 3]);
+  assert.equal(value.fields.x.length, total); assert.equal(value.fields.z.at(-1), 3);
+  assert.equal(value.sampleIndices, undefined);
+  assert.deepEqual(value.bounds, [[1, 2, 3], [1, 2, 3]]);
+  for (const maxPoints of [0, 10]) assert.equal(cloud('1 2 3\n4 5 6', 'two.xyz', {maxPoints}).count, 2);
+});
+check('PLY and PCD zero limits mean all points', () => {
+  assert.equal(parsePointCloud(binaryPLY(true), 'test.ply', {maxPoints: 0}).count, 2);
+  const text = 'VERSION .7\nFIELDS x y z\nSIZE 4 4 4\nTYPE F F F\nWIDTH 2\nHEIGHT 1\nPOINTS 2\nDATA ascii\n1 2 3\n4 5 6\n';
+  assert.equal(cloud(text, 'test.pcd', {maxPoints: 0}).count, 2);
+  assert.equal(cloud(text, 'test.pcd', {maxPoints: 1}).count, 1);
+});
+check('In-memory sampling reuses full data and preserves attributes, RGB and full bounds', () => {
+  const rows = Array.from({length: 1200}, (_, i) => `${1000000 + i / 1000} ${i === 777 ? -9000 : i} ${i * 2} ${i / 1200} ${i % 256} ${255 - i % 256} 50`);
+  const text = 'x y z intensity r g b\n' + rows.join('\n'), full = cloud(text);
+  const before = full.positions.slice(), sampled = samplePointCloud(full, 73);
+  assert.equal(samplePointCloud(full, 0), full);
+  assert.equal(samplePointCloud(full, full.count), full);
+  assert.equal(samplePointCloud(full, full.count + 100), full);
+  assert.equal(sampled.count, 73); assert.equal(sampled.totalCount, full.totalCount);
+  assert.deepEqual(sampled.bounds, full.bounds); assert.deepEqual(full.positions, before);
+  assert.equal(new Set(sampled.sampleIndices).size, 73);
+  assert(sampled.sampleIndices.every((value, i, all) => !i || value > all[i - 1]));
+  for (let i = 0; i < sampled.count; i++) {
+    const index = sampled.sampleIndices[i];
+    assert.deepEqual(sampled.positions.slice(i * 3, i * 3 + 3), full.positions.slice(index * 3, index * 3 + 3));
+    assert.deepEqual(sampled.rgb.slice(i * 3, i * 3 + 3), full.rgb.slice(index * 3, index * 3 + 3));
+    for (const name of Object.keys(full.fields)) assert.equal(sampled.fields[name][i], full.fields[name][index]);
+  }
+  const direct = cloud(text, 'same.xyz', {maxPoints: 73});
+  for (const key of ['positions', 'fields', 'rgb', 'sampleIndices', 'count', 'totalCount', 'bounds']) assert.deepEqual(sampled[key], direct[key], key);
+  assert.deepEqual(samplePointCloud(full, 73), sampled);
+  const smaller = samplePointCloud(sampled, 7);
+  assert.equal(smaller.count, 7); assert.equal(smaller.totalCount, full.totalCount);
+  assert([...smaller.sampleIndices].every(index => sampled.sampleIndices.includes(index)));
+  assert.throws(() => samplePointCloud(full, -1), /maxPoints/);
+});
+check('Reservoir validates all rows and preserves RGB interpretation from unretained rows', () => {
+  const rows = Array.from({length: 30}, (_, i) => `${i} 0 0 1 0 0`);
+  const reference = cloud('x y z r g b\n' + rows.join('\n'), 'rgb.xyz', {maxPoints: 1});
+  const unseen = (reference.sampleIndices[0] + 1) % 30;
+  rows[unseen] = `${unseen} 0 0 255 0 0`;
+  const value = cloud('x y z r g b\n' + rows.join('\n'), 'rgb.xyz', {maxPoints: 1});
+  assert.equal(value.rgb[0], Math.fround(1 / 255));
+  rows[unseen] = `${unseen} NaN 0 255 0 0`;
+  assert.throws(() => cloud('x y z r g b\n' + rows.join('\n'), 'rgb.xyz', {maxPoints: 1}), /非有限/);
+});
+await checkAsync('Default streaming unlimited read visits every byte exactly once and has no counting pass', async () => {
+  const rows = 40001, text = 'x y z intensity\n' + '1000000.123456 2000000.987654 3 .25\n'.repeat(rows);
+  const file = blobFile(text), progress = [];
+  const value = await readPointCloud(file, {onProgress: event => progress.push({...event})});
+  assert.equal(value.count, rows); assert.equal(value.totalCount, rows);
+  assert.equal(value.positions.at(-3), 1000000.123456); assert.equal(value.fields.intensity.at(-1), .25);
+  let next = 0;
+  for (const [start, end] of file.reads) { assert.equal(start, next); assert(end - start <= chunkBytes); next = end; }
+  assert.equal(next, file.size);
+  assert(progress.every(event => event.phase === 'parse'));
+  assert.deepEqual(progress.at(-1), {phase: 'parse', loaded: file.size, total: file.size});
+});
+await checkAsync('Reservoir streaming result is independent of text chunk boundaries', async () => {
+  const prefix = '#' + ' '.repeat(chunkBytes - 20) + '\n';
+  const rows = Array.from({length: 1000}, (_, i) => `${i} ${i * 2} ${i * 3} ${i / 1000}`);
+  const text = prefix + 'x y z intensity\n' + rows.join('\n');
+  assert.deepEqual(await readPointCloud(blobFile(text), {maxPoints: 37}), cloud(text, 'points.txt', {maxPoints: 37}));
 });
 console.log(`${checks} checks passed.`);

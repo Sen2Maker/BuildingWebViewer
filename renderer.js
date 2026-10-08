@@ -1,3 +1,4 @@
+import { paletteUniforms, validatePaletteOptions, PALETTE_GLSL } from './palettes.js';
 /** Local, dependency-free mesh renderer. Building placement is synthetic; geometry and scale are preserved. */
 const DEG = Math.PI / 180;
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -8,12 +9,16 @@ precision highp float;
 attribute vec3 position;
 attribute vec3 normal;
 attribute vec3 buildingColor;
+attribute float vertexHeight;
+uniform vec2 heightTransform;
+varying highp float heightValue;
 uniform mat4 matrix;
-uniform int kind;
-uniform int colorByBuilding;
+uniform mediump int kind;
+uniform mediump int colorByBuilding;
 varying vec4 color;
 void main() {
   gl_Position = matrix * vec4(position, 1.0);
+  heightValue = vertexHeight * heightTransform.y + heightTransform.x;
   if (kind == 0) {
     vec3 base = abs(normal.z) > .22 ? vec3(.46, .59, .67) : vec3(.91, .89, .84);
     if (colorByBuilding == 1) base = buildingColor * (abs(normal.z) > .22 ? .86 : 1.13);
@@ -27,14 +32,25 @@ void main() {
     color = vec4(.23, .31, .36, .65);
   }
 }`;
-const FRAGMENT_SHADER = `precision mediump float; varying vec4 color; void main() { gl_FragColor = color; }`;
+const FRAGMENT_SHADER = `
+precision mediump float;
+varying vec4 color;
+varying highp float heightValue;
+uniform mediump int kind;
+uniform mediump int colorByBuilding;
+${PALETTE_GLSL}
+void main() {
+  gl_FragColor = colorByBuilding == 2 && (kind == 0 || kind == 3)
+    ? vec4(paletteColor(heightValue), kind == 0 ? 1.0 : .9) : color;
+}`;
 
 export class MeshViewer {
-  constructor(canvas, { onLabels = () => {}, onError = () => {} } = {}) {
+  constructor(canvas, { onLabels = () => {}, onError = () => {}, onViewChange = () => {} } = {}) {
     this.canvas = canvas;
     this.onLabels = onLabels;
     this.onError = onError;
-    this.options = { mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real' };
+    this.onViewChange = onViewChange;
+    this.options = { mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.baseHeight = 30;
     this.sceneBounds = [[-5, -5, 0], [5, 5, 10]];
@@ -92,6 +108,9 @@ export class MeshViewer {
       position: gl.getAttribLocation(program, 'position'),
       normal: gl.getAttribLocation(program, 'normal'),
       buildingColor: gl.getAttribLocation(program, 'buildingColor'),
+      vertexHeight: gl.getAttribLocation(program, 'vertexHeight'),
+      heightTransform: gl.getUniformLocation(program, 'heightTransform'),
+      colorStops: gl.getUniformLocation(program, 'colorStops[0]'),
       matrix: gl.getUniformLocation(program, 'matrix'),
       kind: gl.getUniformLocation(program, 'kind'),
       colorByBuilding: gl.getUniformLocation(program, 'colorByBuilding'),
@@ -167,7 +186,7 @@ export class MeshViewer {
       gl.deleteBuffer(buffer);
       throw new Error('显存不足，请减少同时查看的楼栋数量。');
     }
-    return { buffer, count: values.length / 9 };
+    return { buffer, count: values.length / 10 };
   }
 
   setModels(models) {
@@ -199,8 +218,8 @@ export class MeshViewer {
     };
     const xCenters = centers(widths), yCenters = centers(depths);
     const triangles = [], featureEdges = [], allEdges = [], labels = [];
-    let maxHeight = 0;
-    const vertexOut = (array, position, normal, color) => array.push(...position, ...normal, ...color);
+    let maxHeight = 0, maxOriginalHeight = 0;
+    const vertexOut = (array, position, normal, color, height = 0) => array.push(...position, ...normal, ...color, height);
     const featureCosine = Math.cos(10 * DEG);
     for (let modelIndex = 0; modelIndex < prepared.length; modelIndex++) {
       const { model, min, max, scale } = prepared[modelIndex];
@@ -209,6 +228,7 @@ export class MeshViewer {
       const vertices = model.vertices.map(v => [(v[0] - (min[0] + max[0]) / 2) * scale + cx, (v[1] - (min[1] + max[1]) / 2) * scale + cy, (v[2] - min[2]) * scale]);
       const height = (max[2] - min[2]) * scale;
       maxHeight = Math.max(maxHeight, height);
+      maxOriginalHeight = Math.max(maxOriginalHeight, max[2] - min[2]);
       labels.push({ id: model.id, bounds: [[cx - prepared[modelIndex].width / 2, cy - prepared[modelIndex].depth / 2, 0],
         [cx + prepared[modelIndex].width / 2, cy + prepared[modelIndex].depth / 2, height]] });
       let hash = 0;
@@ -228,7 +248,7 @@ export class MeshViewer {
         const length = Math.hypot(...normal);
         if (length < 1e-12) continue;
         for (let i = 0; i < 3; i++) normal[i] /= length;
-        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color);
+        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color, point[2] / scale);
         for (let i = 0; i < 3; i++) {
           const ai = welded[face[i]], bi = welded[face[(i + 1) % 3]];
           const key = ai < bi ? `${ai}:${bi}` : `${bi}:${ai}`;
@@ -237,13 +257,13 @@ export class MeshViewer {
         }
       }
       for (const edge of edges.values()) {
-        vertexOut(allEdges, edge.a, [0, 0, 1], color);
-        vertexOut(allEdges, edge.b, [0, 0, 1], color);
+        vertexOut(allEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
+        vertexOut(allEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
         const normals = edge.normals;
         const feature = normals.length !== 2 || Math.abs(dot(normals[0], normals[1])) < featureCosine;
         if (feature) {
-          vertexOut(featureEdges, edge.a, [0, 0, 1], color);
-          vertexOut(featureEdges, edge.b, [0, 0, 1], color);
+          vertexOut(featureEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
+          vertexOut(featureEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
         }
       }
     }
@@ -271,7 +291,8 @@ export class MeshViewer {
     this.buffers = nextBuffers;
     this.models = models;
     this.labelAnchors = labels;
-    this.triangleCount = triangles.length / 27;
+    this.triangleCount = triangles.length / 30;
+    this.heightRange = models.length ? {min: 0, max: maxOriginalHeight} : null;
     this.sceneBounds = prepared.length ? [[-totalWidth / 2, -totalDepth / 2, 0], [totalWidth / 2, totalDepth / 2, maxHeight]] : [[-5, -5, 0], [5, 5, 10]];
     this.target = prepared.length ? [0, 0, maxHeight / 2] : [0, 0, 5];
     this.fit();
@@ -280,8 +301,10 @@ export class MeshViewer {
   setOptions(options) {
     const next = { ...this.options, ...options };
     if (!['solid', 'wire', 'solid-wire'].includes(next.mode)) throw new Error(`不支持的显示模式：${next.mode}`);
-    if (!['surface', 'building'].includes(next.colors)) throw new Error(`不支持的配色模式：${next.colors}`);
+    if (!['surface', 'building', 'height'].includes(next.colors)) throw new Error(`不支持的配色模式：${next.colors}`);
     if (!['real', 'normalized'].includes(next.scale)) throw new Error(`不支持的比例模式：${next.scale}`);
+    next.palette ||= 'current'; next.reverse = !!next.reverse; next.range = next.range ? {...next.range} : null;
+    validatePaletteOptions(next);
     const rebuild = next.scale !== this.options.scale;
     this.options = next;
     if (rebuild) this.setModels(this.models);
@@ -351,8 +374,11 @@ export class MeshViewer {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(loc.matrix, false, matrix);
-    gl.uniform1i(loc.colorByBuilding, this.options.colors === 'building' ? 1 : 0);
-    for (const location of [loc.position, loc.normal, loc.buildingColor]) gl.enableVertexAttribArray(location);
+    gl.uniform1i(loc.colorByBuilding, this.options.colors === 'height' ? 2 : this.options.colors === 'building' ? 1 : 0);
+    gl.uniform3fv(loc.colorStops, paletteUniforms(this.options.palette, this.options.reverse));
+    const range = this.options.range || this.heightRange, span = range ? range.max - range.min : 0;
+    gl.uniform2f(loc.heightTransform, span > 0 ? -range.min / span : .5, span > 0 ? 1 / span : 0);
+    for (const location of [loc.position, loc.normal, loc.buildingColor, loc.vertexHeight]) gl.enableVertexAttribArray(location);
     gl.disable(gl.CULL_FACE); // Input meshes may use mixed winding; both sides must remain visible.
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -361,9 +387,10 @@ export class MeshViewer {
     const draw = (buffer, kind, primitive) => {
       if (!buffer?.count) return;
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
-      gl.vertexAttribPointer(loc.position, 3, gl.FLOAT, false, 36, 0);
-      gl.vertexAttribPointer(loc.normal, 3, gl.FLOAT, false, 36, 12);
-      gl.vertexAttribPointer(loc.buildingColor, 3, gl.FLOAT, false, 36, 24);
+      gl.vertexAttribPointer(loc.position, 3, gl.FLOAT, false, 40, 0);
+      gl.vertexAttribPointer(loc.normal, 3, gl.FLOAT, false, 40, 12);
+      gl.vertexAttribPointer(loc.buildingColor, 3, gl.FLOAT, false, 40, 24);
+      gl.vertexAttribPointer(loc.vertexHeight, 1, gl.FLOAT, false, 40, 36);
       gl.uniform1i(loc.kind, kind);
       gl.drawArrays(primitive, 0, buffer.count);
     };
@@ -388,13 +415,16 @@ export class MeshViewer {
       return { id, x: (x + 1) * rect.width / 2, y: screenY,
         visible: x > -.99 && x < .99 && screenY >= 0 && screenY < rect.height - 24 };
     }) : []);
+    this.onViewChange?.(this.getState());
   }
 
   getState() {
     return { buildingCount: this.models.length, triangleCount: this.triangleCount,
       featureEdgeCount: (this.buffers.featureEdges?.count || 0) / 2,
       allEdgeCount: (this.buffers.allEdges?.count || 0) / 2,
-      syntheticArrangement: true, camera: { ...this.camera, pan: [...this.camera.pan], baseHeight: this.baseHeight },
+      syntheticArrangement: true, heightMeaning: 'height-above-building-min-z',
+      dataRange: this.heightRange ? {...this.heightRange} : null,
+      colorRange: this.options.colors === 'height' && this.heightRange ? {...(this.options.range || this.heightRange)} : null, camera: { ...this.camera, pan: [...this.camera.pan], baseHeight: this.baseHeight },
       options: { ...this.options }, bounds: this.sceneBounds.map(point => [...point]) };
   }
 

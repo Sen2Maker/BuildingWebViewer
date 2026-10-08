@@ -2,25 +2,421 @@
 (() => {
 'use strict';
 
+// Source: palettes.js
+/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
+const PALETTE_DEFINITIONS = Object.freeze({
+  current: {label: '当前色带', stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
+  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
+  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
+  grayscale: {label: '灰度', stops: [[.08,.08,.08],[.95,.95,.95]]},
+  'blue-white-red': {label: '蓝—白—红', stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
+});
+
+function samplePalette(t, palette = 'current', reverse = false) {
+  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
+  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
+  if (reverse) value = 1 - value;
+  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
+  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
+}
+
+function paletteUniforms(palette = 'current', reverse = false) {
+  const values = new Float32Array(27);
+  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
+  return values;
+}
+
+function validatePaletteOptions(options) {
+  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(`不支持的色带：${options.palette}`);
+  if (options.range !== null && options.range !== undefined) {
+    const {min, max} = options.range;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error('手动色域需要有限数值，且最小值必须小于最大值。');
+  }
+}
+
+const PALETTE_GLSL = `
+uniform vec3 colorStops[9];
+vec3 paletteColor(float value) {
+  float t = clamp(value, 0.0, 1.0) * 8.0;
+  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
+  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
+  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
+  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
+  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
+  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
+  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
+  return mix(colorStops[7], colorStops[8], t - 7.0);
+}`;
+
+
+// Source: palette-controls.js
+
+function paletteGradient(palette = 'current', reverse = false) {
+  const stops = Array.from({length: 17}, (_, i) => `rgb(${samplePalette(i / 16, palette, reverse).map(v => Math.round(v * 255)).join(',')}) ${i / 16 * 100}%`);
+  return `linear-gradient(to right,${stops.join(',')})`;
+}
+
+function mountPaletteControls({container, onChange = () => {}, getOptions = () => ({})}) {
+  const initial = getOptions();
+  const details = document.createElement('details'); details.className = 'palette-panel viewer-control-panel';
+  details.innerHTML = `<summary><span>配色方案</span><i class="palette-preview" aria-hidden="true"></i><small class="palette-caption"></small></summary>
+    <div class="palette-body"><label>色带<select aria-label="色带方案"><option value="current">蓝 → 绿 → 黄 → 红</option><option value="viridis">Viridis · 蓝紫 → 绿 → 黄</option><option value="inferno">Inferno · 黑紫 → 橙 → 黄</option><option value="grayscale">灰度 · 黑 → 白</option><option value="blue-white-red">蓝 → 白 → 红</option></select></label>
+    <label class="check-label"><input class="palette-reverse" type="checkbox">反转色带</label>
+    <label class="check-label"><input class="palette-auto" type="checkbox" checked>自动数值范围</label>
+    <label>最小值<input class="palette-min" type="number" step="any" aria-label="色带最小值" disabled></label>
+    <label>最大值<input class="palette-max" type="number" step="any" aria-label="色带最大值" disabled></label>
+    <p class="palette-help">高度与数值属性使用色带；固定范围可让不同文件的相同数值对应相同颜色。</p><p class="palette-error" role="alert" hidden></p></div>`;
+  container.append(details);
+  const select = details.querySelector('select'), reverse = details.querySelector('.palette-reverse'), auto = details.querySelector('.palette-auto');
+  const low = details.querySelector('.palette-min'), high = details.querySelector('.palette-max'), message = details.querySelector('.palette-error');
+  let state = {palette: initial.palette || 'current', reverse: !!initial.reverse, range: initial.range || null}, enabled = true;
+  select.value = state.palette; reverse.checked = state.reverse;
+  if (state.range) { auto.checked = false; low.value = state.range.min; high.value = state.range.max; }
+  const refresh = () => {
+    details.querySelector('.palette-preview').style.background = paletteGradient(state.palette, state.reverse);
+    details.querySelector('.palette-caption').textContent = enabled ? `${select.selectedOptions[0].textContent.split(' · ')[0]}${state.reverse ? ' · 反转' : ''}` : '选择高度或数值属性后启用';
+    select.disabled = reverse.disabled = auto.disabled = !enabled;
+    low.disabled = high.disabled = !enabled || auto.checked;
+  };
+  const change = () => {
+    low.disabled = high.disabled = auto.checked || !enabled;
+    if (!auto.checked && (low.value === '' || high.value === '' || !Number.isFinite(low.valueAsNumber) || !Number.isFinite(high.valueAsNumber) || low.valueAsNumber >= high.valueAsNumber)) {
+      message.textContent = '请输入有效范围，最小值必须小于最大值。'; message.hidden = false; return;
+    }
+    message.hidden = true; state = {palette: select.value, reverse: reverse.checked, range: auto.checked ? null : {min: low.valueAsNumber, max: high.valueAsNumber}};
+    refresh(); onChange({...state});
+  };
+  for (const input of [select, reverse, auto, low, high]) input.addEventListener('change', change);
+  for (const input of [low, high]) input.addEventListener('input', change);
+  refresh();
+  return {getOptions: () => ({...state}), setScalarEnabled(value) {enabled = !!value; refresh();},
+    setDataRange(range) {if (auto.checked && range && Number.isFinite(range.min) && Number.isFinite(range.max)) {
+      low.value = range.min; high.value = range.max === range.min ? range.min + 1 : range.max;
+    }}, destroy() {details.remove();}};
+}
+
+
+// Source: camera-controls.js
+/** Shared orthographic camera snapshots and an optional, local-only control panel. */
+const CAMERA_FORMAT = 'BuildingWebViewer.camera';
+const CAMERA_BOOK_FORMAT = 'BuildingWebViewer.camera-bookmarks';
+const CAMERA_SPACES = ['raw-world', 'lod-arrangement'];
+const CAMERA_MAX_BOOKMARKS = 100;
+
+function cameraObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
+function cameraFinite(value, label) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw Error(`${label}必须是有限数值`);
+  return value;
+}
+function cameraVector(value, length, label) {
+  if (!Array.isArray(value) || value.length !== length) throw Error(`${label}需要 ${length} 个数值`);
+  return value.map(number => cameraFinite(number, label));
+}
+function cameraSpace(space) {
+  if (!CAMERA_SPACES.includes(space)) throw Error('相机坐标空间无效');
+  return space;
+}
+function cameraScene(scene, space) {
+  if (scene == null && space === 'raw-world') return null;
+  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error('相机场景需要有效的文件或楼栋 ID 列表');
+  const result = {ids: [...scene.ids]};
+  if (space === 'lod-arrangement') {
+    if (!['real', 'normalized'].includes(scene.scale)) throw Error('LOD 相机需要记录实际比例或统一大小模式');
+    result.scale = scene.scale;
+  }
+  return result;
+}
+function cameraSameScene(a, b) {
+  return a?.scale === b?.scale && a?.ids?.length === b?.ids?.length && a.ids.every((id, index) => id === b.ids[index]);
+}
+
+/** Validate before mutating a viewer; snapshots use original-world or synthetic-layout targets. */
+function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
+  cameraSpace(space);
+  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || value.version !== 1) throw Error('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1）');
+  if (value.space !== space) throw Error('相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用');
+  if (value.projection !== 'orthographic') throw Error('当前查看器仅支持正交相机');
+  const source = value.camera;
+  if (!cameraObject(source)) throw Error('相机参数缺失');
+  const azimuth = cameraFinite(source.azimuth, '方位角'), elevation = cameraFinite(source.elevation, '仰角');
+  const zoom = cameraFinite(source.zoom, '缩放倍率'), baseHeight = cameraFinite(source.baseHeight, '基准视野高度');
+  const limits = space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  if (Math.abs(azimuth) > 1e6) throw Error('方位角数值过大');
+  if (elevation < limits.minElevation || elevation > 90) throw Error(`仰角需在 ${limits.minElevation}° 至 90° 之间`);
+  if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(`缩放倍率需在 ${limits.minZoom} 至 ${limits.maxZoom} 之间`);
+  if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error('基准视野高度必须为有效正数');
+  const savedScene = cameraScene(value.scene, space);
+  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(`LOD 布局不匹配：此书签需要楼栋 ${savedScene.ids.join(', ').slice(0, 160) || '（空）'}，比例模式为${savedScene.scale === 'real' ? '实际比例' : '统一展示大小'}。请先恢复该布局再加载。`);
+  return {format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic',
+    camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
+      pan: cameraVector(source.pan, 2, '平移'), target: cameraVector(source.target, 3, '目标点'), baseHeight}, scene: savedScene};
+}
+
+function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
+  cameraSpace(space);
+  if (!viewer?.camera) throw Error('相机尚未准备好');
+  const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, '原点') : [0, 0, 0];
+  const target = cameraVector(viewer.target, 3, '目标点').map((value, axis) => value + origin[axis]);
+  return validateCameraSnapshot({format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic', scene,
+    camera: {...viewer.camera, pan: [...viewer.camera.pan], target, baseHeight: viewer.baseHeight}}, {space, scene, checkScene: false});
+}
+
+function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback()} = {}) {
+  const value = validateCameraSnapshot(snapshot, {space, scene, checkScene});
+  if (!Array.isArray(viewers) || !viewers.length || viewers.some(viewer => !viewer?.camera || typeof viewer.render !== 'function')) throw Error('请先加载数据，再应用相机');
+  // Validate every new local target first, so a bad panel cannot leave a partial update.
+  const targets = viewers.map(viewer => {
+    const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, '原点') : [0, 0, 0];
+    return value.camera.target.map((number, axis) => cameraFinite(number - origin[axis], '局部目标点'));
+  });
+  pauseSync(() => {
+    viewers.forEach((viewer, index) => {
+      viewer.camera = {azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
+      viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
+    });
+    viewers.forEach(viewer => viewer.render());
+  });
+  return value;
+}
+
+function cameraBookmark(record, space, index) {
+  if (!cameraObject(record) || typeof record.name !== 'string' || !record.name.trim() || record.name.length > 80) throw Error('书签名称需为 1–80 个字符');
+  return {id: typeof record.id === 'string' && record.id.trim() && record.id.length <= 128 ? record.id : `import-${index}`,
+    name: record.name.trim(), snapshot: validateCameraSnapshot(record.snapshot, {space, checkScene: false})};
+}
+
+function parseCameraBookmarks(input, space) {
+  cameraSpace(space);
+  const value = typeof input === 'string' ? JSON.parse(input) : input;
+  if (value?.format === CAMERA_FORMAT) return {preserveView: true, bookmarks: [{id: 'import-0', name: '导入视角', snapshot: validateCameraSnapshot(value, {space, checkScene: false})}]};
+  if (!cameraObject(value) || value.format !== CAMERA_BOOK_FORMAT || value.version !== 1 || value.space !== space || !Array.isArray(value.bookmarks) || value.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error('书签 JSON 格式或坐标空间无效（最多 100 个书签）');
+  const bookmarks = value.bookmarks.map((record, index) => cameraBookmark(record, space, index));
+  if (new Set(bookmarks.map(record => record.id)).size !== bookmarks.length) throw Error('书签 ID 重复');
+  return {preserveView: value.preserveView !== false, bookmarks};
+}
+
+function serializeCameraBookmarks(bookmarks, space, preserveView = true) {
+  const value = {format: CAMERA_BOOK_FORMAT, version: 1, space: cameraSpace(space), preserveView: Boolean(preserveView), bookmarks};
+  parseCameraBookmarks(value, space);
+  return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Returns {preserveView, capture, restore, refresh, destroy}.
+ * After changing data, restore(saved, {checkScene:false}) implements the explicit
+ * preserve-view switch; bookmark loads retain strict LOD scene checking.
+ */
+function mountCameraControls({container, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
+  cameraSpace(space);
+  if (!container || typeof getViewers !== 'function') throw Error('相机面板需要挂载容器和 getViewers');
+  const doc = container.ownerDocument, win = doc.defaultView || globalThis;
+  const key = `BuildingWebViewer.camera-bookmarks.v1.${space}`;
+  const watches = new Map(), inputs = new Map(), cleanups = [];
+  let bookmarks = [], preserveView = true, selectedBookmark = '', disposed = false, frame = null, idCounter = 0;
+  const el = (tag, text, className) => { const node = doc.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
+  const panel = el('details', undefined, 'camera-controls'), summary = el('summary', '精确相机与视角书签');
+  const body = el('div', undefined, 'camera-controls-body'), status = el('p', '', 'camera-controls-status'); status.setAttribute('role', 'status');
+  panel.append(summary, body); container.replaceChildren(panel);
+  const message = (text = '', error = false) => { status.textContent = text; status.classList.toggle('camera-controls-error', error); };
+  const attempt = callback => { try { return callback(); } catch (error) { message(error.message || String(error), true); return null; } };
+  const controls = [], bar = el('div', undefined, 'camera-controls-bar'), preserveLabel = el('label', undefined, 'camera-preserve');
+  const preserveInput = el('input'); preserveInput.type = 'checkbox'; preserveInput.checked = true;
+  preserveLabel.append(preserveInput, doc.createTextNode('增删文件时保持当前视角'));
+  const heightLabel = el('span', '', 'camera-view-height'); bar.append(preserveLabel, heightLabel); body.append(bar);
+  const grid = el('div', undefined, 'camera-controls-grid'); body.append(grid);
+  const specifications = [
+    ['azimuth', '方位角（°）', .1], ['elevation', '仰角（°）', .1], ['zoom', '缩放倍率', .05],
+    ['pan0', '水平平移', .1], ['pan1', '垂直平移', .1],
+    ['target0', space === 'raw-world' ? '世界目标 X' : '排列目标 X', .1],
+    ['target1', space === 'raw-world' ? '世界目标 Y' : '排列目标 Y', .1],
+    ['target2', space === 'raw-world' ? '世界目标 Z' : '排列目标 Z', .1],
+  ];
+  const uiScene = () => getScene() || (space === 'lod-arrangement' ? {ids: [], scale: 'real'} : null);
+  const available = () => {
+    const viewer = getViewers()?.[0];
+    return Boolean(viewer && (space === 'lod-arrangement' ? viewer.models?.length || uiScene()?.ids?.length : viewer.bounds));
+  };
+  function capture() { return available() ? captureCameraSnapshot(getViewers()[0], {space, scene: uiScene()}) : null; }
+  function restore(snapshot, {checkScene = true} = {}) {
+    if (!snapshot) return null;
+    if (!available()) throw Error('请先加载数据，再应用相机');
+    const value = applyCameraSnapshot(getViewers(), snapshot, {space, scene: uiScene(), checkScene, pauseSync});
+    message('视角已应用。'); refresh(); return value;
+  }
+  function inputValue(snapshot, name) {
+    return name.startsWith('pan') ? snapshot.camera.pan[Number(name.slice(3))] : name.startsWith('target') ? snapshot.camera.target[Number(name.slice(6))] : snapshot.camera[name];
+  }
+  function snapshotWithInput(name, raw) {
+    const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再调整相机');
+    if (!String(raw).trim()) throw Error('相机参数不能为空');
+    const value = Number(raw);
+    if (name.startsWith('pan')) snapshot.camera.pan[Number(name.slice(3))] = value;
+    else if (name.startsWith('target')) snapshot.camera.target[Number(name.slice(6))] = value;
+    else snapshot.camera[name] = value;
+    return validateCameraSnapshot(snapshot, {space, scene: uiScene()});
+  }
+  function applyInput(name, raw) { restore(snapshotWithInput(name, raw)); message(''); }
+  for (const [name, label, step] of specifications) {
+    const group = el('label', undefined, 'camera-number-field'), caption = el('span', label), row = el('span', undefined, 'camera-number-row');
+    const minus = el('button', '−'), input = el('input'), plus = el('button', '+');
+    for (const button of [minus, plus]) { button.type = 'button'; button.setAttribute('aria-label', `${button === minus ? '减小' : '增大'}${label}`); }
+    input.type = 'number'; input.step = String(step); input.setAttribute('aria-label', label); input.autocomplete = 'off';
+    input.addEventListener('input', () => {
+      // Partial edits (empty, a minus sign, or temporarily out of range) must
+      // leave the current camera intact; change reports any final error.
+      let snapshot;
+      try { snapshot = snapshotWithInput(name, input.value); } catch { return; }
+      attempt(() => { restore(snapshot); message(''); });
+    });
+    input.addEventListener('change', () => attempt(() => applyInput(name, input.value)));
+    input.addEventListener('blur', scheduleRefresh);
+    for (const [button, direction] of [[minus, -1], [plus, 1]]) button.addEventListener('click', event => {
+      event.preventDefault(); attempt(() => {
+        const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再调整相机');
+        const next = inputValue(snapshot, name) + direction * step;
+        applyInput(name, Number(next.toPrecision(15)));
+      });
+    });
+    row.append(minus, input, plus); group.append(caption, row); grid.append(group);
+    inputs.set(name, input); controls.push(minus, input, plus);
+  }
+  const help = el('p', space === 'raw-world'
+    ? '平移按屏幕水平/垂直方向，数值单位与原坐标一致。导入视角不移动点云或线框。'
+    : 'LOD 使用重新排列后的目标坐标；书签仅适用于相同楼栋顺序和比例模式。', 'camera-controls-help');
+  body.append(help);
+  const bookmarkRow = el('div', undefined, 'camera-bookmark-row'), bookmarkName = el('input'), bookmarkSelect = el('select');
+  bookmarkName.type = 'text'; bookmarkName.maxLength = 80; bookmarkName.placeholder = '书签名称'; bookmarkName.setAttribute('aria-label', '视角书签名称');
+  bookmarkSelect.setAttribute('aria-label', '已保存视角');
+  bookmarkRow.append(bookmarkName, bookmarkSelect); body.append(bookmarkRow);
+  const actions = el('div', undefined, 'camera-bookmark-actions');
+  const action = text => { const button = el('button', text); button.type = 'button'; actions.append(button); return button; };
+  const saveButton = action('保存 / 更新书签'), loadButton = action('加载书签'), deleteButton = action('删除书签');
+  const exportButton = action('导出 JSON'), importButton = action('导入 JSON');
+  const importInput = el('input'); importInput.type = 'file'; importInput.accept = '.json,application/json'; importInput.hidden = true;
+  body.append(actions, importInput, status);
+  function persist() {
+    try { win.localStorage.setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView)); return true; }
+    catch { message('浏览器无法持久保存书签；本次仍可使用，请导出 JSON 备份。', true); return false; }
+  }
+  function updateBookmarks() {
+    bookmarkSelect.replaceChildren(); const empty = el('option', bookmarks.length ? '选择一个视角书签' : '暂无视角书签'); empty.value = ''; bookmarkSelect.append(empty);
+    for (const bookmark of bookmarks) { const option = el('option', bookmark.name); option.value = bookmark.id; bookmarkSelect.append(option); }
+    if (bookmarks.some(bookmark => bookmark.id === selectedBookmark)) bookmarkSelect.value = selectedBookmark;
+    else selectedBookmark = '';
+    loadButton.disabled = !available() || !selectedBookmark; deleteButton.disabled = !selectedBookmark; exportButton.disabled = !bookmarks.length;
+  }
+  function scheduleRefresh() {
+    if (disposed || frame !== null) return;
+    frame = win.requestAnimationFrame(() => { frame = null; refresh(); });
+  }
+  function watchViewers() {
+    for (const viewer of getViewers() || []) {
+      if (watches.has(viewer) || typeof viewer.render !== 'function') continue;
+      const original = viewer.render;
+      const wrapped = function(...args) { const result = original.apply(this, args); scheduleRefresh(); return result; };
+      watches.set(viewer, {original, wrapped}); viewer.render = wrapped;
+    }
+  }
+  function refresh() {
+    if (disposed) return;
+    watchViewers(); const snapshot = attempt(capture), enabled = Boolean(snapshot);
+    controls.forEach(control => { control.disabled = !enabled; }); saveButton.disabled = !enabled;
+    if (snapshot) {
+      for (const [name, input] of inputs) if (doc.activeElement !== input) input.value = name.startsWith('target') ? String(inputValue(snapshot, name)) : String(Number(inputValue(snapshot, name).toPrecision(12)));
+      heightLabel.textContent = `可视高度 ${(snapshot.camera.baseHeight / snapshot.camera.zoom).toPrecision(6)}（原坐标单位）`;
+    } else { for (const input of inputs.values()) if (doc.activeElement !== input) input.value = ''; heightLabel.textContent = '加载数据后可调整'; }
+    loadButton.disabled = !enabled || !selectedBookmark;
+  }
+  preserveInput.addEventListener('change', () => { preserveView = preserveInput.checked; persist(); });
+  bookmarkSelect.addEventListener('change', () => {
+    selectedBookmark = bookmarkSelect.value;
+    const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark); if (selected) bookmarkName.value = selected.name;
+    updateBookmarks();
+  });
+  saveButton.addEventListener('click', () => attempt(() => {
+    const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再保存视角');
+    const name = bookmarkName.value.trim(); if (!name || name.length > 80) throw Error('请填写 1–80 个字符的书签名称');
+    const existing = bookmarks.find(bookmark => bookmark.name === name);
+    if (existing) existing.snapshot = snapshot;
+    else {
+      if (bookmarks.length >= CAMERA_MAX_BOOKMARKS) throw Error('最多保存 100 个书签，请先删除不需要的视角');
+      bookmarks.push({id: `${Date.now()}-${++idCounter}`, name, snapshot});
+    }
+    selectedBookmark = (existing || bookmarks.at(-1)).id; updateBookmarks();
+    if (persist()) message(`已保存视角“${name}”。`);
+  }));
+  loadButton.addEventListener('click', () => attempt(() => {
+    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (bookmark) restore(bookmark.snapshot);
+  }));
+  deleteButton.addEventListener('click', () => {
+    bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; updateBookmarks();
+    if (persist()) message('书签已删除。');
+  });
+  exportButton.addEventListener('click', () => attempt(() => {
+    const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
+    const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
+    win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message('相机书签 JSON 已导出，不含模型数据。');
+  }));
+  importButton.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files?.[0]; importInput.value = ''; if (!file) return;
+    try {
+      if (file.size > 1024 * 1024) throw Error('相机 JSON 超过 1 MB，请检查是否选择了正确文件');
+      const incoming = parseCameraBookmarks(await file.text(), space);
+      if (disposed) return;
+      if (bookmarks.length + incoming.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error('导入后超过 100 个书签，请先删除不需要的视角');
+      const existingNames = new Set(bookmarks.map(bookmark => bookmark.name));
+      for (const bookmark of incoming.bookmarks) {
+        let name = bookmark.name, number = 2;
+        while (existingNames.has(name)) { const suffix = ` (${number++})`; name = bookmark.name.slice(0, 80 - suffix.length) + suffix; }
+        existingNames.add(name); bookmarks.push({...bookmark, name, id: `${Date.now()}-${++idCounter}`});
+      }
+      selectedBookmark = incoming.bookmarks.length ? bookmarks.at(-1).id : selectedBookmark;
+      updateBookmarks(); if (persist()) message(`已导入 ${incoming.bookmarks.length} 个书签；选择书签后点击“加载书签”应用。`);
+    } catch (error) { message(error.message || String(error), true); }
+  });
+  try {
+    const stored = win.localStorage.getItem(key);
+    if (stored) { const parsed = parseCameraBookmarks(stored, space); bookmarks = parsed.bookmarks; preserveView = parsed.preserveView; }
+  } catch { message('未能读取本机相机书签，可导入 JSON 备份。', true); }
+  preserveInput.checked = preserveView; updateBookmarks(); refresh();
+  return {
+    get preserveView() { return preserveView; }, capture, restore, refresh,
+    destroy() {
+      disposed = true; if (frame !== null) win.cancelAnimationFrame(frame);
+      for (const [viewer, {original, wrapped}] of watches) if (viewer.render === wrapped) viewer.render = original;
+      cleanups.forEach(cleanup => cleanup()); panel.remove(); watches.clear();
+    },
+  };
+}
+
+
 // Source: cloud-renderer.js
+
 /** Point clouds and edge networks share one origin, preserving their original coordinate alignment. */
 const CLOUD_DEG = Math.PI / 180;
 const CLOUD_DOT = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const CLOUD_CLAMP = (value, low, high) => Math.max(low, Math.min(high, value));
-const CLOUD_RAMP = [[.20, .32, .65], [.13, .59, .70], [.35, .75, .55], [.90, .80, .32], [.88, .33, .23]];
 const CLOUD_VERTEX_SOURCE = `
 precision highp float;
 attribute vec3 position;
 attribute vec3 vertexColor;
+attribute vec2 scalarValue;
+uniform vec3 originOffset;
+uniform vec2 scalarTransform;
+uniform int colorMode;
+${PALETTE_GLSL}
 uniform mat4 matrix;
 uniform float pointSize;
 uniform int useVertexColor;
 uniform vec3 solidColor;
 varying vec3 color;
 void main() {
-  gl_Position = matrix * vec4(position, 1.0);
+  gl_Position = matrix * vec4(position + originOffset, 1.0);
   gl_PointSize = pointSize;
   color = useVertexColor == 1 ? vertexColor : solidColor;
+  if (colorMode == 2) color = paletteColor(position.z * scalarTransform.y + scalarTransform.x);
+  if (colorMode == 3) color = scalarValue.y > .5 ? paletteColor(scalarValue.x * scalarTransform.y + scalarTransform.x) : vec3(.55, .59, .61);
 }`;
 const CLOUD_FRAGMENT_SOURCE = `
 precision mediump float;
@@ -62,11 +458,12 @@ function CLOUD_UNION(bounds) {
 }
 
 class CloudViewer {
-  constructor(canvas, { onError = () => {} } = {}) {
+  constructor(canvas, { onError = () => {}, onViewChange = () => {} } = {}) {
     this.canvas = canvas;
     this.onError = onError;
+    this.onViewChange = onViewChange;
     this.options = { showPoints: true, showWire: true, pointSize: 2, pointOpacity: 1,
-      colorMode: 'height', pointColor: '#547d99', wireColor: '#ed8e48', rgbFields: null, grid: true };
+      colorMode: 'height', pointColor: '#547d99', wireColor: '#ed8e48', rgbFields: null, grid: true, palette: 'current', reverse: false, range: null };
     this.data = { cloud: null, wire: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.target = [0, 0, 0];
@@ -77,6 +474,11 @@ class CloudViewer {
     this.cloudBounds = null;
     this.wireBounds = null;
     this.buffers = {};
+    this.entityCache = new Map();
+    this.activeClouds = [];
+    this.wireEntry = null;
+    this.cacheClock = 0;
+    this.inactiveCacheLimit = 64 * 1024 * 1024;
     this.pointCount = 0;
     this.edgeCount = 0;
     this.colorRange = null;
@@ -123,8 +525,8 @@ class CloudViewer {
       throw new Error(`WebGL 程序链接失败：${message}`);
     }
     this.program = program;
-    this.locations = { position: gl.getAttribLocation(program, 'position'), color: gl.getAttribLocation(program, 'vertexColor') };
-    for (const name of ['matrix', 'pointSize', 'useVertexColor', 'solidColor', 'isPoint', 'opacity']) this.locations[name] = gl.getUniformLocation(program, name);
+    this.locations = { position: gl.getAttribLocation(program, 'position'), color: gl.getAttribLocation(program, 'vertexColor'), scalar: gl.getAttribLocation(program, 'scalarValue') };
+    for (const name of ['matrix', 'pointSize', 'useVertexColor', 'solidColor', 'isPoint', 'opacity', 'originOffset', 'scalarTransform', 'colorMode', 'colorStops[0]']) this.locations[name] = gl.getUniformLocation(program, name);
     const range = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
     this.pointSizeRange = range && range.length === 2 ? Array.from(range) : [1, 64];
   }
@@ -180,7 +582,10 @@ class CloudViewer {
         const camera = { ...this.camera, pan: [...this.camera.pan] }, target = [...this.target], height = this.baseHeight;
         this.buffers = {};
         this.initGL();
-        this.setData(this.data);
+        const savedData = this.data;
+        this.entityCache = new Map(); this.activeClouds = []; this.wireEntry = null; this.gridKey = null;
+        if (savedData.clouds) this.setClouds(savedData.clouds, {...savedData, preserveView: false});
+        else this.setData(savedData);
         this.camera = camera; this.target = target; this.baseHeight = height;
         this.render();
         this.onError('');
@@ -201,57 +606,205 @@ class CloudViewer {
     return { buffer, count: values.length / 3 };
   }
 
-  setData({ cloud = null, wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null } = {}) {
-    const next = {}, minCloud = [Infinity, Infinity, Infinity], maxCloud = [-Infinity, -Infinity, -Infinity];
-    const minWire = [Infinity, Infinity, Infinity], maxWire = [-Infinity, -Infinity, -Infinity];
-    try {
-      if (cloud && (!cloud.positions || cloud.positions.length % 3)) throw new Error('点云坐标需要按 XYZ 三列排列。');
-      const pointCount = cloud ? cloud.count ?? cloud.positions.length / 3 : 0;
-      if (!Number.isInteger(pointCount) || pointCount < 0 || (cloud && pointCount * 3 > cloud.positions.length)) throw new Error('点云数量与坐标数组不匹配。');
-      for (let i = 0; i < pointCount * 3; i++) {
-        const value = cloud.positions[i], axis = i % 3;
-        if (!Number.isFinite(value)) throw new Error('点云包含非有限坐标。');
-        minCloud[axis] = Math.min(minCloud[axis], value); maxCloud[axis] = Math.max(maxCloud[axis], value);
+  ensureCache() {
+    this.entityCache ||= new Map(); this.activeClouds ||= []; this.cacheClock ||= 0;
+    this.inactiveCacheLimit ??= 64 * 1024 * 1024;
+  }
+
+  deleteEntity(entry) {
+    for (const item of [entry?.points, entry?.colors, entry?.scalar]) if (item) this.gl.deleteBuffer(item.buffer);
+  }
+
+  pruneCache() {
+    const active = new Set(this.activeClouds.map(entry => entry.key));
+    const inactive = [...this.entityCache.values()].filter(entry => !active.has(entry.key)).sort((a, b) => b.used - a.used);
+    let bytes = 0;
+    for (let i = 0; i < inactive.length; i++) {
+      const entry = inactive[i];
+      bytes += entry.retainedBytes + entry.gpuBytes;
+      if (i >= 2 || bytes > this.inactiveCacheLimit) { this.deleteEntity(entry); this.entityCache.delete(entry.key); }
+    }
+  }
+
+  clearCache() {
+    this.ensureCache();
+    const active = new Set(this.activeClouds.map(entry => entry.key));
+    for (const [key, entry] of this.entityCache) if (!active.has(key)) { this.deleteEntity(entry); this.entityCache.delete(key); }
+  }
+
+  createEntity(item) {
+    const cloud = item.cloud;
+    if (!cloud?.positions || cloud.positions.length % 3) throw new Error('点云坐标需要按 XYZ 三列排列。');
+    const count = cloud.count ?? cloud.positions.length / 3;
+    if (!Number.isSafeInteger(count) || count < 0 || count * 3 > cloud.positions.length) throw new Error('点云数量与坐标数组不匹配。');
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < count * 3; i++) {
+      const value = cloud.positions[i], axis = i % 3;
+      if (!Number.isFinite(value)) throw new Error('点云包含非有限坐标。');
+      min[axis] = Math.min(min[axis], value); max[axis] = Math.max(max[axis], value);
+    }
+    const bounds = count ? CLOUD_UNION([[min, max], CLOUD_BOUNDS(cloud.bounds)]) : null;
+    const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < positions.length; i++) positions[i] = cloud.positions[i] - origin[i % 3];
+    const arrays = [cloud.positions, cloud.rgb, ...Object.values(cloud.fields || {})].filter(ArrayBuffer.isView);
+    const retainedBytes = [...new Set(arrays.map(array => array.buffer))].reduce((sum, buffer) => sum + buffer.byteLength, 0);
+    const entry = {key: item.key, cloud, count, bounds, origin, ranges: new Map(), points: null,
+      colors: null, scalar: null, retainedBytes, gpuBytes: positions.byteLength, used: ++this.cacheClock};
+    entry.ranges.set('height', count ? {min: min[2], max: max[2]} : null);
+    if (count) entry.points = this.makeBuffer(positions);
+    return entry;
+  }
+
+  createWire(wire) {
+    if (!wire) return null;
+    if (!Array.isArray(wire.vertices) || !Array.isArray(wire.edges)) throw new Error('线框需要 vertices 和 edges 数组。');
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (const edge of wire.edges) {
+      if (edge.length !== 2 || !edge.every(index => Number.isInteger(index) && index >= 0 && index < wire.vertices.length)) throw new Error('线框包含无效边索引。');
+      for (const index of edge) {
+        const point = wire.vertices[index];
+        if (point.length !== 3 || !point.every(Number.isFinite)) throw new Error('线框包含非有限坐标。');
+        for (let axis = 0; axis < 3; axis++) { min[axis] = Math.min(min[axis], point[axis]); max[axis] = Math.max(max[axis], point[axis]); }
       }
-      if (wire && (!Array.isArray(wire.vertices) || !Array.isArray(wire.edges))) throw new Error('线框需要 vertices 和 edges 数组。');
-      const edgeCount = wire?.edges.length || 0;
-      for (const edge of wire?.edges || []) {
-        if (edge.length !== 2 || !edge.every(index => Number.isInteger(index) && index >= 0 && index < wire.vertices.length)) throw new Error('线框包含无效边索引。');
-        for (const index of edge) {
-          const point = wire.vertices[index];
-          if (point.length !== 3 || !point.every(Number.isFinite)) throw new Error('线框包含非有限坐标。');
-          for (let axis = 0; axis < 3; axis++) {
-            minWire[axis] = Math.min(minWire[axis], point[axis]); maxWire[axis] = Math.max(maxWire[axis], point[axis]);
+    }
+    const count = wire.edges.length, bounds = count ? CLOUD_UNION([[min, max], CLOUD_BOUNDS(wire.bounds)]) : null;
+    const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+    const positions = new Float32Array(count * 6);
+    let offset = 0;
+    for (const edge of wire.edges) for (const index of edge) for (let axis = 0; axis < 3; axis++) positions[offset++] = wire.vertices[index][axis] - origin[axis];
+    return {wire, count, bounds, origin, buffer: count ? this.makeBuffer(positions) : null};
+  }
+
+  setData({cloud = null, wire = null, bounds = null, origin = null} = {}) {
+    this.setClouds(cloud ? [{key: cloud, name: '', cloud}] : [], {wire, bounds, origin, preserveView: false});
+    this.data.cloud = cloud;
+  }
+
+  /** Independent immutable cloud objects share a camera; unchanged keys reuse GPU geometry. */
+  setClouds(items, {wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null, preserveView = true} = {}) {
+    this.ensureCache();
+    if (!Array.isArray(items)) throw new Error('setClouds 需要点云条目数组。');
+    const keys = new Set(), created = [], next = [];
+    let wireEntry = this.wireEntry, grid, colorPlan;
+    try {
+      for (const item of items) {
+        if (!item || item.key === undefined || keys.has(item.key)) throw new Error('每个点云需要唯一且稳定的 key。');
+        keys.add(item.key);
+        let entry = this.entityCache.get(item.key);
+        if (!entry || entry.cloud !== item.cloud) { entry = this.createEntity(item); created.push(entry); }
+        next.push(entry);
+      }
+      if (wireEntry?.wire !== wire) wireEntry = this.createWire(wire);
+      const cloudBounds = CLOUD_UNION(next.map(entry => entry.bounds)), wireBounds = wireEntry?.bounds || null;
+      const sharedBounds = CLOUD_BOUNDS(referenceBounds), bounds = CLOUD_UNION([cloudBounds, wireBounds, sharedBounds]);
+      const validOrigin = Array.isArray(referenceOrigin) && referenceOrigin.length === 3 && referenceOrigin.every(Number.isFinite);
+      const origin = validOrigin ? [...referenceOrigin] : bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+      const gridKey = JSON.stringify([bounds, origin]);
+      grid = gridKey === this.gridKey ? this.buffers.grid : bounds ? this.makeBuffer(this.buildGrid(bounds, origin)) : null;
+      colorPlan = this.prepareColorState(next.map((entry, index) => ({...entry, item: items[index], actual: entry})));
+      const previousWorldTarget = this.target.map((value, axis) => value + this.origin[axis]);
+      const hadScene = !!this.bounds;
+      for (const entry of created) {
+        const replaced = this.entityCache.get(entry.key);
+        if (replaced) this.deleteEntity(replaced);
+        this.entityCache.set(entry.key, entry);
+      }
+      next.forEach((entry, index) => { entry.item = items[index]; entry.used = ++this.cacheClock; });
+      if (this.wireEntry && this.wireEntry !== wireEntry && this.wireEntry.buffer) this.gl.deleteBuffer(this.wireEntry.buffer.buffer);
+      if (this.buffers.grid && this.buffers.grid !== grid) this.gl.deleteBuffer(this.buffers.grid.buffer);
+      this.activeClouds = next; this.wireEntry = wireEntry;
+      this.buffers = {grid, wire: wireEntry?.buffer || null}; this.gridKey = gridKey;
+      this.data = {cloud: items.length === 1 ? items[0].cloud : null, clouds: items.map(item => ({...item})), wire,
+        bounds: sharedBounds, origin: validOrigin ? [...referenceOrigin] : null};
+      this.cloudBounds = cloudBounds; this.wireBounds = wireBounds; this.referenceBounds = sharedBounds; this.bounds = bounds; this.origin = origin;
+      this.pointCount = next.reduce((sum, entry) => sum + entry.count, 0); this.edgeCount = wireEntry?.count || 0;
+      this.commitColorState(colorPlan); this.pruneCache();
+      if (preserveView && hadScene && bounds) { this.target = previousWorldTarget.map((value, axis) => value - origin[axis]); this.render(); }
+      else this.fit();
+    } catch (error) {
+      if (colorPlan && !colorPlan.committed) this.deleteColorPlan(colorPlan);
+      for (const entry of created) if (this.entityCache.get(entry.key) !== entry) this.deleteEntity(entry);
+      if (wireEntry !== this.wireEntry && wireEntry?.buffer) this.gl.deleteBuffer(wireEntry.buffer.buffer);
+      if (grid && grid !== this.buffers.grid) this.gl.deleteBuffer(grid.buffer);
+      this.onError(error.message); throw error;
+    }
+  }
+
+  entryRange(entry, mode) {
+    if (entry.ranges.has(mode)) return entry.ranges.get(mode);
+    const name = mode.startsWith('field:') ? mode.slice(6) : mode;
+    const values = entry.cloud.fields?.[name];
+    let min = Infinity, max = -Infinity;
+    if (values?.length >= entry.count) for (let i = 0; i < entry.count; i++) {
+      const value = values[i]; if (Number.isFinite(value)) { min = Math.min(min, value); max = Math.max(max, value); }
+    }
+    const range = min === Infinity ? null : {min, max}; entry.ranges.set(mode, range); return range;
+  }
+
+  prepareColorState(entries = this.activeClouds || []) {
+    let mode = this.options.colorMode || 'height', fallback = null;
+    const field = mode.startsWith('field:') ? mode.slice(6) : mode;
+    const hasRGB = entry => this.options.rgbFields?.length === 3 && this.options.rgbFields.every(name => entry.cloud.fields?.[name]?.length >= entry.count) || entry.cloud.rgb?.length >= entry.count * 3;
+    if (mode === 'rgb' && entries.length && !entries.some(hasRGB)) { mode = 'height'; fallback = '未找到可用的 RGB 数据，已按高度着色。'; }
+    if (mode === 'file' && entries.some(entry => !this.entryFileColor(entry) && this.fileSources(entry.cloud, entry.count) === null)) { mode = 'height'; fallback = '未找到完整的点云文件来源信息，已按高度着色。'; }
+    if (!['height', 'rgb', 'solid', 'file'].includes(mode) && entries.length && !entries.some(entry => entry.cloud.fields?.[field]?.length >= entry.count)) { mode = 'height'; fallback = `字段 ${field} 不存在，已按高度着色。`; }
+    const scalar = !['rgb', 'solid', 'file'].includes(mode);
+    const ranges = scalar ? entries.map(entry => this.entryRange(entry, mode)).filter(Boolean) : [];
+    const auto = ranges.length ? {min: Math.min(...ranges.map(range => range.min)), max: Math.max(...ranges.map(range => range.max))} : null;
+    const plan = {mode, fallback, auto, range: scalar && auto ? this.options.range ? {...this.options.range} : {...auto} : null, updates: []};
+    try {
+      for (const entry of entries) {
+        if (mode === 'rgb' || mode === 'file' && !this.entryFileColor(entry)) {
+          const signature = mode === 'rgb' ? JSON.stringify(['rgb', this.options.rgbFields]) : 'file';
+          if (entry.colorKey !== signature) {
+            const colors = mode === 'rgb' && !hasRGB(entry) ? new Float32Array(entry.count * 3).fill(.55) : this.buildColors(entry.cloud, entry.count).values;
+            const buffer = entry.count ? this.makeBuffer(colors) : null;
+            plan.updates.push({entry: entry.actual || entry, colors: buffer, colorKey: signature});
           }
+        } else if (scalar && mode !== 'height' && entry.scalarKey !== mode) {
+          const name = mode.startsWith('field:') ? mode.slice(6) : mode, values = entry.cloud.fields?.[name];
+          const range = this.entryRange(entry, mode), base = range?.min || 0, scalars = new Float32Array(entry.count * 2);
+          for (let i = 0; i < entry.count; i++) if (Number.isFinite(values?.[i])) { scalars[i * 2] = values[i] - base; scalars[i * 2 + 1] = 1; }
+          const buffer = entry.count ? this.makeBuffer(scalars) : null;
+          plan.updates.push({entry: entry.actual || entry, scalar: buffer, scalarBase: base, scalarKey: mode});
         }
       }
-      const cloudBounds = pointCount ? CLOUD_UNION([[minCloud, maxCloud], CLOUD_BOUNDS(cloud.bounds)]) : null;
-      const wireBounds = edgeCount ? CLOUD_UNION([[minWire, maxWire], CLOUD_BOUNDS(wire.bounds)]) : null;
-      const sharedBounds = CLOUD_BOUNDS(referenceBounds);
-      const bounds = CLOUD_UNION([cloudBounds, wireBounds, sharedBounds]);
-      const validOrigin = Array.isArray(referenceOrigin) && referenceOrigin.length === 3 && referenceOrigin.every(Number.isFinite);
-      const origin = validOrigin ? Array.from(referenceOrigin) : bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
-      const points = new Float32Array(pointCount * 3), lines = new Float32Array(edgeCount * 6);
-      for (let i = 0; i < points.length; i++) points[i] = cloud.positions[i] - origin[i % 3];
-      let offset = 0;
-      for (const edge of wire?.edges || []) for (const index of edge) for (let axis = 0; axis < 3; axis++) lines[offset++] = wire.vertices[index][axis] - origin[axis];
-      const colors = this.buildColors(cloud, pointCount);
-      if (pointCount) { next.points = this.makeBuffer(points); next.colors = this.makeBuffer(colors.values); }
-      if (edgeCount) next.wire = this.makeBuffer(lines);
-      if (bounds) next.grid = this.makeBuffer(this.buildGrid(bounds, origin));
-      for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
-      this.buffers = next;
-      this.data = { cloud, wire, bounds: sharedBounds, origin: validOrigin ? Array.from(referenceOrigin) : null };
-      this.pointCount = pointCount; this.edgeCount = edgeCount;
-      this.bounds = bounds; this.cloudBounds = cloudBounds; this.wireBounds = wireBounds;
-      this.referenceBounds = sharedBounds; this.origin = origin;
-      this.applyColorState(colors);
-      this.fit();
-    } catch (error) {
-      for (const item of Object.values(next)) this.gl.deleteBuffer(item.buffer);
-      this.onError(error.message);
-      throw error;
+    } catch (error) { this.deleteColorPlan(plan); throw error; }
+    return plan;
+  }
+
+  deleteColorPlan(plan) {
+    for (const update of plan.updates) for (const name of ['colors','scalar']) if (update[name]) this.gl.deleteBuffer(update[name].buffer);
+  }
+
+  commitColorState(plan) {
+    for (const {entry, ...update} of plan.updates) {
+      for (const name of ['colors','scalar']) if (Object.hasOwn(update,name) && entry[name]) this.gl.deleteBuffer(entry[name].buffer);
+      Object.assign(entry, update);
+      entry.gpuBytes = entry.count * (12 + (entry.colors ? 12 : 0) + (entry.scalar ? 8 : 0));
     }
+    this.dataRange = plan.auto; this.colorRange = plan.range;
+    this.effectiveColorMode = plan.mode; this.colorFallback = plan.fallback;
+    plan.committed = true;
+  }
+
+  updateColorState() { this.commitColorState(this.prepareColorState()); }
+
+  entryFileColor(entry) {
+    const color = entry.item?.color;
+    return color?.length === 3 && Array.from(color).every(Number.isFinite) ? Array.from(color, value => CLOUD_CLAMP(value, 0, 1)) : null;
+  }
+
+  fileSources(cloud, count) {
+    const sources = Array.isArray(cloud.sources) ? [...cloud.sources].sort((a, b) => (a?.start ?? 0) - (b?.start ?? 0)) : [];
+    let covered = 0;
+    const valid = sources.length > 0 && sources.every(source => {
+      if (!source || !Number.isSafeInteger(source.start) || !Number.isSafeInteger(source.count) || source.start !== covered || source.count < 0 || source.count > count - covered) return false;
+      if ((!Array.isArray(source.color) && !ArrayBuffer.isView(source.color)) || source.color.length !== 3 || !Array.from(source.color).every(Number.isFinite)) return false;
+      covered += source.count; return true;
+    });
+    return valid && covered === count ? sources : null;
   }
 
   buildGrid(bounds, origin) {
@@ -314,13 +867,13 @@ class CloudViewer {
       const scalar = mode === 'height' ? index => cloud.positions[index * 3 + 2] : index => fields[fieldName][index];
       let min = Infinity, max = -Infinity;
       for (let i = 0; i < count; i++) { const value = scalar(i); if (Number.isFinite(value)) { min = Math.min(min, value); max = Math.max(max, value); } }
-      if (min !== Infinity) range = { min, max };
+      if (min !== Infinity) range = this.options.range ? {...this.options.range} : { min, max };
+      if (range) { min = range.min; max = range.max; }
       for (let i = 0; i < count; i++) {
         const value = scalar(i);
         if (!Number.isFinite(value)) { values.set([.55, .59, .61], i * 3); continue; }
         const t = max > min ? CLOUD_CLAMP((value - min) / (max - min), 0, 1) : .5;
-        const ramp = t * (CLOUD_RAMP.length - 1), lower = Math.min(CLOUD_RAMP.length - 2, Math.floor(ramp)), fraction = ramp - lower;
-        for (let channel = 0; channel < 3; channel++) values[i * 3 + channel] = CLOUD_RAMP[lower][channel] * (1 - fraction) + CLOUD_RAMP[lower + 1][channel] * fraction;
+        values.set(samplePalette(t, this.options.palette, this.options.reverse), i * 3);
       }
     }
     return { values, mode, fallback, range };
@@ -333,24 +886,15 @@ class CloudViewer {
   }
 
   setOptions(options = {}) {
-    const previous = this.options, next = { ...previous, ...options };
+    const previous = this.options, next = {...previous, ...options};
     next.pointSize = CLOUD_CLAMP(Number.isFinite(Number(next.pointSize)) ? Number(next.pointSize) : 2, .5, 64);
     next.pointOpacity = CLOUD_CLAMP(Number.isFinite(Number(next.pointOpacity)) ? Number(next.pointOpacity) : 1, 0, 1);
     next.colorMode = String(next.colorMode || 'height');
     next.rgbFields = Array.isArray(next.rgbFields) ? [...next.rgbFields] : null;
-    const recolor = next.colorMode !== previous.colorMode || JSON.stringify(next.rgbFields) !== JSON.stringify(previous.rgbFields);
+    next.palette ||= 'current'; next.reverse = !!next.reverse; next.range = next.range ? {...next.range} : null;
+    validatePaletteOptions(next);
     this.options = next;
-    if (recolor) {
-      try {
-        const colors = this.buildColors(this.data.cloud, this.pointCount);
-        if (this.pointCount) {
-          const buffer = this.makeBuffer(colors.values);
-          if (this.buffers.colors) this.gl.deleteBuffer(this.buffers.colors.buffer);
-          this.buffers.colors = buffer;
-        }
-        this.applyColorState(colors);
-      } catch (error) { this.options = previous; this.onError(error.message); throw error; }
-    }
+    try { this.updateColorState(); } catch (error) { this.options = previous; this.onError(error.message); throw error; }
     this.render();
   }
 
@@ -426,41 +970,54 @@ class CloudViewer {
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.enableVertexAttribArray(loc.position);
-    const draw = (buffer, primitive, color, opacity, vertexColor = false) => {
+    gl.uniform3fv(loc['colorStops[0]'], paletteUniforms(this.options.palette, this.options.reverse));
+    const draw = (buffer, primitive, color, opacity, entry = null, mode = 0) => {
       if (!buffer?.count || opacity <= 0) return;
+      const localOrigin = entry?.origin || this.origin;
+      gl.uniform3fv(loc.originOffset, localOrigin.map((value, axis) => value - this.origin[axis]));
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
       gl.vertexAttribPointer(loc.position, 3, gl.FLOAT, false, 12, 0);
-      if (vertexColor && this.buffers.colors) {
-        gl.enableVertexAttribArray(loc.color);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.colors.buffer);
+      if (mode === 1 && entry?.colors) {
+        gl.enableVertexAttribArray(loc.color); gl.bindBuffer(gl.ARRAY_BUFFER, entry.colors.buffer);
         gl.vertexAttribPointer(loc.color, 3, gl.FLOAT, false, 12, 0);
       } else { gl.disableVertexAttribArray(loc.color); gl.vertexAttrib3f(loc.color, 1, 1, 1); }
-      gl.uniform1i(loc.useVertexColor, vertexColor ? 1 : 0);
-      gl.uniform3fv(loc.solidColor, color);
-      gl.uniform1f(loc.opacity, opacity);
+      if (mode === 3 && entry?.scalar) {
+        gl.enableVertexAttribArray(loc.scalar); gl.bindBuffer(gl.ARRAY_BUFFER, entry.scalar.buffer);
+        gl.vertexAttribPointer(loc.scalar, 2, gl.FLOAT, false, 8, 0);
+      } else { gl.disableVertexAttribArray(loc.scalar); gl.vertexAttrib2f(loc.scalar, 0, 0); }
+      const range = this.colorRange, span = range ? range.max - range.min : 0;
+      const base = mode === 2 ? entry.origin[2] : entry?.scalarBase || 0;
+      gl.uniform2f(loc.scalarTransform, span > 0 ? (base - range.min) / span : .5, span > 0 ? 1 / span : 0);
+      gl.uniform1i(loc.colorMode, mode);
+      gl.uniform1i(loc.useVertexColor, mode === 1 ? 1 : 0);
+      gl.uniform3fv(loc.solidColor, color); gl.uniform1f(loc.opacity, opacity);
       gl.uniform1i(loc.isPoint, primitive === gl.POINTS ? 1 : 0);
       gl.drawArrays(primitive, 0, buffer.count);
     };
     const anyVisible = (this.options.showPoints && this.pointCount && this.options.pointOpacity > 0) || (this.options.showWire && this.edgeCount);
-    if (this.options.grid && anyVisible) {
-      gl.depthMask(false);
-      draw(this.buffers.grid, gl.LINES, [.60, .66, .70], .24);
-      gl.depthMask(true);
-    }
+    if (this.options.grid && anyVisible) { gl.depthMask(false); draw(this.buffers.grid, gl.LINES, [.60,.66,.70], .24); gl.depthMask(true); }
     if (this.options.showPoints) {
       gl.depthMask(this.options.pointOpacity >= 1);
-      draw(this.buffers.points, gl.POINTS, CLOUD_HEX(this.options.pointColor, [.33, .49, .60]), this.options.pointOpacity, this.effectiveColorMode !== 'solid');
+      for (const entry of this.activeClouds || []) {
+        const mode = this.effectiveColorMode;
+        const fileColor = mode === 'file' ? this.entryFileColor(entry) : null;
+        const kind = mode === 'solid' || fileColor ? 0 : mode === 'rgb' || mode === 'file' ? 1 : mode === 'height' ? 2 : 3;
+        draw(entry.points, gl.POINTS, fileColor || CLOUD_HEX(this.options.pointColor, [.33,.49,.60]), this.options.pointOpacity, entry, kind);
+      }
       gl.depthMask(true);
     }
-    if (this.options.showWire) draw(this.buffers.wire, gl.LINES, CLOUD_HEX(this.options.wireColor, [.93, .56, .28]), 1);
+    if (this.options.showWire) draw(this.wireEntry?.buffer, gl.LINES, CLOUD_HEX(this.options.wireColor, [.93,.56,.28]), 1, this.wireEntry);
     gl.depthMask(true);
+    this.onViewChange?.(this.getState());
   }
 
   getState() {
     return { pointCount: this.pointCount, edgeCount: this.edgeCount,
-      colorRange: this.colorRange ? { ...this.colorRange } : null,
+      colorRange: this.colorRange ? { ...this.colorRange } : null, dataRange: this.dataRange ? {...this.dataRange} : null,
       requestedColorMode: this.options.colorMode, effectiveColorMode: this.effectiveColorMode,
-      colorFallback: this.colorFallback, fields: Object.keys(this.data.cloud?.fields || {}),
+      colorFallback: this.colorFallback, fields: [...new Set((this.activeClouds || []).flatMap(entry => Object.keys(entry.cloud.fields || {})))],
+      sources: (this.activeClouds || []).map(entry => ({name: entry.item?.name || '', count: entry.count, totalCount: entry.cloud.totalCount || entry.count, color: this.entryFileColor(entry)})),
+      cache: {entries: this.entityCache?.size || 0, active: this.activeClouds?.length || 0, gpuBytes: [...(this.entityCache?.values() || [])].reduce((sum, entry) => sum + entry.gpuBytes, 0)},
       camera: { ...this.camera, pan: [...this.camera.pan], target: [...this.target], origin: [...this.origin], baseHeight: this.baseHeight },
       bounds: this.bounds?.map(point => [...point]) || null,
       referenceBounds: this.referenceBounds?.map(point => [...point]) || null,
@@ -473,7 +1030,10 @@ class CloudViewer {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     for (const [name, fn, options] of this.listeners) this.canvas.removeEventListener(name, fn, options);
-    for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
+    for (const entry of this.entityCache?.values() || []) this.deleteEntity(entry);
+    if (this.wireEntry?.buffer) this.gl.deleteBuffer(this.wireEntry.buffer.buffer);
+    if (this.buffers.grid) this.gl.deleteBuffer(this.buffers.grid.buffer);
+    this.entityCache?.clear(); this.activeClouds = []; this.wireEntry = null;
     this.gl.deleteProgram(this.program);
     this.buffers = {};
   }
@@ -559,58 +1119,180 @@ function parseWireOBJ(text, id = '') {
   return {id, vertices, edges, bounds, empty: false};
 }
 
-function pointCollector(names, totalCount, maxPoints, notes, hints = {}) {
+const POINT_STORAGE_CHUNK_POINTS = 16384;
+const POINT_RESERVOIR_SEED = 0x9e3779b9;
+
+function pointLimit(maxPoints) {
+  if (!Number.isSafeInteger(maxPoints) || maxPoints < 0) pointError('maxPoints 必须为非负整数；0 表示全量');
+  return maxPoints;
+}
+
+function pointRandom() {
+  let state = POINT_RESERVOIR_SEED;
+  return () => {
+    state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+    return (state >>> 0) / 4294967296;
+  };
+}
+
+/** Algorithm R with a fixed seed. The selected rows are sorted back into source order. */
+function pointSampleIndices(totalCount, maxPoints) {
+  const count = Math.min(totalCount, maxPoints), indices = new Float64Array(count), random = pointRandom();
+  for (let i = 0; i < totalCount; i++) {
+    if (i < count) indices[i] = i;
+    else {
+      const slot = Math.floor(random() * (i + 1));
+      if (slot < count) indices[slot] = i;
+    }
+  }
+  indices.sort();
+  return indices;
+}
+
+/** Unknown-size input grows in TypedArray blocks, never in per-point JS object arrays. */
+function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
+  pointLimit(maxPoints);
   names = pointNames(names);
-  if (!Number.isSafeInteger(totalCount) || totalCount < 1) pointError('点云没有有效点，或点数无效');
+  if (expectedCount !== null && (!Number.isSafeInteger(expectedCount) || expectedCount < 1)) pointError('点云没有有效点，或点数无效');
   const axes = ['x', 'y', 'z'].map(name => names.indexOf(name));
   if (axes.some(i => i < 0)) pointError('点云表头必须包含 x、y、z 字段');
-  const count = Math.min(totalCount, maxPoints), positions = new Float64Array(count * 3), bounds = pointBounds();
-  const fields = Object.create(null);
-  for (const name of names) fields[name] = new Float32Array(count);
-  let taken = 0;
-  const sampleAt = index => count === 1 ? 0 : Math.floor(index * (totalCount - 1) / (count - 1));
   const rgbNames = [['r', 'g', 'b'], ['red', 'green', 'blue'], ['diffuse_red', 'diffuse_green', 'diffuse_blue']].find(group => group.every(name => names.includes(name)));
+  const rgbAxes = rgbNames?.map(name => names.indexOf(name));
   const packedName = !rgbNames && ['rgb', 'rgba'].find(name => names.includes(name));
-  const colors = rgbNames || packedName ? new Float32Array(count * 3) : null;
-  let maxRGB = 0, invalidRGB = false;
+  const packedAxis = packedName ? names.indexOf(packedName) : -1;
+  const hasRGB = Boolean(rgbNames || packedName), chunks = [], bounds = pointBounds(), random = pointRandom();
+  let totalCount = 0, count = 0, maxRGB = 0, invalidRGB = false;
+  const capacity = Math.min(POINT_STORAGE_CHUNK_POINTS, maxPoints || Infinity, expectedCount || Infinity);
+  function newChunk() {
+    const chunk = {positions: new Float64Array(capacity * 3), fields: names.map(() => new Float32Array(capacity))};
+    if (maxPoints) chunk.indices = new Float64Array(capacity);
+    if (hasRGB) chunk.rgb = new Float32Array(capacity * 3);
+    chunks.push(chunk);
+    return chunk;
+  }
+  function rowSource(slot) { return chunks[Math.floor(slot / capacity)].indices[slot % capacity]; }
   return {
-    add(values, index) {
+    add(values, index = totalCount) {
+      if (index !== totalCount) pointError('点云行序不连续');
       if (values.length !== names.length) pointError(`点 ${index + 1} 的字段数量不一致`);
-      const xyz = axes.map(axis => values[axis]);
-      if (xyz.some(v => !Number.isFinite(v))) pointError(`点 ${index + 1} 的 XYZ 无效或非有限`);
-      extendPointBounds(bounds, xyz);
-      if (taken >= count || index !== sampleAt(taken)) return;
-      positions.set(xyz, taken * 3);
-      names.forEach((name, field) => { fields[name][taken] = values[field]; });
-      if (rgbNames) {
-        rgbNames.forEach((name, channel) => {
-          const value = values[names.indexOf(name)];
-          if (!Number.isFinite(value) || value < 0 || value > 255) invalidRGB = true;
-          maxRGB = Math.max(maxRGB, value); colors[taken * 3 + channel] = value;
-        });
-      } else if (packedName) {
-        const raw = values[names.indexOf(packedName)];
-        if (!Number.isInteger(raw) || raw < 0 || raw > 0xffffffff) invalidRGB = true;
-        const packed = raw >>> 0;
-        colors.set([(packed >>> 16 & 255) / 255, (packed >>> 8 & 255) / 255, (packed & 255) / 255], taken * 3);
+      for (let axis = 0; axis < 3; axis++) {
+        const value = values[axes[axis]];
+        if (!Number.isFinite(value)) pointError(`点 ${index + 1} 的 XYZ 无效或非有限`);
+        bounds[0][axis] = Math.min(bounds[0][axis], value); bounds[1][axis] = Math.max(bounds[1][axis], value);
       }
-      taken++;
+      // Inspect every original RGB value, including rows not retained by the reservoir.
+      if (rgbAxes) for (const axis of rgbAxes) {
+        const value = values[axis];
+        if (!Number.isFinite(value) || value < 0 || value > 255) invalidRGB = true;
+        maxRGB = Math.max(maxRGB, value);
+      }
+      else if (packedName) {
+        const raw = values[packedAxis];
+        if (!Number.isInteger(raw) || raw < 0 || raw > 0xffffffff) invalidRGB = true;
+      }
+      totalCount++;
+      if (!Number.isSafeInteger(totalCount)) pointError('点云点数超出可表示范围');
+      let slot = index;
+      if (maxPoints && index >= maxPoints) {
+        slot = Math.floor(random() * totalCount);
+        if (slot >= maxPoints) return;
+      } else count++;
+      const chunkIndex = Math.floor(slot / capacity), local = slot % capacity;
+      const chunk = chunks[chunkIndex] || newChunk(), base = local * 3;
+      for (let axis = 0; axis < 3; axis++) chunk.positions[base + axis] = values[axes[axis]];
+      for (let field = 0; field < names.length; field++) chunk.fields[field][local] = values[field];
+      if (chunk.indices) chunk.indices[local] = index;
+      if (rgbAxes) for (let channel = 0; channel < 3; channel++) chunk.rgb[base + channel] = values[rgbAxes[channel]];
+      else if (packedName) {
+        const packed = values[packedAxis] >>> 0;
+        chunk.rgb[base] = (packed >>> 16 & 255) / 255;
+        chunk.rgb[base + 1] = (packed >>> 8 & 255) / 255;
+        chunk.rgb[base + 2] = (packed & 255) / 255;
+      }
     },
     finish() {
-      if (taken !== count) pointError(`点云截断：期望 ${count} 个展示点，读取 ${taken} 个`);
-      let rgb = colors;
-      if (invalidRGB) { rgb = null; notes.push('RGB 字段超出有效范围，已保留属性并停用原始颜色。'); }
-      else if (rgbNames) {
-        const bytes = rgbNames.some(name => hints[name] === 'byte');
-        const divisor = bytes || maxRGB > 1 ? 255 : 1;
-        for (let i = 0; i < colors.length; i++) colors[i] /= divisor;
+      if (!totalCount) pointError('点云文件为空');
+      if (expectedCount !== null && totalCount !== expectedCount) pointError(`点云截断：期望 ${expectedCount} 点，读取 ${totalCount} 点`);
+      const sampled = count < totalCount, fields = Object.create(null);
+      let positions, rgb = hasRGB && !invalidRGB ? new Float32Array(count * 3) : null;
+      let sampleIndices;
+      if (!sampled && chunks.length === 1) {
+        // No consolidation copy is needed for a single block.
+        positions = chunks[0].positions.subarray(0, count * 3);
+        names.forEach((name, i) => { fields[name] = chunks[0].fields[i].subarray(0, count); });
+        if (rgb) rgb = chunks[0].rgb.subarray(0, count * 3);
+      } else {
+        positions = new Float64Array(count * 3);
+        for (const name of names) fields[name] = new Float32Array(count);
+        if (sampled) {
+          const order = new Uint32Array(count);
+          for (let i = 0; i < count; i++) order[i] = i;
+          order.sort((a, b) => rowSource(a) - rowSource(b));
+          sampleIndices = new Float64Array(count);
+          for (let target = 0; target < count; target++) {
+            const slot = order[target], chunk = chunks[Math.floor(slot / capacity)], local = slot % capacity;
+            for (let axis = 0; axis < 3; axis++) positions[target * 3 + axis] = chunk.positions[local * 3 + axis];
+            names.forEach((name, i) => { fields[name][target] = chunk.fields[i][local]; });
+            if (rgb) for (let channel = 0; channel < 3; channel++) rgb[target * 3 + channel] = chunk.rgb[local * 3 + channel];
+            sampleIndices[target] = chunk.indices[local];
+          }
+        } else {
+          for (let i = 0; i < chunks.length; i++) {
+            const start = i * capacity, take = Math.min(capacity, count - start), chunk = chunks[i];
+            positions.set(chunk.positions.subarray(0, take * 3), start * 3);
+            names.forEach((name, field) => fields[name].set(chunk.fields[field].subarray(0, take), start));
+            if (rgb) rgb.set(chunk.rgb.subarray(0, take * 3), start * 3);
+            chunks[i] = null;
+          }
+        }
+      }
+      chunks.length = 0;
+      if (invalidRGB) notes.push('RGB 字段超出有效范围，已保留属性并停用原始颜色。');
+      else if (rgbAxes) {
+        const divisor = rgbNames.some(name => hints[name] === 'byte') || maxRGB > 1 ? 255 : 1;
+        for (let i = 0; i < rgb.length; i++) rgb[i] /= divisor;
         notes.push(`RGB 按 0–${divisor} 范围归一化。`);
       }
-      if (count < totalCount) notes.push(`总计 ${totalCount.toLocaleString()} 点，按原顺序均匀抽样显示 ${count.toLocaleString()} 点；坐标范围仍覆盖全部原始点。`);
+      if (sampled) notes.push(`总计 ${totalCount.toLocaleString()} 点，使用固定种子蓄水池采样显示 ${count.toLocaleString()} 点；坐标范围仍覆盖全部原始点。`);
       else notes.push(`完整读取 ${totalCount.toLocaleString()} 点；范围为全部点范围。`);
-      return {positions, count, totalCount, bounds, fields, rgb, notes};
+      const result = {positions, count, totalCount, bounds, fields, rgb, notes};
+      if (sampleIndices) result.sampleIndices = sampleIndices;
+      return result;
     },
   };
+}
+
+/** Reuse a parsed cloud in memory; 0 or a non-reducing limit returns the same object. */
+function samplePointCloud(cloud, maxPoints = 0) {
+  pointLimit(maxPoints);
+  if (!cloud || !Number.isSafeInteger(cloud.count) || cloud.count < 1 || !cloud.positions || cloud.positions.length !== cloud.count * 3) pointError('内存点云的点数或 XYZ 数组无效');
+  if (!maxPoints || maxPoints >= cloud.count) return cloud;
+  const selected = pointSampleIndices(cloud.count, maxPoints), count = selected.length;
+  const positions = new Float64Array(count * 3), fields = Object.create(null), rgb = cloud.rgb ? new Float32Array(count * 3) : null;
+  const sampleIndices = new Float64Array(count);
+  for (const [name, values] of Object.entries(cloud.fields || {})) {
+    if (!values || values.length !== cloud.count) pointError(`属性 ${name} 长度与点数不一致`);
+    fields[name] = new Float32Array(count);
+  }
+  if (cloud.rgb && cloud.rgb.length !== cloud.count * 3) pointError('RGB 数组长度与点数不一致');
+  for (let target = 0; target < count; target++) {
+    const source = selected[target];
+    for (let axis = 0; axis < 3; axis++) positions[target * 3 + axis] = cloud.positions[source * 3 + axis];
+    for (const name of Object.keys(fields)) fields[name][target] = cloud.fields[name][source];
+    if (rgb) for (let channel = 0; channel < 3; channel++) rgb[target * 3 + channel] = cloud.rgb[source * 3 + channel];
+    sampleIndices[target] = cloud.sampleIndices ? cloud.sampleIndices[source] : source;
+  }
+  const notes = [...(cloud.notes || []), `从已读取的 ${cloud.count.toLocaleString()} 点中使用固定种子蓄水池采样显示 ${count.toLocaleString()} 点；未重新读取文件，坐标范围仍覆盖全部原始点。`];
+  const result = {...cloud, positions, fields, rgb, count, sampleIndices, bounds: cloud.bounds.map(point => Array.from(point)), notes};
+  if (cloud.sources) {
+    let cursor = 0;
+    result.sources = cloud.sources.map(source => {
+      const start = cursor, end = source.start + source.count;
+      while (cursor < count && selected[cursor] < end) cursor++;
+      return {...source, start, count: cursor - start};
+    }).filter(source => source.count);
+  }
+  return result;
 }
 
 function* pointTextLines(text) {
@@ -631,69 +1313,52 @@ function pointTextCheckLine(record) {
   if (record.text.length > POINT_TEXT_MAX_LINE_CHARS) pointError(`第 ${record.line} 行过长（超过 1,048,576 字符）；请检查换行符或文件格式`);
 }
 
-/** Shared first pass for synchronous buffers and streaming File/Blob reads. */
-function pointTextCounter(filename) {
+/** Consume each text line once, infer its schema, validate, and retain typed point blocks. */
+function pointTextParser(filename, maxPoints) {
   const notes = [];
-  let header = null, declared = null, totalCount = 0, firstDataLine = 0, firstFields = null;
+  let header = null, declared = null, collector = null, values = null, totalCount = 0;
   return {
     add(record) {
       pointTextCheckLine(record);
       let line = record.text.trim();
       if (!line) return;
       if (line.startsWith('#') || line.startsWith('//')) {
-        if (!totalCount && !header) {
-          const possible = pointTextTokens(line.replace(/^(#|\/\/)\s*/, '')).map(v => v.replace(/^['"]|['"]$/g, '').toLowerCase());
-          if (['x', 'y', 'z'].every(name => possible.includes(name))) header = possible;
+        if (!collector && !header) {
+          const possible = pointTextTokens(line.replace(/^(#|\/\/)\s*/, '')).map(value => value.replace(/^['"]|['"]$/g, '').toLowerCase());
+          if (['x', 'y', 'z'].every(name => possible.includes(name))) header = pointNames(possible);
         }
         return;
       }
-      // Subsequent rows only need counting here; the second pass validates every row.
-      if (!totalCount) {
-        line = line.split('#')[0].trim();
-        const parts = pointTextTokens(line);
+      line = line.split('#')[0].trim();
+      if (!line) return;
+      const parts = pointTextTokens(line);
+      if (!collector) {
         if (!header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
-          declared = Number(parts[0]); return;
+          declared = Number(parts[0]);
+          if (!Number.isSafeInteger(declared) || declared < 0) pointError('PTS 声明点数无效');
+          return;
         }
         if (!header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
           const candidate = pointNames(parts);
           if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${record.line} 行不是 XYZ 数值或有效的 x/y/z 表头`);
-          header = candidate; return;
+          header = candidate;
+          return;
         }
-        firstDataLine = record.line; firstFields = parts;
+        if (!header) {
+          if (parts.length < 3) pointError('点云每行至少需要 XYZ 三列');
+          header = parts.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
+          if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
+        }
+        collector = pointCollector(header, null, maxPoints, notes);
+        values = new Float64Array(header.length);
       }
-      totalCount++;
+      if (parts.length !== header.length) pointError(`第 ${record.line} 行：字段数量不一致（需要 ${header.length} 列，读取 ${parts.length} 列）`);
+      for (let i = 0; i < parts.length; i++) values[i] = numericPoint(parts[i], `第 ${record.line} 行`);
+      collector.add(values); totalCount++;
     },
     finish() {
-      if (!totalCount) pointError('点云文件为空');
+      if (!collector) pointError('点云文件为空');
       if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
-      if (!header) {
-        if (firstFields.length < 3) pointError('点云每行至少需要 XYZ 三列');
-        header = firstFields.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
-        if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
-      }
-      return {header, totalCount, firstDataLine, notes};
-    },
-  };
-}
-
-/** Shared second pass: validate all original rows, then let the collector sample. */
-function pointTextParser(metadata, maxPoints) {
-  const {header, totalCount, firstDataLine, notes} = metadata;
-  const collector = pointCollector(header, totalCount, maxPoints, notes);
-  let index = 0;
-  return {
-    add(record) {
-      pointTextCheckLine(record);
-      if (record.line < firstDataLine) return;
-      let line = record.text.trim();
-      if (!line || line.startsWith('#') || line.startsWith('//')) return;
-      line = line.split('#')[0].trim();
-      const values = pointTextTokens(line).map(value => numericPoint(value, `第 ${record.line} 行`));
-      if (values.length !== header.length) pointError(`第 ${record.line} 行：字段数量不一致（需要 ${header.length} 列，读取 ${values.length} 列）`);
-      collector.add(values, index++);
-    },
-    finish() {
-      if (index !== totalCount) pointError(`两次扫描的点数不一致：首次 ${totalCount} 点，实际读取 ${index} 点；请重新选择文件`);
       return collector.finish();
     },
   };
@@ -701,9 +1366,7 @@ function pointTextParser(metadata, maxPoints) {
 
 function parsePointText(bytes, filename, maxPoints) {
   const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
-  const counter = pointTextCounter(filename);
-  for (const record of pointTextLines(text)) counter.add(record);
-  const parser = pointTextParser(counter.finish(), maxPoints);
+  const parser = pointTextParser(filename, maxPoints);
   for (const record of pointTextLines(text)) parser.add(record);
   return parser.finish();
 }
@@ -712,16 +1375,15 @@ function pointAbort(signal) {
   if (signal?.aborted) throw new DOMException('点云读取已取消', 'AbortError');
 }
 
-async function pointTextScanFile(file, consume, phase, signal, onProgress) {
+async function pointTextScanFile(file, firstChunk, consume, signal, onProgress) {
   const decoder = new TextDecoder('utf-8');
-  let carry = '', lineNumber = 1;
-  const progress = loaded => { if (typeof onProgress === 'function') onProgress({phase, loaded, total: file.size}); };
-  pointAbort(signal);
-  progress(0);
-  for (let offset = 0; offset < file.size; offset += POINT_TEXT_CHUNK_BYTES) {
+  let carry = '', lineNumber = 1, offset = 0;
+  const progress = loaded => { if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded, total: file.size}); };
+  pointAbort(signal); progress(0);
+  while (offset < file.size) {
     pointAbort(signal);
     const end = Math.min(offset + POINT_TEXT_CHUNK_BYTES, file.size);
-    const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+    const bytes = offset === 0 ? firstChunk : new Uint8Array(await file.slice(offset, end).arrayBuffer());
     pointAbort(signal);
     if (bytes.byteLength !== end - offset) pointError(`文件读取不完整：需要 ${end - offset} 字节，实际读取 ${bytes.byteLength} 字节`);
     const block = carry + decoder.decode(bytes, {stream: true});
@@ -732,8 +1394,9 @@ async function pointTextScanFile(file, consume, phase, signal, onProgress) {
     }
     carry = block.slice(start);
     pointTextCheckLine({text: carry, line: lineNumber});
-    progress(end);
-    // Yield between bounded chunks so rendering, progress, and cancellation remain responsive.
+    offset = end;
+    progress(offset);
+    // Yield between bounded chunks so progress, rendering and cancellation can run.
     await new Promise(resolve => setTimeout(resolve, 0));
     pointAbort(signal);
   }
@@ -888,8 +1551,8 @@ function pointCloudFormat(filename, start) {
 }
 
 /** XYZ/TXT/CSV/PTS, ASCII/binary PLY, and ASCII/uncompressed-binary PCD. No LAS/LAZ. */
-function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) {
-  if (!Number.isSafeInteger(maxPoints) || maxPoints < 1) pointError('maxPoints 必须为正整数');
+function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 0} = {}) {
+  pointLimit(maxPoints);
   const bytes = arrayBuffer instanceof ArrayBuffer ? new Uint8Array(arrayBuffer) : ArrayBuffer.isView(arrayBuffer) ? new Uint8Array(arrayBuffer.buffer, arrayBuffer.byteOffset, arrayBuffer.byteLength) : null;
   if (!bytes) pointError('点云读取器需要 ArrayBuffer');
   if (!bytes.byteLength) pointError('点云文件为空');
@@ -900,35 +1563,39 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
   return parsePointText(bytes, filename, maxPoints);
 }
 
-/** Read File/Blob text clouds in bounded chunks; PLY/PCD retain their existing buffer parser. */
-async function readPointCloud(file, {maxPoints = 500000, signal, onProgress} = {}) {
-  if (!Number.isSafeInteger(maxPoints) || maxPoints < 1) pointError('maxPoints 必须为正整数');
-  pointAbort(signal);
+/** One-pass bounded text reads; 0 means unlimited points. PLY/PCD use the buffer parser. */
+async function readPointCloud(file, {maxPoints = 0, signal, onProgress} = {}) {
+  pointLimit(maxPoints); pointAbort(signal);
   if (!file || typeof file.slice !== 'function' || !Number.isSafeInteger(file.size) || file.size < 0) pointError('点云读取器需要 File 或 Blob');
   if (!file.size) pointError('点云文件为空');
   const filename = String(file.name || '');
-  const prefixSize = Math.min(256, file.size);
-  const prefix = new Uint8Array(await file.slice(0, prefixSize).arrayBuffer());
+  // This first chunk is passed into the text scanner, not read again after sniffing.
+  const firstSize = Math.min(POINT_TEXT_CHUNK_BYTES, file.size);
+  const first = new Uint8Array(await file.slice(0, firstSize).arrayBuffer());
   pointAbort(signal);
-  if (!prefix.byteLength) pointError('文件头读取失败，请重新选择文件');
-  const start = POINT_DECODER.decode(prefix).replace(/^\uFEFF/, '');
+  if (first.byteLength !== firstSize) pointError('文件头读取不完整，请重新选择文件');
+  const start = POINT_DECODER.decode(first.subarray(0, Math.min(256, first.length))).replace(/^\uFEFF/, '');
   const format = pointCloudFormat(filename, start);
   if (format !== 'text') {
     if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: 0, total: file.size});
     pointAbort(signal);
-    const buffer = await file.slice(0, file.size).arrayBuffer();
-    pointAbort(signal);
-    if (buffer.byteLength !== file.size) pointError('点云文件读取不完整，请重新选择文件');
+    let buffer = first;
+    if (first.byteLength !== file.size) {
+      buffer = new Uint8Array(file.size); buffer.set(first);
+      const rest = new Uint8Array(await file.slice(firstSize, file.size).arrayBuffer());
+      pointAbort(signal);
+      if (rest.byteLength !== file.size - firstSize) pointError('点云文件读取不完整，请重新选择文件');
+      buffer.set(rest, firstSize);
+    }
     if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: file.size, total: file.size});
-    await new Promise(resolve => setTimeout(resolve, 0));
-    pointAbort(signal);
+    await new Promise(resolve => setTimeout(resolve, 0)); pointAbort(signal);
     return parsePointCloud(buffer, filename, {maxPoints});
   }
-  const counter = pointTextCounter(filename);
-  await pointTextScanFile(file, record => counter.add(record), 'count', signal, onProgress);
-  const parser = pointTextParser(counter.finish(), maxPoints);
-  await pointTextScanFile(file, record => parser.add(record), 'parse', signal, onProgress);
-  return parser.finish();
+  const parser = pointTextParser(filename, maxPoints);
+  await pointTextScanFile(file, first, record => parser.add(record), signal, onProgress);
+  const result = parser.finish();
+  pointAbort(signal);
+  return result;
 }
 
 
@@ -1021,7 +1688,184 @@ function mergePointClouds(items) {
 }
 
 
+/** Scene metadata only: no concatenation of point coordinates or scalar arrays. */
+function describePointClouds(items) {
+  if (!items.length) return null;
+  const fields = Object.create(null), bounds = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
+  const sources = [], notes = new Set(); let count = 0, totalCount = 0, rgb = false;
+  for (const {name, cloud} of items) {
+    for (let axis = 0; axis < 3; axis++) {
+      bounds[0][axis] = Math.min(bounds[0][axis], cloud.bounds[0][axis]);
+      bounds[1][axis] = Math.max(bounds[1][axis], cloud.bounds[1][axis]);
+    }
+    for (const key of Object.keys(cloud.fields || {})) fields[key] = null;
+    sources.push({name, start: count, count: cloud.count, totalCount: cloud.totalCount, color: cloudSourceColor(name)});
+    count += cloud.count; totalCount += cloud.totalCount; rgb ||= !!cloud.rgb;
+    for (const note of cloud.notes || []) notes.add(note);
+  }
+  return {count, totalCount, bounds, fields, rgb, sources, notes: [...notes]};
+}
+
+
+// Source: cloud-cache.js
+
+function cloudCacheAbort(reason) {
+  return reason instanceof Error ? reason : new DOMException('点云读取已取消', 'AbortError');
+}
+function cloudCacheSupports(available, requested) {
+  return available === 0 || (requested > 0 && available >= requested);
+}
+
+// Completed data and in-flight reads belong to Files; UI consumers own only subscriptions.
+class CloudFileCache {
+  constructor({budget = 256 * 1024 * 1024, readCloud = readPointCloud, readWire = async file => parseWireOBJ(await file.text(), file.name)} = {}) {
+    this.budget = budget; this.readCloud = readCloud; this.readWire = readWire;
+    this.records = new Map(); this.pending = new Map(); this.active = new Set(); this.stats = {reads: 0, hits: 0};
+  }
+  setActive(files) {
+    this.active = new Set(files.filter(Boolean));
+    for (const task of [...this.pending.values()]) if (!this.active.has(task.file)) this.cancelTask(task);
+    this.trim();
+  }
+  clear() {
+    this.active.clear();
+    for (const task of [...this.pending.values()]) this.cancelTask(task);
+    this.records.clear();
+  }
+  bytes(value) {
+    const buffers = new Set();
+    for (const array of [value.positions, value.rgb, value.sampleIndices, ...Object.values(value.fields || {})]) {
+      if (array?.buffer) buffers.add(array.buffer);
+    }
+    return [...buffers].reduce((sum, buffer) => sum + buffer.byteLength, 0)
+      + (value.vertices?.length || 0) * 24 + (value.edges?.length || 0) * 16;
+  }
+  trim() {
+    let total = [...this.records.values()].reduce((sum, record) => sum + record.bytes, 0);
+    for (const [file, record] of this.records) {
+      if (total <= this.budget && this.records.size <= 64) break;
+      if (this.active.has(file)) continue;
+      this.records.delete(file); total -= record.bytes;
+    }
+  }
+  view(record, maxPoints) {
+    let result = record.value;
+    if (record.kind === 'cloud' && maxPoints > 0 && maxPoints < result.count) {
+      if (!record.views.has(maxPoints)) {
+        record.views.clear(); record.views.set(maxPoints, samplePointCloud(result, maxPoints));
+        record.bytes = this.bytes(record.value) + this.bytes(record.views.get(maxPoints));
+      }
+      result = record.views.get(maxPoints);
+    }
+    return result;
+  }
+  stopIfUnowned(task) {
+    if (!task.done && !task.subscribers.size && !this.active.has(task.file)) this.cancelTask(task);
+  }
+  settle(subscriber, error, value) {
+    if (subscriber.done) return;
+    subscriber.done = true;
+    subscriber.signal?.removeEventListener('abort', subscriber.onAbort);
+    subscriber.task.subscribers.delete(subscriber);
+    if (error) subscriber.reject(error); else subscriber.resolve(value);
+    this.stopIfUnowned(subscriber.task);
+  }
+  cancelTask(task, {transfer = false} = {}) {
+    if (task.done) return [];
+    task.done = true;
+    if (this.pending.get(task.file) === task) this.pending.delete(task.file);
+    const subscribers = [...task.subscribers];
+    if (transfer) task.subscribers.clear();
+    task.controller.abort();
+    if (!transfer) for (const subscriber of subscribers) this.settle(subscriber, cloudCacheAbort());
+    return transfer ? subscribers : [];
+  }
+  notify(task, progress) {
+    if (task.done || task.controller.signal.aborted) return;
+    task.progress = progress;
+    for (const subscriber of [...task.subscribers]) {
+      if (subscriber.done || subscriber.signal?.aborted) continue;
+      try { subscriber.onProgress?.(progress); }
+      catch (error) { this.settle(subscriber, error); }
+    }
+  }
+  start(file, kind, maxPoints, transferred = []) {
+    const task = {file, kind, limit: maxPoints, controller: new AbortController(), subscribers: new Set(), progress: null, done: false, promise: null};
+    for (const subscriber of transferred) {
+      if (subscriber.done) continue;
+      subscriber.task = task;
+      task.subscribers.add(subscriber);
+    }
+    this.pending.set(file, task); this.stats.reads++;
+    // Start in a microtask so the initiating consumer can subscribe before progress begins.
+    task.promise = Promise.resolve().then(() => {
+      if (task.controller.signal.aborted) throw cloudCacheAbort();
+      const readOptions = {maxPoints, signal: task.controller.signal, onProgress: event => this.notify(task, event)};
+      return kind === 'cloud' ? this.readCloud(file, readOptions) : this.readWire(file, readOptions);
+    }).then(value => {
+      // Even readers that ignore AbortSignal may never publish a stale/cancelled result.
+      if (task.done || task.controller.signal.aborted || this.pending.get(file) !== task) throw cloudCacheAbort();
+      const record = {kind, value, limit: maxPoints, bytes: this.bytes(value), views: new Map()};
+      this.records.delete(file); this.records.set(file, record);
+      this.pending.delete(file); task.done = true;
+      for (const subscriber of [...task.subscribers]) {
+        if (subscriber.signal?.aborted) this.settle(subscriber, cloudCacheAbort(subscriber.signal.reason));
+        else {
+          try { this.settle(subscriber, null, this.view(record, subscriber.maxPoints)); }
+          catch (error) { this.settle(subscriber, error); }
+        }
+      }
+      this.trim(); return record;
+    }).catch(error => {
+      if (!task.done) {
+        task.done = true;
+        if (this.pending.get(file) === task) this.pending.delete(file);
+        for (const subscriber of [...task.subscribers]) this.settle(subscriber, error);
+      }
+      throw error;
+    });
+    // Consumers have their own promises. Handle this owner promise even with no subscribers.
+    task.promise.catch(() => {});
+    return task;
+  }
+  subscribe(task, {maxPoints, signal, onProgress}) {
+    return new Promise((resolve, reject) => {
+      const subscriber = {task, maxPoints, signal, onProgress, resolve, reject, done: false, onAbort: null};
+      subscriber.onAbort = () => this.settle(subscriber, cloudCacheAbort(signal?.reason));
+      task.subscribers.add(subscriber);
+      signal?.addEventListener('abort', subscriber.onAbort, {once: true});
+      if (signal?.aborted) subscriber.onAbort();
+      else if (task.progress !== null && onProgress) {
+        try { onProgress(task.progress); } catch (error) { this.settle(subscriber, error); }
+      }
+    });
+  }
+  async read(file, kind, {maxPoints = 0, signal, onProgress} = {}) {
+    if (!file) return null;
+    if (signal?.aborted) throw cloudCacheAbort(signal.reason);
+    if (!Number.isSafeInteger(maxPoints) || maxPoints < 0) throw Error('maxPoints 必须为非负整数；0 表示全量');
+    const record = this.records.get(file);
+    const sufficient = record && record.kind === kind && (kind === 'wire' || record.value.count === record.value.totalCount
+      || cloudCacheSupports(record.limit, maxPoints));
+    if (sufficient) {
+      this.stats.hits++; this.records.delete(file); this.records.set(file, record);
+      const result = this.view(record, maxPoints); this.trim(); return result;
+    }
+    let task = this.pending.get(file);
+    if (task && task.kind === kind && (kind === 'wire' || cloudCacheSupports(task.limit, maxPoints))) this.stats.hits++;
+    else {
+      // A higher detail request replaces an insufficient parser but keeps live consumers.
+      const transferred = task ? this.cancelTask(task, {transfer: task.kind === kind}) : [];
+      task = this.start(file, kind, maxPoints, transferred);
+    }
+    return this.subscribe(task, {maxPoints, signal, onProgress});
+  }
+}
+
+
 // Source: cloud-app.js
+
+
 
 
 
@@ -1038,7 +1882,8 @@ function mergePointClouds(items) {
   let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
-  const cached = new Map(), selectedCloudEntries = new Set();
+  const cached = new CloudFileCache(), selectedCloudEntries = new Set();
+  let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
@@ -1147,7 +1992,7 @@ function mergePointClouds(items) {
   }
   function clear() {
     loadController?.abort(); loadController = null;
-    selectedCloudEntries.clear(); lastCloudEntry = null;
+    selectedCloudEntries.clear(); lastCloudEntry = null; cached.setActive([]);
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
     selectedFiles = { cloud: null, wires: [] }; messages = []; currentPointName = ''; syncEnabled = false;
     pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
@@ -1210,21 +2055,8 @@ function mergePointClouds(items) {
     const cloud = $('cloud-file').value === 'overlay' ? overlay : $('cloud-file').value === '' ? null : active.clouds[Number($('cloud-file').value)] || null;
     return { cloud, wires };
   }
-  async function read(file, kind, { signal, onProgress, maxPoints = Number($('point-limit').value) } = {}) {
-    if (!file) return null;
-    const variant = `${kind}:${kind === 'cloud' ? maxPoints : ''}`;
-    const fileCache = cached.get(file);
-    if (fileCache?.has(variant)) return fileCache.get(variant);
-    const parsed = kind === 'cloud'
-      ? await readPointCloud(file, { maxPoints, signal, onProgress })
-      : parseWireOBJ(await file.text(), file.name);
-    if (signal?.aborted) throw new DOMException('已取消读取', 'AbortError');
-    const variants = cached.get(file) || new Map();
-    variants.set(variant, parsed);
-    while (variants.size > 3) variants.delete(variants.keys().next().value);
-    if (!cached.has(file)) cached.set(file, variants);
-    while (cached.size > 10) cached.delete(cached.keys().next().value);
-    return parsed;
+  function read(file, kind, options = {}) {
+    return cached.read(file, kind, {maxPoints: Number($('point-limit').value), ...options});
   }
   function receiveCloudFiles(files, fromFolder) {
     const existing = new Set(entries.map(entry => entry.key));
@@ -1313,49 +2145,51 @@ function mergePointClouds(items) {
       remove.onclick = () => removeCloud(entry); chip.append(dot, title, remove); container.append(chip);
     }
   }
-  async function loadCloudSelection({preserveCamera = false} = {}) {
+  async function loadCloudSelection({preserveCamera = cameraControls?.preserveView ?? true} = {}) {
     if (!selectedCloudEntries.size) { clear(); return; }
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
     const version = ++revision, selection = [...selectedCloudEntries];
-    const maxPoints = Math.floor(Number($('point-limit').value) / selection.length);
-    const snapshot = preserveCamera ? captureView() : null;
+    const maxPoints = Number($('point-limit').value);
+    cached.setActive(selection.map(entry => entry.file));
+    let snapshot = preserveCamera ? captureView() : null;
+    const before = {...cached.stats};
     syncEnabled = false;
-    pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
-    loaded = {cloud: null, wire: null}; loadedWires = []; messages = [];
-    $('loading').querySelector('span').textContent = '正在读取文件…';
+    $('loading').querySelector('span').textContent = '正在读取新增文件…';
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
     $('current-title').textContent = selection.length === 1 ? selection[0].id : `${selection.length} 个点云叠加`;
-    $('scene-stats').textContent = '正在读取所选文件…'; $('data-notes').textContent = ''; $('color-legend').hidden = true;
     const items = [], failures = [];
     try {
-      if (maxPoints < 1) throw Error('所选文件数量超过总显示点数上限，请减少选择或提高上限。');
-      // Read sequentially and divide the display budget across selected files.
+      // File limits are independent of the selection size. Existing entities stay on screen.
       for (const [index, entry] of selection.entries()) {
         if (version !== revision) return;
-        $('scene-stats').textContent = `读取文件 ${index + 1} / ${selection.length} · ${entry.id}`;
         try {
-          const cloud = await read(entry.file, 'cloud', {maxPoints, signal: controller.signal, onProgress({phase, loaded, total}) {
+          const cloud = await read(entry.file, 'cloud', {maxPoints, signal: controller.signal, onProgress({loaded, total}) {
             if (version !== revision) return;
-            const message = `${phase === 'count' ? '统计点数' : '解析点云'} ${Math.floor(loaded / total * 100)}%`;
+            const message = `解析点云 ${Math.floor(loaded / Math.max(1, total) * 100)}%`;
             $('loading').querySelector('span').textContent = `${index + 1} / ${selection.length} · ${message}`;
             $('scene-stats').textContent = `${entry.id} · ${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
           }});
-          items.push({name: entry.id, cloud});
+          items.push({key: entry.file, name: entry.id, cloud});
         } catch (cause) {
           if (version !== revision) return;
           failures.push(`${entry.id}：${cause.message}`);
         }
       }
       if (version !== revision) return;
-      loaded.cloud = mergePointClouds(items);
+      const description = describePointClouds(items);
+      snapshot = preserveCamera ? captureView() : null;
+      initViewers();
+      viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color})), {preserveView: false});
+      loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
       currentPointName = items.map(item => item.name).join(' + ');
       messages = [...(loaded.cloud?.notes || [])];
-      if (selection.length > 1) messages.push(`总显示上限在 ${selection.length} 个所选文件间均分，每个最多 ${pretty(maxPoints)} 点；全部原始点的坐标范围仍保留。`);
-      initViewers(); fields(); viewers[0].setData({cloud: loaded.cloud});
+      messages.push(maxPoints ? `每个文件最多显示 ${pretty(maxPoints)} 点，增减选择不会改变其他文件的采样。` : '全量显示 · 不设置点数上限。');
+      messages.push(`本次解析 ${cached.stats.reads - before.reads} 个文件，复用 ${cached.stats.hits - before.hits} 个缓存。`);
+      fields();
       if (snapshot) restoreView(snapshot, viewers[0]);
-      update(); updateCloudSelection();
+      update(); updateCloudSelection(); cameraControls?.refresh();
       $('scene-stats').textContent = loaded.cloud
         ? `${items.length} / ${selection.length} 个文件 · ${pretty(loaded.cloud.count)} / ${pretty(loaded.cloud.totalCount)} 点`
         : '未加载可显示的数据';
@@ -1401,14 +2235,15 @@ function mergePointClouds(items) {
       $(`panel-empty-${index + 1}`).hidden = !(index < count && file && wire && wire.edges.length === 0);
     }
   }
-  async function load({ preserveCamera = false } = {}) {
+  async function load({ preserveCamera = cameraControls?.preserveView ?? true } = {}) {
     if (!isWire) return loadCloudSelection({ preserveCamera });
     if (!active) { clear(); return; }
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
     const version = ++revision, entry = active, files = selectFiles();
-    const viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
-    if (!preserveCamera) pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
+    let viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
+    cached.setActive([files.cloud, ...files.wires]);
+    const before = {...cached.stats};
     $('loading').querySelector('span').textContent = '正在读取文件…';
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
     $('current-title').textContent = isWire ? `建筑 ${entry.id}` : entry.id; $('scene-stats').textContent = '正在读取所选文件…';
@@ -1431,8 +2266,9 @@ function mergePointClouds(items) {
     loaded.cloud = resultValue(results[0], '点云');
     loadedWires = results.slice(1).map((result, index) => resultValue(result, `线框 ${index + 1}`));
     loaded.wire = loadedWires[0] || null; selectedFiles = files; currentPointName = files.cloud?.name || '';
-    messages = [...(loaded.cloud?.notes || [])];
+    messages = [...(loaded.cloud?.notes || []), `本次解析 ${cached.stats.reads - before.reads} 个文件，复用 ${cached.stats.hits - before.hits} 个缓存。`];
     try {
+      viewSnapshot = preserveCamera ? captureView() : null;
       initViewers(); fields();
       const count = activeViewerCount();
       const sharedBounds = count > 1 ? unionBounds([loaded.cloud?.bounds, ...loadedWires.map(wire => wire?.bounds)]) : null;
@@ -1442,7 +2278,7 @@ function mergePointClouds(items) {
         else viewer.setData({});
       }));
       if (viewSnapshot) viewers.slice(0, count).forEach(viewer => restoreView(viewSnapshot, viewer));
-      syncEnabled = count > 1; update(); updatePanelDetails(files);
+      syncEnabled = count > 1; update(); updatePanelDetails(files); cameraControls?.refresh();
       const counts = [];
       loadedWires.forEach((wire, index) => { if (files.wires[index] && wire) counts.push(`${files.wires[index].name}：${pretty(wire.edges.length)} 条线`); });
       if (loaded.cloud) counts.push(`${pretty(loaded.cloud.count)} / ${pretty(loaded.cloud.totalCount)} 点`);
@@ -1472,7 +2308,7 @@ function mergePointClouds(items) {
   }
   function update() {
     const color = $('color-mode').value;
-    options = { ...options, showPoints: $('show-points').checked, showWire: isWire && $('show-wire').checked,
+    options = { ...options, ...paletteControls?.getOptions(), showPoints: $('show-points').checked, showWire: isWire && $('show-wire').checked,
       grid: $('show-grid').checked, pointSize: Number($('point-size').value), pointOpacity: Number($('point-opacity').value),
       wireColor: $('wire-color').value, colorMode: color === 'custom-rgb' ? 'rgb' : color,
       rgbFields: color === 'custom-rgb' ? ['rgb-r', 'rgb-g', 'rgb-b'].map(id => $(id).value) : null };
@@ -1480,6 +2316,9 @@ function mergePointClouds(items) {
     $('point-opacity-value').value = `${Math.round(options.pointOpacity * 100)}%`;
     pauseSync(() => viewers.forEach(viewer => viewer.setOptions(options))); viewers[0]?.render();
     const state = viewers[0]?.getState(), range = state?.colorRange;
+    paletteControls?.setScalarEnabled(color === 'height' || color.startsWith('field:'));
+    paletteControls?.setDataRange(state?.dataRange || range);
+    $('color-legend').querySelector('i').style.background = paletteGradient(options.palette, options.reverse);
     $('color-legend').hidden = !(loaded.cloud && options.showPoints && range);
     $('color-name').textContent = $('color-mode').selectedOptions[0]?.textContent || '';
     $('color-min').textContent = compact(range?.min); $('color-max').textContent = compact(range?.max);
@@ -1572,7 +2411,13 @@ function mergePointClouds(items) {
       event.preventDefault(); viewers[0]?.fit();
     }
   });
-  try { initViewers(); clear(); } catch (cause) { error(cause.message); }
+  try {
+    initViewers();
+    paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: update});
+    cameraControls = mountCameraControls({container: $('camera-controls'), getViewers: () => viewers.slice(0, activeViewerCount()),
+      space: 'raw-world', getScene: () => ({ids: isWire ? [active?.id].filter(Boolean) : [...selectedCloudEntries].map(entry => entry.id)}), pauseSync});
+    clear(); update();
+  } catch (cause) { error(cause.message); }
 })();
 
 })();

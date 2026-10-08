@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source = fs.readFileSync(new URL('./cloud-combine.js', import.meta.url), 'utf8');
-const {mergePointClouds} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {mergePointClouds, describePointClouds} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 let checks = 0;
 function check(name, work) { work(); checks++; console.log('PASS', name); }
 function cloud(positions, {fields = {}, rgb = null, totalCount, bounds, notes = []} = {}) {
@@ -87,5 +87,14 @@ check('Malformed arrays and inconsistent source counts fail explicitly', () => {
   for (const invalid of [null, {...value, count: 2}, {...value, totalCount: 0}, {...value, bounds: [[0, 0, 0], [NaN, 1, 1]]}, {...value, fields: {intensity: new Float32Array(2)}}, {...value, rgb: new Float32Array(2)}]) {
     assert.throws(() => mergePointClouds([{name: 'invalid.txt', cloud: invalid}]), /点云 invalid.txt/);
   }
+});
+check('Scene description retains metadata without allocating merged point arrays', () => {
+  const a = cloud([1000000, 2000000, 1], {fields: {intensity: [.1]}, totalCount: 20});
+  const b = cloud([1000040, 2000000, 4], {fields: {classification: [2]}, rgb: [1, 0, 0]});
+  const scene = describePointClouds([{name: 'A', cloud: a}, {name: 'B', cloud: b}]);
+  assert.equal(scene.count, 2); assert.equal(scene.totalCount, 21);
+  assert.equal(scene.positions, undefined); assert.deepEqual(Object.values(scene.fields), [null, null]);
+  assert.equal(scene.rgb, true); assert.deepEqual(scene.bounds, [[1000000, 2000000, 1], [1000040, 2000000, 4]]);
+  assert.equal(scene.sources.length, 2); assert.equal(describePointClouds([]), null);
 });
 console.log(`${checks} checks passed.`);

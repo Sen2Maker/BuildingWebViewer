@@ -1,6 +1,8 @@
 import { CloudViewer } from './cloud-renderer.js';
-import { readPointCloud, parseWireOBJ } from './point-io.js';
-import { mergePointClouds } from './cloud-combine.js';
+import { CloudFileCache } from './cloud-cache.js';
+import { describePointClouds } from './cloud-combine.js';
+import { mountPaletteControls, paletteGradient } from './palette-controls.js';
+import { mountCameraControls } from './camera-controls.js';
 
 (() => {
   const $ = id => document.getElementById(id);
@@ -15,7 +17,8 @@ import { mergePointClouds } from './cloud-combine.js';
   let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
-  const cached = new Map(), selectedCloudEntries = new Set();
+  const cached = new CloudFileCache(), selectedCloudEntries = new Set();
+  let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
@@ -124,7 +127,7 @@ import { mergePointClouds } from './cloud-combine.js';
   }
   function clear() {
     loadController?.abort(); loadController = null;
-    selectedCloudEntries.clear(); lastCloudEntry = null;
+    selectedCloudEntries.clear(); lastCloudEntry = null; cached.setActive([]);
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
     selectedFiles = { cloud: null, wires: [] }; messages = []; currentPointName = ''; syncEnabled = false;
     pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
@@ -187,21 +190,8 @@ import { mergePointClouds } from './cloud-combine.js';
     const cloud = $('cloud-file').value === 'overlay' ? overlay : $('cloud-file').value === '' ? null : active.clouds[Number($('cloud-file').value)] || null;
     return { cloud, wires };
   }
-  async function read(file, kind, { signal, onProgress, maxPoints = Number($('point-limit').value) } = {}) {
-    if (!file) return null;
-    const variant = `${kind}:${kind === 'cloud' ? maxPoints : ''}`;
-    const fileCache = cached.get(file);
-    if (fileCache?.has(variant)) return fileCache.get(variant);
-    const parsed = kind === 'cloud'
-      ? await readPointCloud(file, { maxPoints, signal, onProgress })
-      : parseWireOBJ(await file.text(), file.name);
-    if (signal?.aborted) throw new DOMException('已取消读取', 'AbortError');
-    const variants = cached.get(file) || new Map();
-    variants.set(variant, parsed);
-    while (variants.size > 3) variants.delete(variants.keys().next().value);
-    if (!cached.has(file)) cached.set(file, variants);
-    while (cached.size > 10) cached.delete(cached.keys().next().value);
-    return parsed;
+  function read(file, kind, options = {}) {
+    return cached.read(file, kind, {maxPoints: Number($('point-limit').value), ...options});
   }
   function receiveCloudFiles(files, fromFolder) {
     const existing = new Set(entries.map(entry => entry.key));
@@ -290,49 +280,51 @@ import { mergePointClouds } from './cloud-combine.js';
       remove.onclick = () => removeCloud(entry); chip.append(dot, title, remove); container.append(chip);
     }
   }
-  async function loadCloudSelection({preserveCamera = false} = {}) {
+  async function loadCloudSelection({preserveCamera = cameraControls?.preserveView ?? true} = {}) {
     if (!selectedCloudEntries.size) { clear(); return; }
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
     const version = ++revision, selection = [...selectedCloudEntries];
-    const maxPoints = Math.floor(Number($('point-limit').value) / selection.length);
-    const snapshot = preserveCamera ? captureView() : null;
+    const maxPoints = Number($('point-limit').value);
+    cached.setActive(selection.map(entry => entry.file));
+    let snapshot = preserveCamera ? captureView() : null;
+    const before = {...cached.stats};
     syncEnabled = false;
-    pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
-    loaded = {cloud: null, wire: null}; loadedWires = []; messages = [];
-    $('loading').querySelector('span').textContent = '正在读取文件…';
+    $('loading').querySelector('span').textContent = '正在读取新增文件…';
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
     $('current-title').textContent = selection.length === 1 ? selection[0].id : `${selection.length} 个点云叠加`;
-    $('scene-stats').textContent = '正在读取所选文件…'; $('data-notes').textContent = ''; $('color-legend').hidden = true;
     const items = [], failures = [];
     try {
-      if (maxPoints < 1) throw Error('所选文件数量超过总显示点数上限，请减少选择或提高上限。');
-      // Read sequentially and divide the display budget across selected files.
+      // File limits are independent of the selection size. Existing entities stay on screen.
       for (const [index, entry] of selection.entries()) {
         if (version !== revision) return;
-        $('scene-stats').textContent = `读取文件 ${index + 1} / ${selection.length} · ${entry.id}`;
         try {
-          const cloud = await read(entry.file, 'cloud', {maxPoints, signal: controller.signal, onProgress({phase, loaded, total}) {
+          const cloud = await read(entry.file, 'cloud', {maxPoints, signal: controller.signal, onProgress({loaded, total}) {
             if (version !== revision) return;
-            const message = `${phase === 'count' ? '统计点数' : '解析点云'} ${Math.floor(loaded / total * 100)}%`;
+            const message = `解析点云 ${Math.floor(loaded / Math.max(1, total) * 100)}%`;
             $('loading').querySelector('span').textContent = `${index + 1} / ${selection.length} · ${message}`;
             $('scene-stats').textContent = `${entry.id} · ${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
           }});
-          items.push({name: entry.id, cloud});
+          items.push({key: entry.file, name: entry.id, cloud});
         } catch (cause) {
           if (version !== revision) return;
           failures.push(`${entry.id}：${cause.message}`);
         }
       }
       if (version !== revision) return;
-      loaded.cloud = mergePointClouds(items);
+      const description = describePointClouds(items);
+      snapshot = preserveCamera ? captureView() : null;
+      initViewers();
+      viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color})), {preserveView: false});
+      loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
       currentPointName = items.map(item => item.name).join(' + ');
       messages = [...(loaded.cloud?.notes || [])];
-      if (selection.length > 1) messages.push(`总显示上限在 ${selection.length} 个所选文件间均分，每个最多 ${pretty(maxPoints)} 点；全部原始点的坐标范围仍保留。`);
-      initViewers(); fields(); viewers[0].setData({cloud: loaded.cloud});
+      messages.push(maxPoints ? `每个文件最多显示 ${pretty(maxPoints)} 点，增减选择不会改变其他文件的采样。` : '全量显示 · 不设置点数上限。');
+      messages.push(`本次解析 ${cached.stats.reads - before.reads} 个文件，复用 ${cached.stats.hits - before.hits} 个缓存。`);
+      fields();
       if (snapshot) restoreView(snapshot, viewers[0]);
-      update(); updateCloudSelection();
+      update(); updateCloudSelection(); cameraControls?.refresh();
       $('scene-stats').textContent = loaded.cloud
         ? `${items.length} / ${selection.length} 个文件 · ${pretty(loaded.cloud.count)} / ${pretty(loaded.cloud.totalCount)} 点`
         : '未加载可显示的数据';
@@ -378,14 +370,15 @@ import { mergePointClouds } from './cloud-combine.js';
       $(`panel-empty-${index + 1}`).hidden = !(index < count && file && wire && wire.edges.length === 0);
     }
   }
-  async function load({ preserveCamera = false } = {}) {
+  async function load({ preserveCamera = cameraControls?.preserveView ?? true } = {}) {
     if (!isWire) return loadCloudSelection({ preserveCamera });
     if (!active) { clear(); return; }
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
     const version = ++revision, entry = active, files = selectFiles();
-    const viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
-    if (!preserveCamera) pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
+    let viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
+    cached.setActive([files.cloud, ...files.wires]);
+    const before = {...cached.stats};
     $('loading').querySelector('span').textContent = '正在读取文件…';
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
     $('current-title').textContent = isWire ? `建筑 ${entry.id}` : entry.id; $('scene-stats').textContent = '正在读取所选文件…';
@@ -408,8 +401,9 @@ import { mergePointClouds } from './cloud-combine.js';
     loaded.cloud = resultValue(results[0], '点云');
     loadedWires = results.slice(1).map((result, index) => resultValue(result, `线框 ${index + 1}`));
     loaded.wire = loadedWires[0] || null; selectedFiles = files; currentPointName = files.cloud?.name || '';
-    messages = [...(loaded.cloud?.notes || [])];
+    messages = [...(loaded.cloud?.notes || []), `本次解析 ${cached.stats.reads - before.reads} 个文件，复用 ${cached.stats.hits - before.hits} 个缓存。`];
     try {
+      viewSnapshot = preserveCamera ? captureView() : null;
       initViewers(); fields();
       const count = activeViewerCount();
       const sharedBounds = count > 1 ? unionBounds([loaded.cloud?.bounds, ...loadedWires.map(wire => wire?.bounds)]) : null;
@@ -419,7 +413,7 @@ import { mergePointClouds } from './cloud-combine.js';
         else viewer.setData({});
       }));
       if (viewSnapshot) viewers.slice(0, count).forEach(viewer => restoreView(viewSnapshot, viewer));
-      syncEnabled = count > 1; update(); updatePanelDetails(files);
+      syncEnabled = count > 1; update(); updatePanelDetails(files); cameraControls?.refresh();
       const counts = [];
       loadedWires.forEach((wire, index) => { if (files.wires[index] && wire) counts.push(`${files.wires[index].name}：${pretty(wire.edges.length)} 条线`); });
       if (loaded.cloud) counts.push(`${pretty(loaded.cloud.count)} / ${pretty(loaded.cloud.totalCount)} 点`);
@@ -449,7 +443,7 @@ import { mergePointClouds } from './cloud-combine.js';
   }
   function update() {
     const color = $('color-mode').value;
-    options = { ...options, showPoints: $('show-points').checked, showWire: isWire && $('show-wire').checked,
+    options = { ...options, ...paletteControls?.getOptions(), showPoints: $('show-points').checked, showWire: isWire && $('show-wire').checked,
       grid: $('show-grid').checked, pointSize: Number($('point-size').value), pointOpacity: Number($('point-opacity').value),
       wireColor: $('wire-color').value, colorMode: color === 'custom-rgb' ? 'rgb' : color,
       rgbFields: color === 'custom-rgb' ? ['rgb-r', 'rgb-g', 'rgb-b'].map(id => $(id).value) : null };
@@ -457,6 +451,9 @@ import { mergePointClouds } from './cloud-combine.js';
     $('point-opacity-value').value = `${Math.round(options.pointOpacity * 100)}%`;
     pauseSync(() => viewers.forEach(viewer => viewer.setOptions(options))); viewers[0]?.render();
     const state = viewers[0]?.getState(), range = state?.colorRange;
+    paletteControls?.setScalarEnabled(color === 'height' || color.startsWith('field:'));
+    paletteControls?.setDataRange(state?.dataRange || range);
+    $('color-legend').querySelector('i').style.background = paletteGradient(options.palette, options.reverse);
     $('color-legend').hidden = !(loaded.cloud && options.showPoints && range);
     $('color-name').textContent = $('color-mode').selectedOptions[0]?.textContent || '';
     $('color-min').textContent = compact(range?.min); $('color-max').textContent = compact(range?.max);
@@ -549,5 +546,11 @@ import { mergePointClouds } from './cloud-combine.js';
       event.preventDefault(); viewers[0]?.fit();
     }
   });
-  try { initViewers(); clear(); } catch (cause) { error(cause.message); }
+  try {
+    initViewers();
+    paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: update});
+    cameraControls = mountCameraControls({container: $('camera-controls'), getViewers: () => viewers.slice(0, activeViewerCount()),
+      space: 'raw-world', getScene: () => ({ids: isWire ? [active?.id].filter(Boolean) : [...selectedCloudEntries].map(entry => entry.id)}), pauseSync});
+    clear(); update();
+  } catch (cause) { error(cause.message); }
 })();

@@ -84,3 +84,22 @@ export function mergePointClouds(items) {
   if (missingRGB.length) notes.push(`${[...new Set(missingRGB)].join('、')} 没有 RGB，合并后的对应 RGB 值保留为 NaN；可使用高度、属性或按文件着色。`);
   return {positions, count, totalCount, bounds, fields, rgb, notes, sources};
 }
+
+
+/** Scene metadata only: no concatenation of point coordinates or scalar arrays. */
+export function describePointClouds(items) {
+  if (!items.length) return null;
+  const fields = Object.create(null), bounds = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
+  const sources = [], notes = new Set(); let count = 0, totalCount = 0, rgb = false;
+  for (const {name, cloud} of items) {
+    for (let axis = 0; axis < 3; axis++) {
+      bounds[0][axis] = Math.min(bounds[0][axis], cloud.bounds[0][axis]);
+      bounds[1][axis] = Math.max(bounds[1][axis], cloud.bounds[1][axis]);
+    }
+    for (const key of Object.keys(cloud.fields || {})) fields[key] = null;
+    sources.push({name, start: count, count: cloud.count, totalCount: cloud.totalCount, color: cloudSourceColor(name)});
+    count += cloud.count; totalCount += cloud.totalCount; rgb ||= !!cloud.rgb;
+    for (const note of cloud.notes || []) notes.add(note);
+  }
+  return {count, totalCount, bounds, fields, rgb, sources, notes: [...notes]};
+}

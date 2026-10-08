@@ -1,5 +1,7 @@
 import { MeshViewer } from './renderer.js';
 import { parseOBJ } from './obj-parser.js';
+import { mountCameraControls } from './camera-controls.js';
+import { mountPaletteControls, paletteGradient } from './palette-controls.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_SELECTED = 24, PAGE_SIZE = 50;
@@ -7,7 +9,7 @@ const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set(), page = 0;
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
 let labelElements = new Map(), latestLabels = [];
-let localFiles = new Map();
+let localFiles = new Map(), cameraControls = null, paletteControls = null;
 let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
 
 function showError(message, retry = false) {
@@ -143,6 +145,7 @@ async function loadSelection() {
   if (!ids.length) {
     currentModels = [];
     viewer?.setModels([]);
+    cameraControls?.refresh(); updateHeightLegend();
     renderLabels([]);
     $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
     $('scene-stats').textContent = catalog.length ? '未选择楼栋' : '请先点击左侧“选择模型文件夹”';
@@ -178,9 +181,12 @@ async function loadSelection() {
   };
   await Promise.all(Array.from({length: Math.min(4, ids.length)}, worker));
   if (version !== generation) return;
+  const savedView = cameraControls?.preserveView ? cameraControls.capture() : null;
   currentModels = ids.map(id => results.get(id)).filter(Boolean);
   try {
     viewer?.setModels(currentModels);
+    if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
+    cameraControls?.refresh(); updateHeightLegend();
     const triangles = currentModels.reduce((sum, m) => sum + m.faces.length, 0);
     const vertices = currentModels.reduce((sum, m) => sum + m.vertices.length, 0);
     $('scene-stats').textContent = currentModels.length ? `已显示 ${currentModels.length} / ${ids.length} 栋 · ${number(triangles)} 三角面 · ${number(vertices)} 顶点` : '未显示模型';
@@ -191,9 +197,25 @@ async function loadSelection() {
   } catch (error) { showError(`模型渲染失败：${error.message}`, true); }
   finally { $('loading').hidden = true; }
 }
+function updateHeightLegend() {
+  const legend = $('height-legend'); if (!legend) return;
+  const range = viewer?.getState().colorRange;
+  const valid = range && Number.isFinite(range.min) && Number.isFinite(range.max);
+  legend.hidden = !(options.colors === 'height' && currentModels.length && valid);
+  if (valid) {
+    $('height-min').textContent = Number(range.min.toPrecision(6)).toString();
+    $('height-max').textContent = Number(range.max.toPrecision(6)).toString();
+    legend.querySelector('i').style.background = paletteGradient(options.palette, options.reverse);
+    paletteControls?.setDataRange?.(range);
+  }
+}
 function updateOptions() {
-  options = {mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked};
+  const savedView = cameraControls?.preserveView && $('scale-mode').value !== options.scale ? cameraControls.capture() : null;
+  options = {mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
   viewer?.setOptions(options);
+  if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
+  paletteControls?.setScalarEnabled(options.colors === 'height');
+  cameraControls?.refresh(); updateHeightLegend();
   $('layout-title').textContent = options.scale === 'real' ? '等比例陈列' : '统一展示大小';
   $('layout-note').textContent = options.scale === 'real' ? '独立模型重新排列 · 非实际地理位置' : '各栋独立等比缩放 · 不可比较实际大小';
   $('legend').hidden = options.colors !== 'surface' || options.mode === 'wire';
@@ -265,7 +287,10 @@ document.addEventListener('keydown', event => {
 
 function ensureViewer() {
   if (!viewer) viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});
-  viewer.setOptions(options);
+  if (!paletteControls && $('palette-controls')) paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: updateOptions});
+  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
+  options = {...options, ...paletteControls?.getOptions()};
+  viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
 function folderReady(fileList) {
   if (!fileList.length) return;

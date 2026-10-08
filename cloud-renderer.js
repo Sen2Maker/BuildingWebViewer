@@ -1,21 +1,28 @@
+import { samplePalette, paletteUniforms, validatePaletteOptions, PALETTE_GLSL } from './palettes.js';
 /** Point clouds and edge networks share one origin, preserving their original coordinate alignment. */
 const CLOUD_DEG = Math.PI / 180;
 const CLOUD_DOT = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const CLOUD_CLAMP = (value, low, high) => Math.max(low, Math.min(high, value));
-const CLOUD_RAMP = [[.20, .32, .65], [.13, .59, .70], [.35, .75, .55], [.90, .80, .32], [.88, .33, .23]];
 const CLOUD_VERTEX_SOURCE = `
 precision highp float;
 attribute vec3 position;
 attribute vec3 vertexColor;
+attribute vec2 scalarValue;
+uniform vec3 originOffset;
+uniform vec2 scalarTransform;
+uniform int colorMode;
+${PALETTE_GLSL}
 uniform mat4 matrix;
 uniform float pointSize;
 uniform int useVertexColor;
 uniform vec3 solidColor;
 varying vec3 color;
 void main() {
-  gl_Position = matrix * vec4(position, 1.0);
+  gl_Position = matrix * vec4(position + originOffset, 1.0);
   gl_PointSize = pointSize;
   color = useVertexColor == 1 ? vertexColor : solidColor;
+  if (colorMode == 2) color = paletteColor(position.z * scalarTransform.y + scalarTransform.x);
+  if (colorMode == 3) color = scalarValue.y > .5 ? paletteColor(scalarValue.x * scalarTransform.y + scalarTransform.x) : vec3(.55, .59, .61);
 }`;
 const CLOUD_FRAGMENT_SOURCE = `
 precision mediump float;
@@ -57,11 +64,12 @@ function CLOUD_UNION(bounds) {
 }
 
 export class CloudViewer {
-  constructor(canvas, { onError = () => {} } = {}) {
+  constructor(canvas, { onError = () => {}, onViewChange = () => {} } = {}) {
     this.canvas = canvas;
     this.onError = onError;
+    this.onViewChange = onViewChange;
     this.options = { showPoints: true, showWire: true, pointSize: 2, pointOpacity: 1,
-      colorMode: 'height', pointColor: '#547d99', wireColor: '#ed8e48', rgbFields: null, grid: true };
+      colorMode: 'height', pointColor: '#547d99', wireColor: '#ed8e48', rgbFields: null, grid: true, palette: 'current', reverse: false, range: null };
     this.data = { cloud: null, wire: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.target = [0, 0, 0];
@@ -72,6 +80,11 @@ export class CloudViewer {
     this.cloudBounds = null;
     this.wireBounds = null;
     this.buffers = {};
+    this.entityCache = new Map();
+    this.activeClouds = [];
+    this.wireEntry = null;
+    this.cacheClock = 0;
+    this.inactiveCacheLimit = 64 * 1024 * 1024;
     this.pointCount = 0;
     this.edgeCount = 0;
     this.colorRange = null;
@@ -118,8 +131,8 @@ export class CloudViewer {
       throw new Error(`WebGL 程序链接失败：${message}`);
     }
     this.program = program;
-    this.locations = { position: gl.getAttribLocation(program, 'position'), color: gl.getAttribLocation(program, 'vertexColor') };
-    for (const name of ['matrix', 'pointSize', 'useVertexColor', 'solidColor', 'isPoint', 'opacity']) this.locations[name] = gl.getUniformLocation(program, name);
+    this.locations = { position: gl.getAttribLocation(program, 'position'), color: gl.getAttribLocation(program, 'vertexColor'), scalar: gl.getAttribLocation(program, 'scalarValue') };
+    for (const name of ['matrix', 'pointSize', 'useVertexColor', 'solidColor', 'isPoint', 'opacity', 'originOffset', 'scalarTransform', 'colorMode', 'colorStops[0]']) this.locations[name] = gl.getUniformLocation(program, name);
     const range = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
     this.pointSizeRange = range && range.length === 2 ? Array.from(range) : [1, 64];
   }
@@ -175,7 +188,10 @@ export class CloudViewer {
         const camera = { ...this.camera, pan: [...this.camera.pan] }, target = [...this.target], height = this.baseHeight;
         this.buffers = {};
         this.initGL();
-        this.setData(this.data);
+        const savedData = this.data;
+        this.entityCache = new Map(); this.activeClouds = []; this.wireEntry = null; this.gridKey = null;
+        if (savedData.clouds) this.setClouds(savedData.clouds, {...savedData, preserveView: false});
+        else this.setData(savedData);
         this.camera = camera; this.target = target; this.baseHeight = height;
         this.render();
         this.onError('');
@@ -196,57 +212,205 @@ export class CloudViewer {
     return { buffer, count: values.length / 3 };
   }
 
-  setData({ cloud = null, wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null } = {}) {
-    const next = {}, minCloud = [Infinity, Infinity, Infinity], maxCloud = [-Infinity, -Infinity, -Infinity];
-    const minWire = [Infinity, Infinity, Infinity], maxWire = [-Infinity, -Infinity, -Infinity];
-    try {
-      if (cloud && (!cloud.positions || cloud.positions.length % 3)) throw new Error('点云坐标需要按 XYZ 三列排列。');
-      const pointCount = cloud ? cloud.count ?? cloud.positions.length / 3 : 0;
-      if (!Number.isInteger(pointCount) || pointCount < 0 || (cloud && pointCount * 3 > cloud.positions.length)) throw new Error('点云数量与坐标数组不匹配。');
-      for (let i = 0; i < pointCount * 3; i++) {
-        const value = cloud.positions[i], axis = i % 3;
-        if (!Number.isFinite(value)) throw new Error('点云包含非有限坐标。');
-        minCloud[axis] = Math.min(minCloud[axis], value); maxCloud[axis] = Math.max(maxCloud[axis], value);
+  ensureCache() {
+    this.entityCache ||= new Map(); this.activeClouds ||= []; this.cacheClock ||= 0;
+    this.inactiveCacheLimit ??= 64 * 1024 * 1024;
+  }
+
+  deleteEntity(entry) {
+    for (const item of [entry?.points, entry?.colors, entry?.scalar]) if (item) this.gl.deleteBuffer(item.buffer);
+  }
+
+  pruneCache() {
+    const active = new Set(this.activeClouds.map(entry => entry.key));
+    const inactive = [...this.entityCache.values()].filter(entry => !active.has(entry.key)).sort((a, b) => b.used - a.used);
+    let bytes = 0;
+    for (let i = 0; i < inactive.length; i++) {
+      const entry = inactive[i];
+      bytes += entry.retainedBytes + entry.gpuBytes;
+      if (i >= 2 || bytes > this.inactiveCacheLimit) { this.deleteEntity(entry); this.entityCache.delete(entry.key); }
+    }
+  }
+
+  clearCache() {
+    this.ensureCache();
+    const active = new Set(this.activeClouds.map(entry => entry.key));
+    for (const [key, entry] of this.entityCache) if (!active.has(key)) { this.deleteEntity(entry); this.entityCache.delete(key); }
+  }
+
+  createEntity(item) {
+    const cloud = item.cloud;
+    if (!cloud?.positions || cloud.positions.length % 3) throw new Error('点云坐标需要按 XYZ 三列排列。');
+    const count = cloud.count ?? cloud.positions.length / 3;
+    if (!Number.isSafeInteger(count) || count < 0 || count * 3 > cloud.positions.length) throw new Error('点云数量与坐标数组不匹配。');
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < count * 3; i++) {
+      const value = cloud.positions[i], axis = i % 3;
+      if (!Number.isFinite(value)) throw new Error('点云包含非有限坐标。');
+      min[axis] = Math.min(min[axis], value); max[axis] = Math.max(max[axis], value);
+    }
+    const bounds = count ? CLOUD_UNION([[min, max], CLOUD_BOUNDS(cloud.bounds)]) : null;
+    const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < positions.length; i++) positions[i] = cloud.positions[i] - origin[i % 3];
+    const arrays = [cloud.positions, cloud.rgb, ...Object.values(cloud.fields || {})].filter(ArrayBuffer.isView);
+    const retainedBytes = [...new Set(arrays.map(array => array.buffer))].reduce((sum, buffer) => sum + buffer.byteLength, 0);
+    const entry = {key: item.key, cloud, count, bounds, origin, ranges: new Map(), points: null,
+      colors: null, scalar: null, retainedBytes, gpuBytes: positions.byteLength, used: ++this.cacheClock};
+    entry.ranges.set('height', count ? {min: min[2], max: max[2]} : null);
+    if (count) entry.points = this.makeBuffer(positions);
+    return entry;
+  }
+
+  createWire(wire) {
+    if (!wire) return null;
+    if (!Array.isArray(wire.vertices) || !Array.isArray(wire.edges)) throw new Error('线框需要 vertices 和 edges 数组。');
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (const edge of wire.edges) {
+      if (edge.length !== 2 || !edge.every(index => Number.isInteger(index) && index >= 0 && index < wire.vertices.length)) throw new Error('线框包含无效边索引。');
+      for (const index of edge) {
+        const point = wire.vertices[index];
+        if (point.length !== 3 || !point.every(Number.isFinite)) throw new Error('线框包含非有限坐标。');
+        for (let axis = 0; axis < 3; axis++) { min[axis] = Math.min(min[axis], point[axis]); max[axis] = Math.max(max[axis], point[axis]); }
       }
-      if (wire && (!Array.isArray(wire.vertices) || !Array.isArray(wire.edges))) throw new Error('线框需要 vertices 和 edges 数组。');
-      const edgeCount = wire?.edges.length || 0;
-      for (const edge of wire?.edges || []) {
-        if (edge.length !== 2 || !edge.every(index => Number.isInteger(index) && index >= 0 && index < wire.vertices.length)) throw new Error('线框包含无效边索引。');
-        for (const index of edge) {
-          const point = wire.vertices[index];
-          if (point.length !== 3 || !point.every(Number.isFinite)) throw new Error('线框包含非有限坐标。');
-          for (let axis = 0; axis < 3; axis++) {
-            minWire[axis] = Math.min(minWire[axis], point[axis]); maxWire[axis] = Math.max(maxWire[axis], point[axis]);
+    }
+    const count = wire.edges.length, bounds = count ? CLOUD_UNION([[min, max], CLOUD_BOUNDS(wire.bounds)]) : null;
+    const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+    const positions = new Float32Array(count * 6);
+    let offset = 0;
+    for (const edge of wire.edges) for (const index of edge) for (let axis = 0; axis < 3; axis++) positions[offset++] = wire.vertices[index][axis] - origin[axis];
+    return {wire, count, bounds, origin, buffer: count ? this.makeBuffer(positions) : null};
+  }
+
+  setData({cloud = null, wire = null, bounds = null, origin = null} = {}) {
+    this.setClouds(cloud ? [{key: cloud, name: '', cloud}] : [], {wire, bounds, origin, preserveView: false});
+    this.data.cloud = cloud;
+  }
+
+  /** Independent immutable cloud objects share a camera; unchanged keys reuse GPU geometry. */
+  setClouds(items, {wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null, preserveView = true} = {}) {
+    this.ensureCache();
+    if (!Array.isArray(items)) throw new Error('setClouds 需要点云条目数组。');
+    const keys = new Set(), created = [], next = [];
+    let wireEntry = this.wireEntry, grid, colorPlan;
+    try {
+      for (const item of items) {
+        if (!item || item.key === undefined || keys.has(item.key)) throw new Error('每个点云需要唯一且稳定的 key。');
+        keys.add(item.key);
+        let entry = this.entityCache.get(item.key);
+        if (!entry || entry.cloud !== item.cloud) { entry = this.createEntity(item); created.push(entry); }
+        next.push(entry);
+      }
+      if (wireEntry?.wire !== wire) wireEntry = this.createWire(wire);
+      const cloudBounds = CLOUD_UNION(next.map(entry => entry.bounds)), wireBounds = wireEntry?.bounds || null;
+      const sharedBounds = CLOUD_BOUNDS(referenceBounds), bounds = CLOUD_UNION([cloudBounds, wireBounds, sharedBounds]);
+      const validOrigin = Array.isArray(referenceOrigin) && referenceOrigin.length === 3 && referenceOrigin.every(Number.isFinite);
+      const origin = validOrigin ? [...referenceOrigin] : bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+      const gridKey = JSON.stringify([bounds, origin]);
+      grid = gridKey === this.gridKey ? this.buffers.grid : bounds ? this.makeBuffer(this.buildGrid(bounds, origin)) : null;
+      colorPlan = this.prepareColorState(next.map((entry, index) => ({...entry, item: items[index], actual: entry})));
+      const previousWorldTarget = this.target.map((value, axis) => value + this.origin[axis]);
+      const hadScene = !!this.bounds;
+      for (const entry of created) {
+        const replaced = this.entityCache.get(entry.key);
+        if (replaced) this.deleteEntity(replaced);
+        this.entityCache.set(entry.key, entry);
+      }
+      next.forEach((entry, index) => { entry.item = items[index]; entry.used = ++this.cacheClock; });
+      if (this.wireEntry && this.wireEntry !== wireEntry && this.wireEntry.buffer) this.gl.deleteBuffer(this.wireEntry.buffer.buffer);
+      if (this.buffers.grid && this.buffers.grid !== grid) this.gl.deleteBuffer(this.buffers.grid.buffer);
+      this.activeClouds = next; this.wireEntry = wireEntry;
+      this.buffers = {grid, wire: wireEntry?.buffer || null}; this.gridKey = gridKey;
+      this.data = {cloud: items.length === 1 ? items[0].cloud : null, clouds: items.map(item => ({...item})), wire,
+        bounds: sharedBounds, origin: validOrigin ? [...referenceOrigin] : null};
+      this.cloudBounds = cloudBounds; this.wireBounds = wireBounds; this.referenceBounds = sharedBounds; this.bounds = bounds; this.origin = origin;
+      this.pointCount = next.reduce((sum, entry) => sum + entry.count, 0); this.edgeCount = wireEntry?.count || 0;
+      this.commitColorState(colorPlan); this.pruneCache();
+      if (preserveView && hadScene && bounds) { this.target = previousWorldTarget.map((value, axis) => value - origin[axis]); this.render(); }
+      else this.fit();
+    } catch (error) {
+      if (colorPlan && !colorPlan.committed) this.deleteColorPlan(colorPlan);
+      for (const entry of created) if (this.entityCache.get(entry.key) !== entry) this.deleteEntity(entry);
+      if (wireEntry !== this.wireEntry && wireEntry?.buffer) this.gl.deleteBuffer(wireEntry.buffer.buffer);
+      if (grid && grid !== this.buffers.grid) this.gl.deleteBuffer(grid.buffer);
+      this.onError(error.message); throw error;
+    }
+  }
+
+  entryRange(entry, mode) {
+    if (entry.ranges.has(mode)) return entry.ranges.get(mode);
+    const name = mode.startsWith('field:') ? mode.slice(6) : mode;
+    const values = entry.cloud.fields?.[name];
+    let min = Infinity, max = -Infinity;
+    if (values?.length >= entry.count) for (let i = 0; i < entry.count; i++) {
+      const value = values[i]; if (Number.isFinite(value)) { min = Math.min(min, value); max = Math.max(max, value); }
+    }
+    const range = min === Infinity ? null : {min, max}; entry.ranges.set(mode, range); return range;
+  }
+
+  prepareColorState(entries = this.activeClouds || []) {
+    let mode = this.options.colorMode || 'height', fallback = null;
+    const field = mode.startsWith('field:') ? mode.slice(6) : mode;
+    const hasRGB = entry => this.options.rgbFields?.length === 3 && this.options.rgbFields.every(name => entry.cloud.fields?.[name]?.length >= entry.count) || entry.cloud.rgb?.length >= entry.count * 3;
+    if (mode === 'rgb' && entries.length && !entries.some(hasRGB)) { mode = 'height'; fallback = '未找到可用的 RGB 数据，已按高度着色。'; }
+    if (mode === 'file' && entries.some(entry => !this.entryFileColor(entry) && this.fileSources(entry.cloud, entry.count) === null)) { mode = 'height'; fallback = '未找到完整的点云文件来源信息，已按高度着色。'; }
+    if (!['height', 'rgb', 'solid', 'file'].includes(mode) && entries.length && !entries.some(entry => entry.cloud.fields?.[field]?.length >= entry.count)) { mode = 'height'; fallback = `字段 ${field} 不存在，已按高度着色。`; }
+    const scalar = !['rgb', 'solid', 'file'].includes(mode);
+    const ranges = scalar ? entries.map(entry => this.entryRange(entry, mode)).filter(Boolean) : [];
+    const auto = ranges.length ? {min: Math.min(...ranges.map(range => range.min)), max: Math.max(...ranges.map(range => range.max))} : null;
+    const plan = {mode, fallback, auto, range: scalar && auto ? this.options.range ? {...this.options.range} : {...auto} : null, updates: []};
+    try {
+      for (const entry of entries) {
+        if (mode === 'rgb' || mode === 'file' && !this.entryFileColor(entry)) {
+          const signature = mode === 'rgb' ? JSON.stringify(['rgb', this.options.rgbFields]) : 'file';
+          if (entry.colorKey !== signature) {
+            const colors = mode === 'rgb' && !hasRGB(entry) ? new Float32Array(entry.count * 3).fill(.55) : this.buildColors(entry.cloud, entry.count).values;
+            const buffer = entry.count ? this.makeBuffer(colors) : null;
+            plan.updates.push({entry: entry.actual || entry, colors: buffer, colorKey: signature});
           }
+        } else if (scalar && mode !== 'height' && entry.scalarKey !== mode) {
+          const name = mode.startsWith('field:') ? mode.slice(6) : mode, values = entry.cloud.fields?.[name];
+          const range = this.entryRange(entry, mode), base = range?.min || 0, scalars = new Float32Array(entry.count * 2);
+          for (let i = 0; i < entry.count; i++) if (Number.isFinite(values?.[i])) { scalars[i * 2] = values[i] - base; scalars[i * 2 + 1] = 1; }
+          const buffer = entry.count ? this.makeBuffer(scalars) : null;
+          plan.updates.push({entry: entry.actual || entry, scalar: buffer, scalarBase: base, scalarKey: mode});
         }
       }
-      const cloudBounds = pointCount ? CLOUD_UNION([[minCloud, maxCloud], CLOUD_BOUNDS(cloud.bounds)]) : null;
-      const wireBounds = edgeCount ? CLOUD_UNION([[minWire, maxWire], CLOUD_BOUNDS(wire.bounds)]) : null;
-      const sharedBounds = CLOUD_BOUNDS(referenceBounds);
-      const bounds = CLOUD_UNION([cloudBounds, wireBounds, sharedBounds]);
-      const validOrigin = Array.isArray(referenceOrigin) && referenceOrigin.length === 3 && referenceOrigin.every(Number.isFinite);
-      const origin = validOrigin ? Array.from(referenceOrigin) : bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
-      const points = new Float32Array(pointCount * 3), lines = new Float32Array(edgeCount * 6);
-      for (let i = 0; i < points.length; i++) points[i] = cloud.positions[i] - origin[i % 3];
-      let offset = 0;
-      for (const edge of wire?.edges || []) for (const index of edge) for (let axis = 0; axis < 3; axis++) lines[offset++] = wire.vertices[index][axis] - origin[axis];
-      const colors = this.buildColors(cloud, pointCount);
-      if (pointCount) { next.points = this.makeBuffer(points); next.colors = this.makeBuffer(colors.values); }
-      if (edgeCount) next.wire = this.makeBuffer(lines);
-      if (bounds) next.grid = this.makeBuffer(this.buildGrid(bounds, origin));
-      for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
-      this.buffers = next;
-      this.data = { cloud, wire, bounds: sharedBounds, origin: validOrigin ? Array.from(referenceOrigin) : null };
-      this.pointCount = pointCount; this.edgeCount = edgeCount;
-      this.bounds = bounds; this.cloudBounds = cloudBounds; this.wireBounds = wireBounds;
-      this.referenceBounds = sharedBounds; this.origin = origin;
-      this.applyColorState(colors);
-      this.fit();
-    } catch (error) {
-      for (const item of Object.values(next)) this.gl.deleteBuffer(item.buffer);
-      this.onError(error.message);
-      throw error;
+    } catch (error) { this.deleteColorPlan(plan); throw error; }
+    return plan;
+  }
+
+  deleteColorPlan(plan) {
+    for (const update of plan.updates) for (const name of ['colors','scalar']) if (update[name]) this.gl.deleteBuffer(update[name].buffer);
+  }
+
+  commitColorState(plan) {
+    for (const {entry, ...update} of plan.updates) {
+      for (const name of ['colors','scalar']) if (Object.hasOwn(update,name) && entry[name]) this.gl.deleteBuffer(entry[name].buffer);
+      Object.assign(entry, update);
+      entry.gpuBytes = entry.count * (12 + (entry.colors ? 12 : 0) + (entry.scalar ? 8 : 0));
     }
+    this.dataRange = plan.auto; this.colorRange = plan.range;
+    this.effectiveColorMode = plan.mode; this.colorFallback = plan.fallback;
+    plan.committed = true;
+  }
+
+  updateColorState() { this.commitColorState(this.prepareColorState()); }
+
+  entryFileColor(entry) {
+    const color = entry.item?.color;
+    return color?.length === 3 && Array.from(color).every(Number.isFinite) ? Array.from(color, value => CLOUD_CLAMP(value, 0, 1)) : null;
+  }
+
+  fileSources(cloud, count) {
+    const sources = Array.isArray(cloud.sources) ? [...cloud.sources].sort((a, b) => (a?.start ?? 0) - (b?.start ?? 0)) : [];
+    let covered = 0;
+    const valid = sources.length > 0 && sources.every(source => {
+      if (!source || !Number.isSafeInteger(source.start) || !Number.isSafeInteger(source.count) || source.start !== covered || source.count < 0 || source.count > count - covered) return false;
+      if ((!Array.isArray(source.color) && !ArrayBuffer.isView(source.color)) || source.color.length !== 3 || !Array.from(source.color).every(Number.isFinite)) return false;
+      covered += source.count; return true;
+    });
+    return valid && covered === count ? sources : null;
   }
 
   buildGrid(bounds, origin) {
@@ -309,13 +473,13 @@ export class CloudViewer {
       const scalar = mode === 'height' ? index => cloud.positions[index * 3 + 2] : index => fields[fieldName][index];
       let min = Infinity, max = -Infinity;
       for (let i = 0; i < count; i++) { const value = scalar(i); if (Number.isFinite(value)) { min = Math.min(min, value); max = Math.max(max, value); } }
-      if (min !== Infinity) range = { min, max };
+      if (min !== Infinity) range = this.options.range ? {...this.options.range} : { min, max };
+      if (range) { min = range.min; max = range.max; }
       for (let i = 0; i < count; i++) {
         const value = scalar(i);
         if (!Number.isFinite(value)) { values.set([.55, .59, .61], i * 3); continue; }
         const t = max > min ? CLOUD_CLAMP((value - min) / (max - min), 0, 1) : .5;
-        const ramp = t * (CLOUD_RAMP.length - 1), lower = Math.min(CLOUD_RAMP.length - 2, Math.floor(ramp)), fraction = ramp - lower;
-        for (let channel = 0; channel < 3; channel++) values[i * 3 + channel] = CLOUD_RAMP[lower][channel] * (1 - fraction) + CLOUD_RAMP[lower + 1][channel] * fraction;
+        values.set(samplePalette(t, this.options.palette, this.options.reverse), i * 3);
       }
     }
     return { values, mode, fallback, range };
@@ -328,24 +492,15 @@ export class CloudViewer {
   }
 
   setOptions(options = {}) {
-    const previous = this.options, next = { ...previous, ...options };
+    const previous = this.options, next = {...previous, ...options};
     next.pointSize = CLOUD_CLAMP(Number.isFinite(Number(next.pointSize)) ? Number(next.pointSize) : 2, .5, 64);
     next.pointOpacity = CLOUD_CLAMP(Number.isFinite(Number(next.pointOpacity)) ? Number(next.pointOpacity) : 1, 0, 1);
     next.colorMode = String(next.colorMode || 'height');
     next.rgbFields = Array.isArray(next.rgbFields) ? [...next.rgbFields] : null;
-    const recolor = next.colorMode !== previous.colorMode || JSON.stringify(next.rgbFields) !== JSON.stringify(previous.rgbFields);
+    next.palette ||= 'current'; next.reverse = !!next.reverse; next.range = next.range ? {...next.range} : null;
+    validatePaletteOptions(next);
     this.options = next;
-    if (recolor) {
-      try {
-        const colors = this.buildColors(this.data.cloud, this.pointCount);
-        if (this.pointCount) {
-          const buffer = this.makeBuffer(colors.values);
-          if (this.buffers.colors) this.gl.deleteBuffer(this.buffers.colors.buffer);
-          this.buffers.colors = buffer;
-        }
-        this.applyColorState(colors);
-      } catch (error) { this.options = previous; this.onError(error.message); throw error; }
-    }
+    try { this.updateColorState(); } catch (error) { this.options = previous; this.onError(error.message); throw error; }
     this.render();
   }
 
@@ -421,41 +576,54 @@ export class CloudViewer {
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.enableVertexAttribArray(loc.position);
-    const draw = (buffer, primitive, color, opacity, vertexColor = false) => {
+    gl.uniform3fv(loc['colorStops[0]'], paletteUniforms(this.options.palette, this.options.reverse));
+    const draw = (buffer, primitive, color, opacity, entry = null, mode = 0) => {
       if (!buffer?.count || opacity <= 0) return;
+      const localOrigin = entry?.origin || this.origin;
+      gl.uniform3fv(loc.originOffset, localOrigin.map((value, axis) => value - this.origin[axis]));
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
       gl.vertexAttribPointer(loc.position, 3, gl.FLOAT, false, 12, 0);
-      if (vertexColor && this.buffers.colors) {
-        gl.enableVertexAttribArray(loc.color);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.colors.buffer);
+      if (mode === 1 && entry?.colors) {
+        gl.enableVertexAttribArray(loc.color); gl.bindBuffer(gl.ARRAY_BUFFER, entry.colors.buffer);
         gl.vertexAttribPointer(loc.color, 3, gl.FLOAT, false, 12, 0);
       } else { gl.disableVertexAttribArray(loc.color); gl.vertexAttrib3f(loc.color, 1, 1, 1); }
-      gl.uniform1i(loc.useVertexColor, vertexColor ? 1 : 0);
-      gl.uniform3fv(loc.solidColor, color);
-      gl.uniform1f(loc.opacity, opacity);
+      if (mode === 3 && entry?.scalar) {
+        gl.enableVertexAttribArray(loc.scalar); gl.bindBuffer(gl.ARRAY_BUFFER, entry.scalar.buffer);
+        gl.vertexAttribPointer(loc.scalar, 2, gl.FLOAT, false, 8, 0);
+      } else { gl.disableVertexAttribArray(loc.scalar); gl.vertexAttrib2f(loc.scalar, 0, 0); }
+      const range = this.colorRange, span = range ? range.max - range.min : 0;
+      const base = mode === 2 ? entry.origin[2] : entry?.scalarBase || 0;
+      gl.uniform2f(loc.scalarTransform, span > 0 ? (base - range.min) / span : .5, span > 0 ? 1 / span : 0);
+      gl.uniform1i(loc.colorMode, mode);
+      gl.uniform1i(loc.useVertexColor, mode === 1 ? 1 : 0);
+      gl.uniform3fv(loc.solidColor, color); gl.uniform1f(loc.opacity, opacity);
       gl.uniform1i(loc.isPoint, primitive === gl.POINTS ? 1 : 0);
       gl.drawArrays(primitive, 0, buffer.count);
     };
     const anyVisible = (this.options.showPoints && this.pointCount && this.options.pointOpacity > 0) || (this.options.showWire && this.edgeCount);
-    if (this.options.grid && anyVisible) {
-      gl.depthMask(false);
-      draw(this.buffers.grid, gl.LINES, [.60, .66, .70], .24);
-      gl.depthMask(true);
-    }
+    if (this.options.grid && anyVisible) { gl.depthMask(false); draw(this.buffers.grid, gl.LINES, [.60,.66,.70], .24); gl.depthMask(true); }
     if (this.options.showPoints) {
       gl.depthMask(this.options.pointOpacity >= 1);
-      draw(this.buffers.points, gl.POINTS, CLOUD_HEX(this.options.pointColor, [.33, .49, .60]), this.options.pointOpacity, this.effectiveColorMode !== 'solid');
+      for (const entry of this.activeClouds || []) {
+        const mode = this.effectiveColorMode;
+        const fileColor = mode === 'file' ? this.entryFileColor(entry) : null;
+        const kind = mode === 'solid' || fileColor ? 0 : mode === 'rgb' || mode === 'file' ? 1 : mode === 'height' ? 2 : 3;
+        draw(entry.points, gl.POINTS, fileColor || CLOUD_HEX(this.options.pointColor, [.33,.49,.60]), this.options.pointOpacity, entry, kind);
+      }
       gl.depthMask(true);
     }
-    if (this.options.showWire) draw(this.buffers.wire, gl.LINES, CLOUD_HEX(this.options.wireColor, [.93, .56, .28]), 1);
+    if (this.options.showWire) draw(this.wireEntry?.buffer, gl.LINES, CLOUD_HEX(this.options.wireColor, [.93,.56,.28]), 1, this.wireEntry);
     gl.depthMask(true);
+    this.onViewChange?.(this.getState());
   }
 
   getState() {
     return { pointCount: this.pointCount, edgeCount: this.edgeCount,
-      colorRange: this.colorRange ? { ...this.colorRange } : null,
+      colorRange: this.colorRange ? { ...this.colorRange } : null, dataRange: this.dataRange ? {...this.dataRange} : null,
       requestedColorMode: this.options.colorMode, effectiveColorMode: this.effectiveColorMode,
-      colorFallback: this.colorFallback, fields: Object.keys(this.data.cloud?.fields || {}),
+      colorFallback: this.colorFallback, fields: [...new Set((this.activeClouds || []).flatMap(entry => Object.keys(entry.cloud.fields || {})))],
+      sources: (this.activeClouds || []).map(entry => ({name: entry.item?.name || '', count: entry.count, totalCount: entry.cloud.totalCount || entry.count, color: this.entryFileColor(entry)})),
+      cache: {entries: this.entityCache?.size || 0, active: this.activeClouds?.length || 0, gpuBytes: [...(this.entityCache?.values() || [])].reduce((sum, entry) => sum + entry.gpuBytes, 0)},
       camera: { ...this.camera, pan: [...this.camera.pan], target: [...this.target], origin: [...this.origin], baseHeight: this.baseHeight },
       bounds: this.bounds?.map(point => [...point]) || null,
       referenceBounds: this.referenceBounds?.map(point => [...point]) || null,
@@ -468,7 +636,10 @@ export class CloudViewer {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     for (const [name, fn, options] of this.listeners) this.canvas.removeEventListener(name, fn, options);
-    for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
+    for (const entry of this.entityCache?.values() || []) this.deleteEntity(entry);
+    if (this.wireEntry?.buffer) this.gl.deleteBuffer(this.wireEntry.buffer.buffer);
+    if (this.buffers.grid) this.gl.deleteBuffer(this.buffers.grid.buffer);
+    this.entityCache?.clear(); this.activeClouds = []; this.wireEntry = null;
     this.gl.deleteProgram(this.program);
     this.buffers = {};
   }

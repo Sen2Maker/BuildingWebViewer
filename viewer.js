@@ -2,7 +2,397 @@
 (() => {
 'use strict';
 
+// Source: palettes.js
+/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
+const PALETTE_DEFINITIONS = Object.freeze({
+  current: {label: '当前色带', stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
+  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
+  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
+  grayscale: {label: '灰度', stops: [[.08,.08,.08],[.95,.95,.95]]},
+  'blue-white-red': {label: '蓝—白—红', stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
+});
+
+function samplePalette(t, palette = 'current', reverse = false) {
+  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
+  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
+  if (reverse) value = 1 - value;
+  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
+  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
+}
+
+function paletteUniforms(palette = 'current', reverse = false) {
+  const values = new Float32Array(27);
+  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
+  return values;
+}
+
+function validatePaletteOptions(options) {
+  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(`不支持的色带：${options.palette}`);
+  if (options.range !== null && options.range !== undefined) {
+    const {min, max} = options.range;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error('手动色域需要有限数值，且最小值必须小于最大值。');
+  }
+}
+
+const PALETTE_GLSL = `
+uniform vec3 colorStops[9];
+vec3 paletteColor(float value) {
+  float t = clamp(value, 0.0, 1.0) * 8.0;
+  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
+  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
+  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
+  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
+  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
+  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
+  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
+  return mix(colorStops[7], colorStops[8], t - 7.0);
+}`;
+
+
+// Source: palette-controls.js
+
+function paletteGradient(palette = 'current', reverse = false) {
+  const stops = Array.from({length: 17}, (_, i) => `rgb(${samplePalette(i / 16, palette, reverse).map(v => Math.round(v * 255)).join(',')}) ${i / 16 * 100}%`);
+  return `linear-gradient(to right,${stops.join(',')})`;
+}
+
+function mountPaletteControls({container, onChange = () => {}, getOptions = () => ({})}) {
+  const initial = getOptions();
+  const details = document.createElement('details'); details.className = 'palette-panel viewer-control-panel';
+  details.innerHTML = `<summary><span>配色方案</span><i class="palette-preview" aria-hidden="true"></i><small class="palette-caption"></small></summary>
+    <div class="palette-body"><label>色带<select aria-label="色带方案"><option value="current">蓝 → 绿 → 黄 → 红</option><option value="viridis">Viridis · 蓝紫 → 绿 → 黄</option><option value="inferno">Inferno · 黑紫 → 橙 → 黄</option><option value="grayscale">灰度 · 黑 → 白</option><option value="blue-white-red">蓝 → 白 → 红</option></select></label>
+    <label class="check-label"><input class="palette-reverse" type="checkbox">反转色带</label>
+    <label class="check-label"><input class="palette-auto" type="checkbox" checked>自动数值范围</label>
+    <label>最小值<input class="palette-min" type="number" step="any" aria-label="色带最小值" disabled></label>
+    <label>最大值<input class="palette-max" type="number" step="any" aria-label="色带最大值" disabled></label>
+    <p class="palette-help">高度与数值属性使用色带；固定范围可让不同文件的相同数值对应相同颜色。</p><p class="palette-error" role="alert" hidden></p></div>`;
+  container.append(details);
+  const select = details.querySelector('select'), reverse = details.querySelector('.palette-reverse'), auto = details.querySelector('.palette-auto');
+  const low = details.querySelector('.palette-min'), high = details.querySelector('.palette-max'), message = details.querySelector('.palette-error');
+  let state = {palette: initial.palette || 'current', reverse: !!initial.reverse, range: initial.range || null}, enabled = true;
+  select.value = state.palette; reverse.checked = state.reverse;
+  if (state.range) { auto.checked = false; low.value = state.range.min; high.value = state.range.max; }
+  const refresh = () => {
+    details.querySelector('.palette-preview').style.background = paletteGradient(state.palette, state.reverse);
+    details.querySelector('.palette-caption').textContent = enabled ? `${select.selectedOptions[0].textContent.split(' · ')[0]}${state.reverse ? ' · 反转' : ''}` : '选择高度或数值属性后启用';
+    select.disabled = reverse.disabled = auto.disabled = !enabled;
+    low.disabled = high.disabled = !enabled || auto.checked;
+  };
+  const change = () => {
+    low.disabled = high.disabled = auto.checked || !enabled;
+    if (!auto.checked && (low.value === '' || high.value === '' || !Number.isFinite(low.valueAsNumber) || !Number.isFinite(high.valueAsNumber) || low.valueAsNumber >= high.valueAsNumber)) {
+      message.textContent = '请输入有效范围，最小值必须小于最大值。'; message.hidden = false; return;
+    }
+    message.hidden = true; state = {palette: select.value, reverse: reverse.checked, range: auto.checked ? null : {min: low.valueAsNumber, max: high.valueAsNumber}};
+    refresh(); onChange({...state});
+  };
+  for (const input of [select, reverse, auto, low, high]) input.addEventListener('change', change);
+  for (const input of [low, high]) input.addEventListener('input', change);
+  refresh();
+  return {getOptions: () => ({...state}), setScalarEnabled(value) {enabled = !!value; refresh();},
+    setDataRange(range) {if (auto.checked && range && Number.isFinite(range.min) && Number.isFinite(range.max)) {
+      low.value = range.min; high.value = range.max === range.min ? range.min + 1 : range.max;
+    }}, destroy() {details.remove();}};
+}
+
+
+// Source: camera-controls.js
+/** Shared orthographic camera snapshots and an optional, local-only control panel. */
+const CAMERA_FORMAT = 'BuildingWebViewer.camera';
+const CAMERA_BOOK_FORMAT = 'BuildingWebViewer.camera-bookmarks';
+const CAMERA_SPACES = ['raw-world', 'lod-arrangement'];
+const CAMERA_MAX_BOOKMARKS = 100;
+
+function cameraObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
+function cameraFinite(value, label) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw Error(`${label}必须是有限数值`);
+  return value;
+}
+function cameraVector(value, length, label) {
+  if (!Array.isArray(value) || value.length !== length) throw Error(`${label}需要 ${length} 个数值`);
+  return value.map(number => cameraFinite(number, label));
+}
+function cameraSpace(space) {
+  if (!CAMERA_SPACES.includes(space)) throw Error('相机坐标空间无效');
+  return space;
+}
+function cameraScene(scene, space) {
+  if (scene == null && space === 'raw-world') return null;
+  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error('相机场景需要有效的文件或楼栋 ID 列表');
+  const result = {ids: [...scene.ids]};
+  if (space === 'lod-arrangement') {
+    if (!['real', 'normalized'].includes(scene.scale)) throw Error('LOD 相机需要记录实际比例或统一大小模式');
+    result.scale = scene.scale;
+  }
+  return result;
+}
+function cameraSameScene(a, b) {
+  return a?.scale === b?.scale && a?.ids?.length === b?.ids?.length && a.ids.every((id, index) => id === b.ids[index]);
+}
+
+/** Validate before mutating a viewer; snapshots use original-world or synthetic-layout targets. */
+function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
+  cameraSpace(space);
+  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || value.version !== 1) throw Error('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1）');
+  if (value.space !== space) throw Error('相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用');
+  if (value.projection !== 'orthographic') throw Error('当前查看器仅支持正交相机');
+  const source = value.camera;
+  if (!cameraObject(source)) throw Error('相机参数缺失');
+  const azimuth = cameraFinite(source.azimuth, '方位角'), elevation = cameraFinite(source.elevation, '仰角');
+  const zoom = cameraFinite(source.zoom, '缩放倍率'), baseHeight = cameraFinite(source.baseHeight, '基准视野高度');
+  const limits = space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  if (Math.abs(azimuth) > 1e6) throw Error('方位角数值过大');
+  if (elevation < limits.minElevation || elevation > 90) throw Error(`仰角需在 ${limits.minElevation}° 至 90° 之间`);
+  if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(`缩放倍率需在 ${limits.minZoom} 至 ${limits.maxZoom} 之间`);
+  if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error('基准视野高度必须为有效正数');
+  const savedScene = cameraScene(value.scene, space);
+  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(`LOD 布局不匹配：此书签需要楼栋 ${savedScene.ids.join(', ').slice(0, 160) || '（空）'}，比例模式为${savedScene.scale === 'real' ? '实际比例' : '统一展示大小'}。请先恢复该布局再加载。`);
+  return {format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic',
+    camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
+      pan: cameraVector(source.pan, 2, '平移'), target: cameraVector(source.target, 3, '目标点'), baseHeight}, scene: savedScene};
+}
+
+function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
+  cameraSpace(space);
+  if (!viewer?.camera) throw Error('相机尚未准备好');
+  const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, '原点') : [0, 0, 0];
+  const target = cameraVector(viewer.target, 3, '目标点').map((value, axis) => value + origin[axis]);
+  return validateCameraSnapshot({format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic', scene,
+    camera: {...viewer.camera, pan: [...viewer.camera.pan], target, baseHeight: viewer.baseHeight}}, {space, scene, checkScene: false});
+}
+
+function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback()} = {}) {
+  const value = validateCameraSnapshot(snapshot, {space, scene, checkScene});
+  if (!Array.isArray(viewers) || !viewers.length || viewers.some(viewer => !viewer?.camera || typeof viewer.render !== 'function')) throw Error('请先加载数据，再应用相机');
+  // Validate every new local target first, so a bad panel cannot leave a partial update.
+  const targets = viewers.map(viewer => {
+    const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, '原点') : [0, 0, 0];
+    return value.camera.target.map((number, axis) => cameraFinite(number - origin[axis], '局部目标点'));
+  });
+  pauseSync(() => {
+    viewers.forEach((viewer, index) => {
+      viewer.camera = {azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
+      viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
+    });
+    viewers.forEach(viewer => viewer.render());
+  });
+  return value;
+}
+
+function cameraBookmark(record, space, index) {
+  if (!cameraObject(record) || typeof record.name !== 'string' || !record.name.trim() || record.name.length > 80) throw Error('书签名称需为 1–80 个字符');
+  return {id: typeof record.id === 'string' && record.id.trim() && record.id.length <= 128 ? record.id : `import-${index}`,
+    name: record.name.trim(), snapshot: validateCameraSnapshot(record.snapshot, {space, checkScene: false})};
+}
+
+function parseCameraBookmarks(input, space) {
+  cameraSpace(space);
+  const value = typeof input === 'string' ? JSON.parse(input) : input;
+  if (value?.format === CAMERA_FORMAT) return {preserveView: true, bookmarks: [{id: 'import-0', name: '导入视角', snapshot: validateCameraSnapshot(value, {space, checkScene: false})}]};
+  if (!cameraObject(value) || value.format !== CAMERA_BOOK_FORMAT || value.version !== 1 || value.space !== space || !Array.isArray(value.bookmarks) || value.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error('书签 JSON 格式或坐标空间无效（最多 100 个书签）');
+  const bookmarks = value.bookmarks.map((record, index) => cameraBookmark(record, space, index));
+  if (new Set(bookmarks.map(record => record.id)).size !== bookmarks.length) throw Error('书签 ID 重复');
+  return {preserveView: value.preserveView !== false, bookmarks};
+}
+
+function serializeCameraBookmarks(bookmarks, space, preserveView = true) {
+  const value = {format: CAMERA_BOOK_FORMAT, version: 1, space: cameraSpace(space), preserveView: Boolean(preserveView), bookmarks};
+  parseCameraBookmarks(value, space);
+  return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Returns {preserveView, capture, restore, refresh, destroy}.
+ * After changing data, restore(saved, {checkScene:false}) implements the explicit
+ * preserve-view switch; bookmark loads retain strict LOD scene checking.
+ */
+function mountCameraControls({container, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
+  cameraSpace(space);
+  if (!container || typeof getViewers !== 'function') throw Error('相机面板需要挂载容器和 getViewers');
+  const doc = container.ownerDocument, win = doc.defaultView || globalThis;
+  const key = `BuildingWebViewer.camera-bookmarks.v1.${space}`;
+  const watches = new Map(), inputs = new Map(), cleanups = [];
+  let bookmarks = [], preserveView = true, selectedBookmark = '', disposed = false, frame = null, idCounter = 0;
+  const el = (tag, text, className) => { const node = doc.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
+  const panel = el('details', undefined, 'camera-controls'), summary = el('summary', '精确相机与视角书签');
+  const body = el('div', undefined, 'camera-controls-body'), status = el('p', '', 'camera-controls-status'); status.setAttribute('role', 'status');
+  panel.append(summary, body); container.replaceChildren(panel);
+  const message = (text = '', error = false) => { status.textContent = text; status.classList.toggle('camera-controls-error', error); };
+  const attempt = callback => { try { return callback(); } catch (error) { message(error.message || String(error), true); return null; } };
+  const controls = [], bar = el('div', undefined, 'camera-controls-bar'), preserveLabel = el('label', undefined, 'camera-preserve');
+  const preserveInput = el('input'); preserveInput.type = 'checkbox'; preserveInput.checked = true;
+  preserveLabel.append(preserveInput, doc.createTextNode('增删文件时保持当前视角'));
+  const heightLabel = el('span', '', 'camera-view-height'); bar.append(preserveLabel, heightLabel); body.append(bar);
+  const grid = el('div', undefined, 'camera-controls-grid'); body.append(grid);
+  const specifications = [
+    ['azimuth', '方位角（°）', .1], ['elevation', '仰角（°）', .1], ['zoom', '缩放倍率', .05],
+    ['pan0', '水平平移', .1], ['pan1', '垂直平移', .1],
+    ['target0', space === 'raw-world' ? '世界目标 X' : '排列目标 X', .1],
+    ['target1', space === 'raw-world' ? '世界目标 Y' : '排列目标 Y', .1],
+    ['target2', space === 'raw-world' ? '世界目标 Z' : '排列目标 Z', .1],
+  ];
+  const uiScene = () => getScene() || (space === 'lod-arrangement' ? {ids: [], scale: 'real'} : null);
+  const available = () => {
+    const viewer = getViewers()?.[0];
+    return Boolean(viewer && (space === 'lod-arrangement' ? viewer.models?.length || uiScene()?.ids?.length : viewer.bounds));
+  };
+  function capture() { return available() ? captureCameraSnapshot(getViewers()[0], {space, scene: uiScene()}) : null; }
+  function restore(snapshot, {checkScene = true} = {}) {
+    if (!snapshot) return null;
+    if (!available()) throw Error('请先加载数据，再应用相机');
+    const value = applyCameraSnapshot(getViewers(), snapshot, {space, scene: uiScene(), checkScene, pauseSync});
+    message('视角已应用。'); refresh(); return value;
+  }
+  function inputValue(snapshot, name) {
+    return name.startsWith('pan') ? snapshot.camera.pan[Number(name.slice(3))] : name.startsWith('target') ? snapshot.camera.target[Number(name.slice(6))] : snapshot.camera[name];
+  }
+  function snapshotWithInput(name, raw) {
+    const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再调整相机');
+    if (!String(raw).trim()) throw Error('相机参数不能为空');
+    const value = Number(raw);
+    if (name.startsWith('pan')) snapshot.camera.pan[Number(name.slice(3))] = value;
+    else if (name.startsWith('target')) snapshot.camera.target[Number(name.slice(6))] = value;
+    else snapshot.camera[name] = value;
+    return validateCameraSnapshot(snapshot, {space, scene: uiScene()});
+  }
+  function applyInput(name, raw) { restore(snapshotWithInput(name, raw)); message(''); }
+  for (const [name, label, step] of specifications) {
+    const group = el('label', undefined, 'camera-number-field'), caption = el('span', label), row = el('span', undefined, 'camera-number-row');
+    const minus = el('button', '−'), input = el('input'), plus = el('button', '+');
+    for (const button of [minus, plus]) { button.type = 'button'; button.setAttribute('aria-label', `${button === minus ? '减小' : '增大'}${label}`); }
+    input.type = 'number'; input.step = String(step); input.setAttribute('aria-label', label); input.autocomplete = 'off';
+    input.addEventListener('input', () => {
+      // Partial edits (empty, a minus sign, or temporarily out of range) must
+      // leave the current camera intact; change reports any final error.
+      let snapshot;
+      try { snapshot = snapshotWithInput(name, input.value); } catch { return; }
+      attempt(() => { restore(snapshot); message(''); });
+    });
+    input.addEventListener('change', () => attempt(() => applyInput(name, input.value)));
+    input.addEventListener('blur', scheduleRefresh);
+    for (const [button, direction] of [[minus, -1], [plus, 1]]) button.addEventListener('click', event => {
+      event.preventDefault(); attempt(() => {
+        const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再调整相机');
+        const next = inputValue(snapshot, name) + direction * step;
+        applyInput(name, Number(next.toPrecision(15)));
+      });
+    });
+    row.append(minus, input, plus); group.append(caption, row); grid.append(group);
+    inputs.set(name, input); controls.push(minus, input, plus);
+  }
+  const help = el('p', space === 'raw-world'
+    ? '平移按屏幕水平/垂直方向，数值单位与原坐标一致。导入视角不移动点云或线框。'
+    : 'LOD 使用重新排列后的目标坐标；书签仅适用于相同楼栋顺序和比例模式。', 'camera-controls-help');
+  body.append(help);
+  const bookmarkRow = el('div', undefined, 'camera-bookmark-row'), bookmarkName = el('input'), bookmarkSelect = el('select');
+  bookmarkName.type = 'text'; bookmarkName.maxLength = 80; bookmarkName.placeholder = '书签名称'; bookmarkName.setAttribute('aria-label', '视角书签名称');
+  bookmarkSelect.setAttribute('aria-label', '已保存视角');
+  bookmarkRow.append(bookmarkName, bookmarkSelect); body.append(bookmarkRow);
+  const actions = el('div', undefined, 'camera-bookmark-actions');
+  const action = text => { const button = el('button', text); button.type = 'button'; actions.append(button); return button; };
+  const saveButton = action('保存 / 更新书签'), loadButton = action('加载书签'), deleteButton = action('删除书签');
+  const exportButton = action('导出 JSON'), importButton = action('导入 JSON');
+  const importInput = el('input'); importInput.type = 'file'; importInput.accept = '.json,application/json'; importInput.hidden = true;
+  body.append(actions, importInput, status);
+  function persist() {
+    try { win.localStorage.setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView)); return true; }
+    catch { message('浏览器无法持久保存书签；本次仍可使用，请导出 JSON 备份。', true); return false; }
+  }
+  function updateBookmarks() {
+    bookmarkSelect.replaceChildren(); const empty = el('option', bookmarks.length ? '选择一个视角书签' : '暂无视角书签'); empty.value = ''; bookmarkSelect.append(empty);
+    for (const bookmark of bookmarks) { const option = el('option', bookmark.name); option.value = bookmark.id; bookmarkSelect.append(option); }
+    if (bookmarks.some(bookmark => bookmark.id === selectedBookmark)) bookmarkSelect.value = selectedBookmark;
+    else selectedBookmark = '';
+    loadButton.disabled = !available() || !selectedBookmark; deleteButton.disabled = !selectedBookmark; exportButton.disabled = !bookmarks.length;
+  }
+  function scheduleRefresh() {
+    if (disposed || frame !== null) return;
+    frame = win.requestAnimationFrame(() => { frame = null; refresh(); });
+  }
+  function watchViewers() {
+    for (const viewer of getViewers() || []) {
+      if (watches.has(viewer) || typeof viewer.render !== 'function') continue;
+      const original = viewer.render;
+      const wrapped = function(...args) { const result = original.apply(this, args); scheduleRefresh(); return result; };
+      watches.set(viewer, {original, wrapped}); viewer.render = wrapped;
+    }
+  }
+  function refresh() {
+    if (disposed) return;
+    watchViewers(); const snapshot = attempt(capture), enabled = Boolean(snapshot);
+    controls.forEach(control => { control.disabled = !enabled; }); saveButton.disabled = !enabled;
+    if (snapshot) {
+      for (const [name, input] of inputs) if (doc.activeElement !== input) input.value = name.startsWith('target') ? String(inputValue(snapshot, name)) : String(Number(inputValue(snapshot, name).toPrecision(12)));
+      heightLabel.textContent = `可视高度 ${(snapshot.camera.baseHeight / snapshot.camera.zoom).toPrecision(6)}（原坐标单位）`;
+    } else { for (const input of inputs.values()) if (doc.activeElement !== input) input.value = ''; heightLabel.textContent = '加载数据后可调整'; }
+    loadButton.disabled = !enabled || !selectedBookmark;
+  }
+  preserveInput.addEventListener('change', () => { preserveView = preserveInput.checked; persist(); });
+  bookmarkSelect.addEventListener('change', () => {
+    selectedBookmark = bookmarkSelect.value;
+    const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark); if (selected) bookmarkName.value = selected.name;
+    updateBookmarks();
+  });
+  saveButton.addEventListener('click', () => attempt(() => {
+    const snapshot = capture(); if (!snapshot) throw Error('请先加载数据，再保存视角');
+    const name = bookmarkName.value.trim(); if (!name || name.length > 80) throw Error('请填写 1–80 个字符的书签名称');
+    const existing = bookmarks.find(bookmark => bookmark.name === name);
+    if (existing) existing.snapshot = snapshot;
+    else {
+      if (bookmarks.length >= CAMERA_MAX_BOOKMARKS) throw Error('最多保存 100 个书签，请先删除不需要的视角');
+      bookmarks.push({id: `${Date.now()}-${++idCounter}`, name, snapshot});
+    }
+    selectedBookmark = (existing || bookmarks.at(-1)).id; updateBookmarks();
+    if (persist()) message(`已保存视角“${name}”。`);
+  }));
+  loadButton.addEventListener('click', () => attempt(() => {
+    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (bookmark) restore(bookmark.snapshot);
+  }));
+  deleteButton.addEventListener('click', () => {
+    bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; updateBookmarks();
+    if (persist()) message('书签已删除。');
+  });
+  exportButton.addEventListener('click', () => attempt(() => {
+    const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
+    const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
+    win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message('相机书签 JSON 已导出，不含模型数据。');
+  }));
+  importButton.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files?.[0]; importInput.value = ''; if (!file) return;
+    try {
+      if (file.size > 1024 * 1024) throw Error('相机 JSON 超过 1 MB，请检查是否选择了正确文件');
+      const incoming = parseCameraBookmarks(await file.text(), space);
+      if (disposed) return;
+      if (bookmarks.length + incoming.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error('导入后超过 100 个书签，请先删除不需要的视角');
+      const existingNames = new Set(bookmarks.map(bookmark => bookmark.name));
+      for (const bookmark of incoming.bookmarks) {
+        let name = bookmark.name, number = 2;
+        while (existingNames.has(name)) { const suffix = ` (${number++})`; name = bookmark.name.slice(0, 80 - suffix.length) + suffix; }
+        existingNames.add(name); bookmarks.push({...bookmark, name, id: `${Date.now()}-${++idCounter}`});
+      }
+      selectedBookmark = incoming.bookmarks.length ? bookmarks.at(-1).id : selectedBookmark;
+      updateBookmarks(); if (persist()) message(`已导入 ${incoming.bookmarks.length} 个书签；选择书签后点击“加载书签”应用。`);
+    } catch (error) { message(error.message || String(error), true); }
+  });
+  try {
+    const stored = win.localStorage.getItem(key);
+    if (stored) { const parsed = parseCameraBookmarks(stored, space); bookmarks = parsed.bookmarks; preserveView = parsed.preserveView; }
+  } catch { message('未能读取本机相机书签，可导入 JSON 备份。', true); }
+  preserveInput.checked = preserveView; updateBookmarks(); refresh();
+  return {
+    get preserveView() { return preserveView; }, capture, restore, refresh,
+    destroy() {
+      disposed = true; if (frame !== null) win.cancelAnimationFrame(frame);
+      for (const [viewer, {original, wrapped}] of watches) if (viewer.render === wrapped) viewer.render = original;
+      cleanups.forEach(cleanup => cleanup()); panel.remove(); watches.clear();
+    },
+  };
+}
+
+
 // Source: renderer.js
+
 /** Local, dependency-free mesh renderer. Building placement is synthetic; geometry and scale are preserved. */
 const DEG = Math.PI / 180;
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -13,12 +403,16 @@ precision highp float;
 attribute vec3 position;
 attribute vec3 normal;
 attribute vec3 buildingColor;
+attribute float vertexHeight;
+uniform vec2 heightTransform;
+varying highp float heightValue;
 uniform mat4 matrix;
-uniform int kind;
-uniform int colorByBuilding;
+uniform mediump int kind;
+uniform mediump int colorByBuilding;
 varying vec4 color;
 void main() {
   gl_Position = matrix * vec4(position, 1.0);
+  heightValue = vertexHeight * heightTransform.y + heightTransform.x;
   if (kind == 0) {
     vec3 base = abs(normal.z) > .22 ? vec3(.46, .59, .67) : vec3(.91, .89, .84);
     if (colorByBuilding == 1) base = buildingColor * (abs(normal.z) > .22 ? .86 : 1.13);
@@ -32,14 +426,25 @@ void main() {
     color = vec4(.23, .31, .36, .65);
   }
 }`;
-const FRAGMENT_SHADER = `precision mediump float; varying vec4 color; void main() { gl_FragColor = color; }`;
+const FRAGMENT_SHADER = `
+precision mediump float;
+varying vec4 color;
+varying highp float heightValue;
+uniform mediump int kind;
+uniform mediump int colorByBuilding;
+${PALETTE_GLSL}
+void main() {
+  gl_FragColor = colorByBuilding == 2 && (kind == 0 || kind == 3)
+    ? vec4(paletteColor(heightValue), kind == 0 ? 1.0 : .9) : color;
+}`;
 
 class MeshViewer {
-  constructor(canvas, { onLabels = () => {}, onError = () => {} } = {}) {
+  constructor(canvas, { onLabels = () => {}, onError = () => {}, onViewChange = () => {} } = {}) {
     this.canvas = canvas;
     this.onLabels = onLabels;
     this.onError = onError;
-    this.options = { mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real' };
+    this.onViewChange = onViewChange;
+    this.options = { mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.baseHeight = 30;
     this.sceneBounds = [[-5, -5, 0], [5, 5, 10]];
@@ -97,6 +502,9 @@ class MeshViewer {
       position: gl.getAttribLocation(program, 'position'),
       normal: gl.getAttribLocation(program, 'normal'),
       buildingColor: gl.getAttribLocation(program, 'buildingColor'),
+      vertexHeight: gl.getAttribLocation(program, 'vertexHeight'),
+      heightTransform: gl.getUniformLocation(program, 'heightTransform'),
+      colorStops: gl.getUniformLocation(program, 'colorStops[0]'),
       matrix: gl.getUniformLocation(program, 'matrix'),
       kind: gl.getUniformLocation(program, 'kind'),
       colorByBuilding: gl.getUniformLocation(program, 'colorByBuilding'),
@@ -172,7 +580,7 @@ class MeshViewer {
       gl.deleteBuffer(buffer);
       throw new Error('显存不足，请减少同时查看的楼栋数量。');
     }
-    return { buffer, count: values.length / 9 };
+    return { buffer, count: values.length / 10 };
   }
 
   setModels(models) {
@@ -204,8 +612,8 @@ class MeshViewer {
     };
     const xCenters = centers(widths), yCenters = centers(depths);
     const triangles = [], featureEdges = [], allEdges = [], labels = [];
-    let maxHeight = 0;
-    const vertexOut = (array, position, normal, color) => array.push(...position, ...normal, ...color);
+    let maxHeight = 0, maxOriginalHeight = 0;
+    const vertexOut = (array, position, normal, color, height = 0) => array.push(...position, ...normal, ...color, height);
     const featureCosine = Math.cos(10 * DEG);
     for (let modelIndex = 0; modelIndex < prepared.length; modelIndex++) {
       const { model, min, max, scale } = prepared[modelIndex];
@@ -214,6 +622,7 @@ class MeshViewer {
       const vertices = model.vertices.map(v => [(v[0] - (min[0] + max[0]) / 2) * scale + cx, (v[1] - (min[1] + max[1]) / 2) * scale + cy, (v[2] - min[2]) * scale]);
       const height = (max[2] - min[2]) * scale;
       maxHeight = Math.max(maxHeight, height);
+      maxOriginalHeight = Math.max(maxOriginalHeight, max[2] - min[2]);
       labels.push({ id: model.id, bounds: [[cx - prepared[modelIndex].width / 2, cy - prepared[modelIndex].depth / 2, 0],
         [cx + prepared[modelIndex].width / 2, cy + prepared[modelIndex].depth / 2, height]] });
       let hash = 0;
@@ -233,7 +642,7 @@ class MeshViewer {
         const length = Math.hypot(...normal);
         if (length < 1e-12) continue;
         for (let i = 0; i < 3; i++) normal[i] /= length;
-        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color);
+        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color, point[2] / scale);
         for (let i = 0; i < 3; i++) {
           const ai = welded[face[i]], bi = welded[face[(i + 1) % 3]];
           const key = ai < bi ? `${ai}:${bi}` : `${bi}:${ai}`;
@@ -242,13 +651,13 @@ class MeshViewer {
         }
       }
       for (const edge of edges.values()) {
-        vertexOut(allEdges, edge.a, [0, 0, 1], color);
-        vertexOut(allEdges, edge.b, [0, 0, 1], color);
+        vertexOut(allEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
+        vertexOut(allEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
         const normals = edge.normals;
         const feature = normals.length !== 2 || Math.abs(dot(normals[0], normals[1])) < featureCosine;
         if (feature) {
-          vertexOut(featureEdges, edge.a, [0, 0, 1], color);
-          vertexOut(featureEdges, edge.b, [0, 0, 1], color);
+          vertexOut(featureEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
+          vertexOut(featureEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
         }
       }
     }
@@ -276,7 +685,8 @@ class MeshViewer {
     this.buffers = nextBuffers;
     this.models = models;
     this.labelAnchors = labels;
-    this.triangleCount = triangles.length / 27;
+    this.triangleCount = triangles.length / 30;
+    this.heightRange = models.length ? {min: 0, max: maxOriginalHeight} : null;
     this.sceneBounds = prepared.length ? [[-totalWidth / 2, -totalDepth / 2, 0], [totalWidth / 2, totalDepth / 2, maxHeight]] : [[-5, -5, 0], [5, 5, 10]];
     this.target = prepared.length ? [0, 0, maxHeight / 2] : [0, 0, 5];
     this.fit();
@@ -285,8 +695,10 @@ class MeshViewer {
   setOptions(options) {
     const next = { ...this.options, ...options };
     if (!['solid', 'wire', 'solid-wire'].includes(next.mode)) throw new Error(`不支持的显示模式：${next.mode}`);
-    if (!['surface', 'building'].includes(next.colors)) throw new Error(`不支持的配色模式：${next.colors}`);
+    if (!['surface', 'building', 'height'].includes(next.colors)) throw new Error(`不支持的配色模式：${next.colors}`);
     if (!['real', 'normalized'].includes(next.scale)) throw new Error(`不支持的比例模式：${next.scale}`);
+    next.palette ||= 'current'; next.reverse = !!next.reverse; next.range = next.range ? {...next.range} : null;
+    validatePaletteOptions(next);
     const rebuild = next.scale !== this.options.scale;
     this.options = next;
     if (rebuild) this.setModels(this.models);
@@ -356,8 +768,11 @@ class MeshViewer {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(loc.matrix, false, matrix);
-    gl.uniform1i(loc.colorByBuilding, this.options.colors === 'building' ? 1 : 0);
-    for (const location of [loc.position, loc.normal, loc.buildingColor]) gl.enableVertexAttribArray(location);
+    gl.uniform1i(loc.colorByBuilding, this.options.colors === 'height' ? 2 : this.options.colors === 'building' ? 1 : 0);
+    gl.uniform3fv(loc.colorStops, paletteUniforms(this.options.palette, this.options.reverse));
+    const range = this.options.range || this.heightRange, span = range ? range.max - range.min : 0;
+    gl.uniform2f(loc.heightTransform, span > 0 ? -range.min / span : .5, span > 0 ? 1 / span : 0);
+    for (const location of [loc.position, loc.normal, loc.buildingColor, loc.vertexHeight]) gl.enableVertexAttribArray(location);
     gl.disable(gl.CULL_FACE); // Input meshes may use mixed winding; both sides must remain visible.
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -366,9 +781,10 @@ class MeshViewer {
     const draw = (buffer, kind, primitive) => {
       if (!buffer?.count) return;
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
-      gl.vertexAttribPointer(loc.position, 3, gl.FLOAT, false, 36, 0);
-      gl.vertexAttribPointer(loc.normal, 3, gl.FLOAT, false, 36, 12);
-      gl.vertexAttribPointer(loc.buildingColor, 3, gl.FLOAT, false, 36, 24);
+      gl.vertexAttribPointer(loc.position, 3, gl.FLOAT, false, 40, 0);
+      gl.vertexAttribPointer(loc.normal, 3, gl.FLOAT, false, 40, 12);
+      gl.vertexAttribPointer(loc.buildingColor, 3, gl.FLOAT, false, 40, 24);
+      gl.vertexAttribPointer(loc.vertexHeight, 1, gl.FLOAT, false, 40, 36);
       gl.uniform1i(loc.kind, kind);
       gl.drawArrays(primitive, 0, buffer.count);
     };
@@ -393,13 +809,16 @@ class MeshViewer {
       return { id, x: (x + 1) * rect.width / 2, y: screenY,
         visible: x > -.99 && x < .99 && screenY >= 0 && screenY < rect.height - 24 };
     }) : []);
+    this.onViewChange?.(this.getState());
   }
 
   getState() {
     return { buildingCount: this.models.length, triangleCount: this.triangleCount,
       featureEdgeCount: (this.buffers.featureEdges?.count || 0) / 2,
       allEdgeCount: (this.buffers.allEdges?.count || 0) / 2,
-      syntheticArrangement: true, camera: { ...this.camera, pan: [...this.camera.pan], baseHeight: this.baseHeight },
+      syntheticArrangement: true, heightMeaning: 'height-above-building-min-z',
+      dataRange: this.heightRange ? {...this.heightRange} : null,
+      colorRange: this.options.colors === 'height' && this.heightRange ? {...(this.options.range || this.heightRange)} : null, camera: { ...this.camera, pan: [...this.camera.pan], baseHeight: this.baseHeight },
       options: { ...this.options }, bounds: this.sceneBounds.map(point => [...point]) };
   }
 
@@ -449,13 +868,15 @@ function parseOBJ(text, id, bytes = 0) {
 // Source: app.js
 
 
+
+
 const $ = (id) => document.getElementById(id);
 const MAX_SELECTED = 24, PAGE_SIZE = 50;
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set(), page = 0;
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
 let labelElements = new Map(), latestLabels = [];
-let localFiles = new Map();
+let localFiles = new Map(), cameraControls = null, paletteControls = null;
 let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
 
 function showError(message, retry = false) {
@@ -591,6 +1012,7 @@ async function loadSelection() {
   if (!ids.length) {
     currentModels = [];
     viewer?.setModels([]);
+    cameraControls?.refresh(); updateHeightLegend();
     renderLabels([]);
     $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
     $('scene-stats').textContent = catalog.length ? '未选择楼栋' : '请先点击左侧“选择模型文件夹”';
@@ -626,9 +1048,12 @@ async function loadSelection() {
   };
   await Promise.all(Array.from({length: Math.min(4, ids.length)}, worker));
   if (version !== generation) return;
+  const savedView = cameraControls?.preserveView ? cameraControls.capture() : null;
   currentModels = ids.map(id => results.get(id)).filter(Boolean);
   try {
     viewer?.setModels(currentModels);
+    if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
+    cameraControls?.refresh(); updateHeightLegend();
     const triangles = currentModels.reduce((sum, m) => sum + m.faces.length, 0);
     const vertices = currentModels.reduce((sum, m) => sum + m.vertices.length, 0);
     $('scene-stats').textContent = currentModels.length ? `已显示 ${currentModels.length} / ${ids.length} 栋 · ${number(triangles)} 三角面 · ${number(vertices)} 顶点` : '未显示模型';
@@ -639,9 +1064,25 @@ async function loadSelection() {
   } catch (error) { showError(`模型渲染失败：${error.message}`, true); }
   finally { $('loading').hidden = true; }
 }
+function updateHeightLegend() {
+  const legend = $('height-legend'); if (!legend) return;
+  const range = viewer?.getState().colorRange;
+  const valid = range && Number.isFinite(range.min) && Number.isFinite(range.max);
+  legend.hidden = !(options.colors === 'height' && currentModels.length && valid);
+  if (valid) {
+    $('height-min').textContent = Number(range.min.toPrecision(6)).toString();
+    $('height-max').textContent = Number(range.max.toPrecision(6)).toString();
+    legend.querySelector('i').style.background = paletteGradient(options.palette, options.reverse);
+    paletteControls?.setDataRange?.(range);
+  }
+}
 function updateOptions() {
-  options = {mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked};
+  const savedView = cameraControls?.preserveView && $('scale-mode').value !== options.scale ? cameraControls.capture() : null;
+  options = {mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
   viewer?.setOptions(options);
+  if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
+  paletteControls?.setScalarEnabled(options.colors === 'height');
+  cameraControls?.refresh(); updateHeightLegend();
   $('layout-title').textContent = options.scale === 'real' ? '等比例陈列' : '统一展示大小';
   $('layout-note').textContent = options.scale === 'real' ? '独立模型重新排列 · 非实际地理位置' : '各栋独立等比缩放 · 不可比较实际大小';
   $('legend').hidden = options.colors !== 'surface' || options.mode === 'wire';
@@ -713,7 +1154,10 @@ document.addEventListener('keydown', event => {
 
 function ensureViewer() {
   if (!viewer) viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});
-  viewer.setOptions(options);
+  if (!paletteControls && $('palette-controls')) paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: updateOptions});
+  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
+  options = {...options, ...paletteControls?.getOptions()};
+  viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
 function folderReady(fileList) {
   if (!fileList.length) return;
