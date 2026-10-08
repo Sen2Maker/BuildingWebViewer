@@ -33,16 +33,28 @@
 ```text
 数据目录/
   <ID>/
-    pc.xyz
-    pre_seg.obj
-    pre_seg_nms.obj
-    raw_topk.obj
+    points.xyz
+    version_a.obj
+    version_b.obj
+    reference.obj
   <另一个ID>/
-    pc.xyz
-    pre_seg.obj
+    points.xyz
+    wireframe.obj
 ```
 
-OBJ 线框支持 `l` 线段或折线；没有 `l` 时使用 `f` 面的边。LOD 页面用于三角面网格，不自动把任意多边形拆成三角形。
+文件名无需采用上面示例，线框版本按自然文件名顺序排列。OBJ 线框支持
+`l` 线段或折线；没有 `l` 时使用 `f` 面的边。空文件、仅注释或仅顶点的
+线框显示为“空线框 / 0 条线”，可以继续查看对应点云；错误索引、非有限
+坐标和退化线段仍会明确报错。LOD 页面用于三角面网格，不自动把任意
+多边形拆成三角形。
+
+线框页面支持单窗口查看，以及同一对象的两组或三组线框并排对比。先手动
+选择目录和对象，再选择比较的文件；窗口共享点云、完整坐标范围和相机，
+旋转、缩放及视角切换同步。关闭点云后仍保留共同范围，避免把较少的线段
+单独放大。刷新页面后不会恢复对象或加载数据。
+
+截图保留画面比例，并附所选对象、文件名与几何数量；对比模式可导出一张
+包含各窗口的图片。截图直接在浏览器中生成并下载，不需要数据服务器。
 
 点云支持以下格式：
 
@@ -51,7 +63,11 @@ OBJ 线框支持 `l` 线段或折线；没有 `l` 时使用 `f` 面的边。LOD 
 - `.pcd`：ASCII 或未压缩 binary。暂不支持 `binary_compressed` PCD。
 - 暂不支持 LAS / LAZ；请先另行转换为上述格式。
 
-具名 RGB 属性可用于原始颜色显示；没有表头的额外列保留为 `column_4` 等属性，不会自动当成 RGB，可手动指定 R/G/B 对应列。若使用 Point2Contour `pre.py` 导出的 `pc.xyz`，第四列是边缘概率；其他来源请核对字段含义。大点云会按展示上限抽样，界面区分总点数与展示点数；抽样不会改写原文件。
+具名 RGB 属性可用于原始颜色显示；没有表头的额外列保留为 `column_4`
+等属性，不会自动当成 RGB、强度或概率，可手动指定 R/G/B 对应列。
+大点云会按展示上限抽样，界面区分总点数与展示点数；坐标范围仍覆盖全部
+原始点，抽样不会改写原文件。XYZ/TXT/CSV/PTS 按两遍扫描解析，不为每个原始点
+长期保留拆分后的字段数组，减少大文件读取时的内存占用。
 
 ## 备选：启动本机网页服务
 
@@ -100,6 +116,7 @@ python3 server.py --port 8766
 | `server.py`、`start.sh` | 可选的本机静态服务及启动脚本 |
 | `build.py` | 从源码重新生成浏览器脚本及程序 ZIP |
 | `point-io.test.mjs` | 不依赖外部数据的点云与线框解析测试 |
+| `cloud-renderer.test.mjs` | 共同坐标、比较范围及清空状态的几何检查 |
 | `.github/workflows/pages.yml` | GitHub Pages 自动构建与部署 |
 | `.gitignore` | 排除生成目录、缓存及常见模型数据文件 |
 | `README.md` | 本说明 |
@@ -114,6 +131,7 @@ python3 build.py
 
 # 解析测试与脚本语法检查（仅开发验证需要 Node.js）
 node point-io.test.mjs
+node cloud-renderer.test.mjs
 node --check viewer.js
 node --check cloud-app.bundle.js
 

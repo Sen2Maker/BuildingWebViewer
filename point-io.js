@@ -31,10 +31,13 @@ function numericPoint(value, where) {
 /** Read OBJ polylines. Face boundary edges are used only when no l records exist. */
 export function parseWireOBJ(text, id = '') {
   const vertices = [], lineEdges = [], faceEdges = [], bounds = pointBounds();
+  let hasContent = false, hasKnownRecord = false;
   let lineNumber = 0;
   for (const line of String(text).replace(/^\uFEFF/, '').split(/\r?\n/)) {
     lineNumber++;
     const fields = line.split('#')[0].trim().split(/\s+/);
+    if (fields[0]) hasContent = true;
+    if (/^(v|vt|vn|vp|l|f|o|g|s|mtllib|usemtl)$/.test(fields[0])) hasKnownRecord = true;
     if (fields[0] === 'v') {
       if (fields.length < 4) pointError(`OBJ 第 ${lineNumber} 行：顶点缺少 XYZ`);
       const vertex = fields.slice(1, 4).map(value => numericPoint(value, `OBJ 第 ${lineNumber} 行`));
@@ -56,17 +59,19 @@ export function parseWireOBJ(text, id = '') {
       if (isFace) target.push([indices[indices.length - 1], indices[0]]);
     }
   }
-  if (!vertices.length) pointError('OBJ 没有顶点');
   if ([...lineEdges, ...faceEdges].some(edge => edge.some(i => i >= vertices.length))) pointError('OBJ 索引超出顶点范围');
   const source = lineEdges.length ? lineEdges : faceEdges;
-  if (!source.length) pointError('OBJ 没有可显示的线段或面');
+  if (!source.length) {
+    if (hasContent && !hasKnownRecord) pointError('OBJ 没有可识别的顶点或线框记录');
+    return {id, vertices, edges: [], bounds: vertices.length ? bounds : null, empty: true};
+  }
   const seen = new Set(), edges = [];
   for (const [a, b] of source) {
     const key = a < b ? `${a}:${b}` : `${b}:${a}`;
     if (a !== b && !seen.has(key)) { seen.add(key); edges.push([a, b]); }
   }
   if (!edges.length) pointError('OBJ 只含退化线段');
-  return {id, vertices, edges, bounds};
+  return {id, vertices, edges, bounds, empty: false};
 }
 
 function pointCollector(names, totalCount, maxPoints, notes, hints = {}) {
@@ -88,8 +93,9 @@ function pointCollector(names, totalCount, maxPoints, notes, hints = {}) {
       if (values.length !== names.length) pointError(`点 ${index + 1} 的字段数量不一致`);
       const xyz = axes.map(axis => values[axis]);
       if (xyz.some(v => !Number.isFinite(v))) pointError(`点 ${index + 1} 的 XYZ 无效或非有限`);
+      extendPointBounds(bounds, xyz);
       if (taken >= count || index !== sampleAt(taken)) return;
-      positions.set(xyz, taken * 3); extendPointBounds(bounds, xyz);
+      positions.set(xyz, taken * 3);
       names.forEach((name, field) => { fields[name][taken] = values[field]; });
       if (rgbNames) {
         rgbNames.forEach((name, channel) => {
@@ -115,23 +121,35 @@ function pointCollector(names, totalCount, maxPoints, notes, hints = {}) {
         for (let i = 0; i < colors.length; i++) colors[i] /= divisor;
         notes.push(`RGB 按 0–${divisor} 范围归一化。`);
       }
-      if (count < totalCount) notes.push(`总计 ${totalCount.toLocaleString()} 点，按原顺序均匀抽样显示 ${count.toLocaleString()} 点；范围为展示样本范围。`);
+      if (count < totalCount) notes.push(`总计 ${totalCount.toLocaleString()} 点，按原顺序均匀抽样显示 ${count.toLocaleString()} 点；坐标范围仍覆盖全部原始点。`);
       else notes.push(`完整读取 ${totalCount.toLocaleString()} 点；范围为全部点范围。`);
       return {positions, count, totalCount, bounds, fields, rgb, notes};
     },
   };
 }
 
+function* pointTextLines(text) {
+  let start = 0, line = 1;
+  while (start < text.length) {
+    const newline = text.indexOf('\n', start);
+    const end = newline < 0 ? text.length : newline;
+    yield {text: text.slice(start, end), line};
+    start = end + 1; line++;
+  }
+}
+
 function parsePointText(bytes, filename, maxPoints) {
   const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
-  const lines = text.split(/\r?\n/), rows = [], notes = [];
-  let header = null, declared = null;
+  const notes = [];
+  let header = null, declared = null, totalCount = 0, firstDataLine = 0, firstFields = null;
   const tokens = line => (/[;,]/.test(line) ? line.trim().split(/[;,]/).map(value => value.trim()) : line.trim().split(/\s+/));
-  for (let index = 0; index < lines.length; index++) {
-    let line = lines[index].trim();
+  // Count rows before allocating sampled arrays, without retaining token arrays
+  // for every original point. The second pass validates every original row.
+  for (const record of pointTextLines(text)) {
+    let line = record.text.trim();
     if (!line) continue;
     if (line.startsWith('#') || line.startsWith('//')) {
-      if (!rows.length && !header) {
+      if (!totalCount && !header) {
         const possible = tokens(line.replace(/^(#|\/\/)\s*/, '')).map(v => v.replace(/^['"]|['"]$/g, '').toLowerCase());
         if (['x', 'y', 'z'].every(name => possible.includes(name))) header = possible;
       }
@@ -139,26 +157,33 @@ function parsePointText(bytes, filename, maxPoints) {
     }
     line = line.split('#')[0].trim();
     const parts = tokens(line);
-    if (!rows.length && !header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
+    if (!totalCount && !header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
       declared = Number(parts[0]); continue;
     }
-    if (!rows.length && !header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
+    if (!totalCount && !header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
       const candidate = pointNames(parts);
-      if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${index + 1} 行不是 XYZ 数值或有效的 x/y/z 表头`);
+      if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${record.line} 行不是 XYZ 数值或有效的 x/y/z 表头`);
       header = candidate; continue;
     }
-    rows.push({parts, line: index + 1});
+    if (!totalCount) { firstDataLine = record.line; firstFields = parts; }
+    totalCount++;
   }
-  if (!rows.length) pointError('点云文件为空');
-  if (declared !== null && declared !== rows.length) pointError(`PTS 声明 ${declared} 点，实际读取 ${rows.length} 点`);
+  if (!totalCount) pointError('点云文件为空');
+  if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
   if (!header) {
-    if (rows[0].parts.length < 3) pointError('点云每行至少需要 XYZ 三列');
-    header = rows[0].parts.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
+    if (firstFields.length < 3) pointError('点云每行至少需要 XYZ 三列');
+    header = firstFields.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
     if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
-    if (/(^|[\\/])pc\.xyz$/i.test(filename) && header.length === 4) notes.push('若这是 Point2Contour 的 pre.py 输出，第 4 列为边缘概率；其他来源请核对字段含义。');
   }
-  const collector = pointCollector(header, rows.length, maxPoints, notes);
-  rows.forEach((row, index) => collector.add(row.parts.map(value => numericPoint(value, `第 ${row.line} 行`)), index));
+  const collector = pointCollector(header, totalCount, maxPoints, notes);
+  let index = 0;
+  for (const record of pointTextLines(text)) {
+    if (record.line < firstDataLine) continue;
+    let line = record.text.trim();
+    if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+    line = line.split('#')[0].trim();
+    collector.add(tokens(line).map(value => numericPoint(value, `第 ${record.line} 行`)), index++);
+  }
   return collector.finish();
 }
 

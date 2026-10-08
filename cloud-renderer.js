@@ -68,6 +68,7 @@ export class CloudViewer {
     this.origin = [0, 0, 0];
     this.baseHeight = 10;
     this.bounds = null;
+    this.referenceBounds = null;
     this.cloudBounds = null;
     this.wireBounds = null;
     this.buffers = {};
@@ -195,7 +196,7 @@ export class CloudViewer {
     return { buffer, count: values.length / 3 };
   }
 
-  setData({ cloud = null, wire = null } = {}) {
+  setData({ cloud = null, wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null } = {}) {
     const next = {}, minCloud = [Infinity, Infinity, Infinity], maxCloud = [-Infinity, -Infinity, -Infinity];
     const minWire = [Infinity, Infinity, Infinity], maxWire = [-Infinity, -Infinity, -Infinity];
     try {
@@ -221,8 +222,10 @@ export class CloudViewer {
       }
       const cloudBounds = pointCount ? CLOUD_UNION([[minCloud, maxCloud], CLOUD_BOUNDS(cloud.bounds)]) : null;
       const wireBounds = edgeCount ? CLOUD_UNION([[minWire, maxWire], CLOUD_BOUNDS(wire.bounds)]) : null;
-      const bounds = CLOUD_UNION([cloudBounds, wireBounds]);
-      const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+      const sharedBounds = CLOUD_BOUNDS(referenceBounds);
+      const bounds = CLOUD_UNION([cloudBounds, wireBounds, sharedBounds]);
+      const validOrigin = Array.isArray(referenceOrigin) && referenceOrigin.length === 3 && referenceOrigin.every(Number.isFinite);
+      const origin = validOrigin ? Array.from(referenceOrigin) : bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
       const points = new Float32Array(pointCount * 3), lines = new Float32Array(edgeCount * 6);
       for (let i = 0; i < points.length; i++) points[i] = cloud.positions[i] - origin[i % 3];
       let offset = 0;
@@ -233,9 +236,10 @@ export class CloudViewer {
       if (bounds) next.grid = this.makeBuffer(this.buildGrid(bounds, origin));
       for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
       this.buffers = next;
-      this.data = { cloud, wire };
+      this.data = { cloud, wire, bounds: sharedBounds, origin: validOrigin ? Array.from(referenceOrigin) : null };
       this.pointCount = pointCount; this.edgeCount = edgeCount;
-      this.bounds = bounds; this.cloudBounds = cloudBounds; this.wireBounds = wireBounds; this.origin = origin;
+      this.bounds = bounds; this.cloudBounds = cloudBounds; this.wireBounds = wireBounds;
+      this.referenceBounds = sharedBounds; this.origin = origin;
       this.applyColorState(colors);
       this.fit();
     } catch (error) {
@@ -329,7 +333,7 @@ export class CloudViewer {
   }
 
   visibleBounds() {
-    return CLOUD_UNION([this.options.showPoints && this.pointCount ? this.cloudBounds : null, this.options.showWire && this.edgeCount ? this.wireBounds : null]);
+    return CLOUD_UNION([this.referenceBounds, this.options.showPoints && this.pointCount ? this.cloudBounds : null, this.options.showWire && this.edgeCount ? this.wireBounds : null]);
   }
 
   basis() {
@@ -437,6 +441,7 @@ export class CloudViewer {
       colorFallback: this.colorFallback, fields: Object.keys(this.data.cloud?.fields || {}),
       camera: { ...this.camera, pan: [...this.camera.pan], target: [...this.target], origin: [...this.origin], baseHeight: this.baseHeight },
       bounds: this.bounds?.map(point => [...point]) || null,
+      referenceBounds: this.referenceBounds?.map(point => [...point]) || null,
       options: { ...this.options, rgbFields: this.options.rgbFields ? [...this.options.rgbFields] : null } };
   }
 

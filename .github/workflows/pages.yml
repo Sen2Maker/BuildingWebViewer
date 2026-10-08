@@ -24,6 +24,8 @@ jobs:
         uses: actions/checkout@v6
       - name: Test point and wire parsers
         run: node point-io.test.mjs
+      - name: Test shared coordinates and comparison bounds
+        run: node cloud-renderer.test.mjs
       - name: Build static website
         run: python3 build.py --site
       - name: Check browser bundles

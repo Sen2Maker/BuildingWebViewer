@@ -73,6 +73,7 @@ class CloudViewer {
     this.origin = [0, 0, 0];
     this.baseHeight = 10;
     this.bounds = null;
+    this.referenceBounds = null;
     this.cloudBounds = null;
     this.wireBounds = null;
     this.buffers = {};
@@ -200,7 +201,7 @@ class CloudViewer {
     return { buffer, count: values.length / 3 };
   }
 
-  setData({ cloud = null, wire = null } = {}) {
+  setData({ cloud = null, wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null } = {}) {
     const next = {}, minCloud = [Infinity, Infinity, Infinity], maxCloud = [-Infinity, -Infinity, -Infinity];
     const minWire = [Infinity, Infinity, Infinity], maxWire = [-Infinity, -Infinity, -Infinity];
     try {
@@ -226,8 +227,10 @@ class CloudViewer {
       }
       const cloudBounds = pointCount ? CLOUD_UNION([[minCloud, maxCloud], CLOUD_BOUNDS(cloud.bounds)]) : null;
       const wireBounds = edgeCount ? CLOUD_UNION([[minWire, maxWire], CLOUD_BOUNDS(wire.bounds)]) : null;
-      const bounds = CLOUD_UNION([cloudBounds, wireBounds]);
-      const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
+      const sharedBounds = CLOUD_BOUNDS(referenceBounds);
+      const bounds = CLOUD_UNION([cloudBounds, wireBounds, sharedBounds]);
+      const validOrigin = Array.isArray(referenceOrigin) && referenceOrigin.length === 3 && referenceOrigin.every(Number.isFinite);
+      const origin = validOrigin ? Array.from(referenceOrigin) : bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [0, 0, 0];
       const points = new Float32Array(pointCount * 3), lines = new Float32Array(edgeCount * 6);
       for (let i = 0; i < points.length; i++) points[i] = cloud.positions[i] - origin[i % 3];
       let offset = 0;
@@ -238,9 +241,10 @@ class CloudViewer {
       if (bounds) next.grid = this.makeBuffer(this.buildGrid(bounds, origin));
       for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
       this.buffers = next;
-      this.data = { cloud, wire };
+      this.data = { cloud, wire, bounds: sharedBounds, origin: validOrigin ? Array.from(referenceOrigin) : null };
       this.pointCount = pointCount; this.edgeCount = edgeCount;
-      this.bounds = bounds; this.cloudBounds = cloudBounds; this.wireBounds = wireBounds; this.origin = origin;
+      this.bounds = bounds; this.cloudBounds = cloudBounds; this.wireBounds = wireBounds;
+      this.referenceBounds = sharedBounds; this.origin = origin;
       this.applyColorState(colors);
       this.fit();
     } catch (error) {
@@ -334,7 +338,7 @@ class CloudViewer {
   }
 
   visibleBounds() {
-    return CLOUD_UNION([this.options.showPoints && this.pointCount ? this.cloudBounds : null, this.options.showWire && this.edgeCount ? this.wireBounds : null]);
+    return CLOUD_UNION([this.referenceBounds, this.options.showPoints && this.pointCount ? this.cloudBounds : null, this.options.showWire && this.edgeCount ? this.wireBounds : null]);
   }
 
   basis() {
@@ -442,6 +446,7 @@ class CloudViewer {
       colorFallback: this.colorFallback, fields: Object.keys(this.data.cloud?.fields || {}),
       camera: { ...this.camera, pan: [...this.camera.pan], target: [...this.target], origin: [...this.origin], baseHeight: this.baseHeight },
       bounds: this.bounds?.map(point => [...point]) || null,
+      referenceBounds: this.referenceBounds?.map(point => [...point]) || null,
       options: { ...this.options, rgbFields: this.options.rgbFields ? [...this.options.rgbFields] : null } };
   }
 
@@ -492,10 +497,13 @@ function numericPoint(value, where) {
 /** Read OBJ polylines. Face boundary edges are used only when no l records exist. */
 function parseWireOBJ(text, id = '') {
   const vertices = [], lineEdges = [], faceEdges = [], bounds = pointBounds();
+  let hasContent = false, hasKnownRecord = false;
   let lineNumber = 0;
   for (const line of String(text).replace(/^\uFEFF/, '').split(/\r?\n/)) {
     lineNumber++;
     const fields = line.split('#')[0].trim().split(/\s+/);
+    if (fields[0]) hasContent = true;
+    if (/^(v|vt|vn|vp|l|f|o|g|s|mtllib|usemtl)$/.test(fields[0])) hasKnownRecord = true;
     if (fields[0] === 'v') {
       if (fields.length < 4) pointError(`OBJ 第 ${lineNumber} 行：顶点缺少 XYZ`);
       const vertex = fields.slice(1, 4).map(value => numericPoint(value, `OBJ 第 ${lineNumber} 行`));
@@ -517,17 +525,19 @@ function parseWireOBJ(text, id = '') {
       if (isFace) target.push([indices[indices.length - 1], indices[0]]);
     }
   }
-  if (!vertices.length) pointError('OBJ 没有顶点');
   if ([...lineEdges, ...faceEdges].some(edge => edge.some(i => i >= vertices.length))) pointError('OBJ 索引超出顶点范围');
   const source = lineEdges.length ? lineEdges : faceEdges;
-  if (!source.length) pointError('OBJ 没有可显示的线段或面');
+  if (!source.length) {
+    if (hasContent && !hasKnownRecord) pointError('OBJ 没有可识别的顶点或线框记录');
+    return {id, vertices, edges: [], bounds: vertices.length ? bounds : null, empty: true};
+  }
   const seen = new Set(), edges = [];
   for (const [a, b] of source) {
     const key = a < b ? `${a}:${b}` : `${b}:${a}`;
     if (a !== b && !seen.has(key)) { seen.add(key); edges.push([a, b]); }
   }
   if (!edges.length) pointError('OBJ 只含退化线段');
-  return {id, vertices, edges, bounds};
+  return {id, vertices, edges, bounds, empty: false};
 }
 
 function pointCollector(names, totalCount, maxPoints, notes, hints = {}) {
@@ -549,8 +559,9 @@ function pointCollector(names, totalCount, maxPoints, notes, hints = {}) {
       if (values.length !== names.length) pointError(`点 ${index + 1} 的字段数量不一致`);
       const xyz = axes.map(axis => values[axis]);
       if (xyz.some(v => !Number.isFinite(v))) pointError(`点 ${index + 1} 的 XYZ 无效或非有限`);
+      extendPointBounds(bounds, xyz);
       if (taken >= count || index !== sampleAt(taken)) return;
-      positions.set(xyz, taken * 3); extendPointBounds(bounds, xyz);
+      positions.set(xyz, taken * 3);
       names.forEach((name, field) => { fields[name][taken] = values[field]; });
       if (rgbNames) {
         rgbNames.forEach((name, channel) => {
@@ -576,23 +587,35 @@ function pointCollector(names, totalCount, maxPoints, notes, hints = {}) {
         for (let i = 0; i < colors.length; i++) colors[i] /= divisor;
         notes.push(`RGB 按 0–${divisor} 范围归一化。`);
       }
-      if (count < totalCount) notes.push(`总计 ${totalCount.toLocaleString()} 点，按原顺序均匀抽样显示 ${count.toLocaleString()} 点；范围为展示样本范围。`);
+      if (count < totalCount) notes.push(`总计 ${totalCount.toLocaleString()} 点，按原顺序均匀抽样显示 ${count.toLocaleString()} 点；坐标范围仍覆盖全部原始点。`);
       else notes.push(`完整读取 ${totalCount.toLocaleString()} 点；范围为全部点范围。`);
       return {positions, count, totalCount, bounds, fields, rgb, notes};
     },
   };
 }
 
+function* pointTextLines(text) {
+  let start = 0, line = 1;
+  while (start < text.length) {
+    const newline = text.indexOf('\n', start);
+    const end = newline < 0 ? text.length : newline;
+    yield {text: text.slice(start, end), line};
+    start = end + 1; line++;
+  }
+}
+
 function parsePointText(bytes, filename, maxPoints) {
   const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
-  const lines = text.split(/\r?\n/), rows = [], notes = [];
-  let header = null, declared = null;
+  const notes = [];
+  let header = null, declared = null, totalCount = 0, firstDataLine = 0, firstFields = null;
   const tokens = line => (/[;,]/.test(line) ? line.trim().split(/[;,]/).map(value => value.trim()) : line.trim().split(/\s+/));
-  for (let index = 0; index < lines.length; index++) {
-    let line = lines[index].trim();
+  // Count rows before allocating sampled arrays, without retaining token arrays
+  // for every original point. The second pass validates every original row.
+  for (const record of pointTextLines(text)) {
+    let line = record.text.trim();
     if (!line) continue;
     if (line.startsWith('#') || line.startsWith('//')) {
-      if (!rows.length && !header) {
+      if (!totalCount && !header) {
         const possible = tokens(line.replace(/^(#|\/\/)\s*/, '')).map(v => v.replace(/^['"]|['"]$/g, '').toLowerCase());
         if (['x', 'y', 'z'].every(name => possible.includes(name))) header = possible;
       }
@@ -600,26 +623,33 @@ function parsePointText(bytes, filename, maxPoints) {
     }
     line = line.split('#')[0].trim();
     const parts = tokens(line);
-    if (!rows.length && !header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
+    if (!totalCount && !header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
       declared = Number(parts[0]); continue;
     }
-    if (!rows.length && !header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
+    if (!totalCount && !header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
       const candidate = pointNames(parts);
-      if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${index + 1} 行不是 XYZ 数值或有效的 x/y/z 表头`);
+      if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${record.line} 行不是 XYZ 数值或有效的 x/y/z 表头`);
       header = candidate; continue;
     }
-    rows.push({parts, line: index + 1});
+    if (!totalCount) { firstDataLine = record.line; firstFields = parts; }
+    totalCount++;
   }
-  if (!rows.length) pointError('点云文件为空');
-  if (declared !== null && declared !== rows.length) pointError(`PTS 声明 ${declared} 点，实际读取 ${rows.length} 点`);
+  if (!totalCount) pointError('点云文件为空');
+  if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
   if (!header) {
-    if (rows[0].parts.length < 3) pointError('点云每行至少需要 XYZ 三列');
-    header = rows[0].parts.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
+    if (firstFields.length < 3) pointError('点云每行至少需要 XYZ 三列');
+    header = firstFields.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
     if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
-    if (/(^|[\\/])pc\.xyz$/i.test(filename) && header.length === 4) notes.push('若这是 Point2Contour 的 pre.py 输出，第 4 列为边缘概率；其他来源请核对字段含义。');
   }
-  const collector = pointCollector(header, rows.length, maxPoints, notes);
-  rows.forEach((row, index) => collector.add(row.parts.map(value => numericPoint(value, `第 ${row.line} 行`)), index));
+  const collector = pointCollector(header, totalCount, maxPoints, notes);
+  let index = 0;
+  for (const record of pointTextLines(text)) {
+    if (record.line < firstDataLine) continue;
+    let line = record.text.trim();
+    if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+    line = line.split('#')[0].trim();
+    collector.add(tokens(line).map(value => numericPoint(value, `第 ${record.line} 行`)), index++);
+  }
   return collector.finish();
 }
 
@@ -782,188 +812,379 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
   const $ = id => document.getElementById(id);
   const isWire = document.body.dataset.tool === 'wireframe';
   const pointExtension = /\.(xyz|txt|csv|pts|ply|pcd)$/i;
-  const natural = (a,b) => a.localeCompare(b, undefined, {numeric:true});
-  const pretty = n => Number(n).toLocaleString('zh-CN');
-  const formatSize = n => n > 1024*1024 ? (n/1024/1024).toFixed(1)+' MB' : (n/1024).toFixed(1)+' KB';
+  const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+  const pretty = value => Number(value).toLocaleString('zh-CN');
+  const formatSize = value => value > 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${(value / 1024).toFixed(1)} KB`;
   const fieldLabel = name => /^column_\d+$/.test(name) ? `第 ${name.slice(7)} 列` : name;
   const compact = value => !Number.isFinite(value) ? '—' : Math.abs(value) > 10000 ? value.toPrecision(6) : Number(value.toPrecision(5)).toString();
-  let entries=[], active=null, page=0, revision=0, viewer=null, overlay=null;
-  let loaded={cloud:null,wire:null}, currentPointName='', messages=[];
+  let entries = [], active = null, page = 0, revision = 0, overlay = null;
+  let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
+  let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
+  let currentPointName = '', messages = [];
   const cached = new Map();
-  let options={showPoints:true,showWire:isWire,pointSize:2,pointOpacity:1,colorMode:isWire?'solid':'height',pointColor:'#547d99',wireColor:'#e49b44',rgbFields:null,grid:true};
-  function error(message) { $('error').hidden=!message; $('error').querySelector('span').textContent=message || ''; }
-  function initViewer() {
-    if (!viewer) viewer=new CloudViewer($('scene'),{onError:error});
-    viewer.setOptions(options);
+  let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
+    colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
+
+  function error(message) { $('error').hidden = !message; $('error').querySelector('span').textContent = message || ''; }
+  function activeViewerCount() { return !isWire || !$('compare-mode').checked ? 1 : Number($('compare-count').value) === 3 ? 3 : 2; }
+  function copyCamera(source, target) {
+    target.camera = { ...source.camera, pan: [...source.camera.pan] };
+    target.target = [...source.target]; target.baseHeight = source.baseHeight;
   }
-  function option(select,value,text) { const el=document.createElement('option');el.value=value;el.textContent=text;select.append(el); }
-  function list() {
-    const query=$('search').value.trim().toLowerCase();
-    const filtered=entries.filter(entry=>entry.id.toLowerCase().includes(query));
-    const pages=Math.ceil(filtered.length/50);
-    page=Math.max(0,Math.min(page,pages-1));
-    $('filter-count').textContent=`${pretty(filtered.length)} ${isWire?'个数据 ID':'个文件'}`;
-    $('item-count').textContent=pretty(entries.length);
-    $('page-info').textContent=pages?`${page+1} / ${pages}`:'0 / 0';
-    $('previous-page').disabled=page===0; $('next-page').disabled=page>=pages-1;
-    const fragment=document.createDocumentFragment();
-    for (const entry of filtered.slice(page*50,(page+1)*50)) {
-      const button=document.createElement('button');button.className='data-entry';button.setAttribute('aria-pressed',String(active?.id===entry.id));
-      const title=document.createElement('strong');title.textContent=isWire?`# ${entry.id}`:entry.id;
-      const detail=document.createElement('small');detail.textContent=isWire?`${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云`:formatSize(entry.file.size);
-      button.append(title,detail);button.title=entry.id;button.onclick=()=>active?.id===entry.id?clear():choose(entry);fragment.append(button);
+  function installSync() {
+    for (const viewer of viewers) originals.set(viewer, viewer.render.bind(viewer));
+    for (const viewer of viewers) {
+      const ownRender = originals.get(viewer);
+      viewer.render = function syncedRender() {
+        const result = ownRender();
+        if (!syncEnabled || syncGuard) return result;
+        syncGuard = true;
+        try {
+          for (const other of viewers.slice(0, activeViewerCount())) {
+            if (other === viewer) continue;
+            copyCamera(viewer, other); originals.get(other)();
+          }
+        } finally { syncGuard = false; }
+        return result;
+      };
     }
-    if (!filtered.length) { const empty=document.createElement('p');empty.className='empty-list';empty.textContent=entries.length?'没有匹配的数据':'先选择你的数据文件或文件夹';fragment.append(empty); }
+  }
+  function pauseSync(callback) {
+    const previous = syncEnabled; syncEnabled = false;
+    try { return callback(); } finally { syncEnabled = previous; }
+  }
+  function initViewers() {
+    if (viewers.length) return;
+    const ids = isWire ? ['scene', 'scene-2', 'scene-3'] : ['scene'];
+    viewers = ids.map(id => new CloudViewer($(id), { onError: error }));
+    installSync(); pauseSync(() => viewers.forEach(viewer => viewer.setOptions(options)));
+  }
+  function option(select, value, text) {
+    const element = document.createElement('option'); element.value = value; element.textContent = text; select.append(element);
+  }
+  function list() {
+    const query = $('search').value.trim().toLowerCase();
+    const filtered = entries.filter(entry => entry.id.toLowerCase().includes(query));
+    const pages = Math.ceil(filtered.length / 50);
+    page = Math.max(0, Math.min(page, Math.max(0, pages - 1)));
+    $('filter-count').textContent = `${pretty(filtered.length)} ${isWire ? '个建筑 ID' : '个文件'}`;
+    $('item-count').textContent = pretty(entries.length); $('page-info').textContent = pages ? `${page + 1} / ${pages}` : '0 / 0';
+    $('previous-page').disabled = page === 0; $('next-page').disabled = page >= pages - 1;
+    const fragment = document.createDocumentFragment();
+    for (const entry of filtered.slice(page * 50, (page + 1) * 50)) {
+      const button = document.createElement('button'); button.className = 'data-entry';
+      button.setAttribute('aria-pressed', String(active?.id === entry.id));
+      const title = document.createElement('strong'); title.textContent = isWire ? `# ${entry.id}` : entry.id;
+      const detail = document.createElement('small');
+      detail.textContent = isWire ? `${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云` : formatSize(entry.file.size);
+      button.append(title, detail); button.title = entry.id;
+      button.onclick = () => active?.id === entry.id ? clear() : choose(entry); fragment.append(button);
+    }
+    if (!filtered.length) {
+      const empty = document.createElement('p'); empty.className = 'empty-list';
+      empty.textContent = entries.length ? '没有匹配的数据' : '先选择你的数据文件或文件夹'; fragment.append(empty);
+    }
     $('data-list').replaceChildren(fragment);
   }
+  function fillWireSelect(select, files, index = null) {
+    select.replaceChildren(); option(select, '', '不加载线框');
+    files.forEach((file, fileIndex) => option(select, String(fileIndex), file.name));
+    select.value = Number.isInteger(index) && files[index] ? String(index) : '';
+  }
+  function setComparisonUI() {
+    if (!isWire) return;
+    const enabled = $('compare-mode').checked && !$('compare-mode').disabled;
+    const count = enabled && Number($('compare-count').value) === 3 ? 3 : enabled ? 2 : 1;
+    $('compare-controls').hidden = !enabled; $('wire-slot-3').hidden = count < 3;
+    $('wire-file-2').disabled = !enabled || !active?.wires.length;
+    $('wire-file-3').disabled = count < 3 || !active?.wires.length;
+    $('viewer-grid').dataset.panels = String(count); $('panel-heading-1').hidden = count === 1;
+    $('viewer-panel-2').hidden = count < 2; $('viewer-panel-3').hidden = count < 3;
+  }
   function resetFileControls() {
-    for (const id of ['wire-file','cloud-file']) { $(id).replaceChildren();option($(id),'','未选择');$(id).disabled=true; }
-    $('attach-cloud').disabled=true;
+    for (const id of ['wire-file', 'cloud-file']) {
+      $(id).replaceChildren(); option($(id), '', '未选择'); $(id).disabled = true;
+    }
+    $('attach-cloud').disabled = true;
+    if (isWire) {
+      for (const id of ['wire-file-2', 'wire-file-3']) {
+        $(id).replaceChildren(); option($(id), '', '未选择'); $(id).disabled = true;
+      }
+      $('compare-mode').checked = false; $('compare-mode').disabled = true; $('compare-count').value = '2';
+      $('compare-count').querySelector('option[value="3"]').disabled = false; setComparisonUI();
+    }
+  }
+  function resetPanelLabels() {
+    if (!isWire) return;
+    for (let index = 1; index <= 3; index++) {
+      $(`panel-label-${index}`).textContent = `线框 ${index}`; $(`panel-stats-${index}`).textContent = '—';
+      $(`panel-empty-${index}`).hidden = true;
+    }
   }
   function clear() {
-    revision++;active=null;overlay=null;loaded={cloud:null,wire:null};messages=[];currentPointName='';
-    viewer?.setData(loaded);resetFileControls();fields();list();error('');
-    $('loading').hidden=true;$('screenshot').disabled=true;$('empty-state').hidden=false;
-    $('current-title').textContent='未选择数据';$('scene-stats').textContent='从左侧选择要查看的数据';
-    $('geometry-note').textContent='未选择数据时保持空白';$('data-notes').textContent='';$('color-legend').hidden=true;
+    revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
+    selectedFiles = { cloud: null, wires: [] }; messages = []; currentPointName = ''; syncEnabled = false;
+    pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
+    resetFileControls(); resetPanelLabels(); fields(); list(); error('');
+    $('loading').hidden = true; $('screenshot').disabled = true; $('empty-state').hidden = false;
+    $('current-title').textContent = '未选择数据'; $('scene-stats').textContent = '从左侧选择要查看的数据';
+    $('geometry-note').textContent = '未选择数据时保持空白'; $('data-notes').textContent = ''; $('color-legend').hidden = true;
   }
-  function receive(fileList,fromFolder) {
-    const files=[...fileList];
-    if (!files.length) return;
-    clear();cached.clear();entries=[];page=0;$('search').value='';list();
-    $('source-note').textContent='正在检查所选文件夹';
-    let next=[];
+  function receive(fileList, fromFolder) {
+    const files = [...fileList]; if (!files.length) return;
+    clear(); cached.clear(); entries = []; page = 0; $('search').value = ''; list();
+    $('source-note').textContent = '正在检查所选文件夹'; let next = [];
     if (isWire) {
-      const groups=new Map();
+      const groups = new Map();
       for (const file of files) {
         if (!/\.obj$/i.test(file.name) && !pointExtension.test(file.name)) continue;
-        const parts=(file.webkitRelativePath || file.name).split('/');
-        const id=parts.length>2?parts.slice(1,-1).join('/'):(parts.length===2?parts[0]:'数据');
-        if (!groups.has(id)) groups.set(id,{id,wires:[],clouds:[]});
-        groups.get(id)[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file);
+        const parts = (file.webkitRelativePath || file.name).split('/');
+        const id = parts.length > 2 ? parts.slice(1, -1).join('/') : parts.length === 2 ? parts[0] : '数据';
+        if (!groups.has(id)) groups.set(id, { id, wires: [], clouds: [] });
+        groups.get(id)[/\.obj$/i.test(file.name) ? 'wires' : 'clouds'].push(file);
       }
-      next=[...groups.values()].filter(entry=>entry.wires.length || entry.clouds.length);
-      for (const entry of next) {entry.wires.sort((a,b)=>natural(a.name,b.name));entry.clouds.sort((a,b)=>natural(a.name,b.name));}
-    } else {
-      next=files.filter(file=>pointExtension.test(file.name)).map(file=>({id:fromFolder?(file.webkitRelativePath.split('/').slice(1).join('/') || file.name):file.name,file}));
+      next = [...groups.values()].filter(entry => entry.wires.length || entry.clouds.length);
+      for (const entry of next) {
+        entry.wires.sort((a, b) => natural(a.name, b.name)); entry.clouds.sort((a, b) => natural(a.name, b.name));
+      }
+    } else next = files.filter(file => pointExtension.test(file.name)).map(file => ({
+      id: fromFolder ? file.webkitRelativePath.split('/').slice(1).join('/') || file.name : file.name, file,
+    }));
+    if (!next.length) {
+      $('source-note').textContent = '所选目录没有支持的数据';
+      error(isWire ? '未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个建筑子目录。' : '未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。');
+      return;
     }
-    if (!next.length) {$('source-note').textContent='所选目录没有支持的数据';error(isWire?'未找到 OBJ 线框或支持的点云文件。请选数据集根目录或某个 ID 子目录。':'未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。');return;}
-    next.sort((a,b)=>natural(a.id,b.id));
-    entries=next;list();
-    const root=fromFolder?(files[0].webkitRelativePath.split('/')[0] || '所选文件夹'):'所选文件';
-    $('source-note').textContent=`${root} · ${pretty(next.length)} ${isWire?'个 ID':'个点云'} · 点击列表后读取`;
+    next.sort((a, b) => natural(a.id, b.id)); entries = next; list();
+    const root = fromFolder ? files[0].webkitRelativePath.split('/')[0] || '所选文件夹' : '所选文件';
+    $('source-note').textContent = `${root} · ${pretty(next.length)} ${isWire ? '个建筑' : '个点云'} · 点击列表后读取`;
   }
   function choose(entry) {
-    active=entry;overlay=null;error('');
+    active = entry; overlay = null; error('');
     if (isWire) {
-      const wireSelect=$('wire-file'),cloudSelect=$('cloud-file');wireSelect.replaceChildren();cloudSelect.replaceChildren();
-      option(wireSelect,'','不加载线框');option(cloudSelect,'','不加载点云');
-      entry.wires.forEach((file,i)=>option(wireSelect,String(i),file.name));
-      entry.clouds.forEach((file,i)=>option(cloudSelect,String(i),file.name));
-      const preferred=['pre_seg_nms.obj','pre_seg.obj','wireframe.obj','raw_topk.obj','gt_wire.obj'];
-      const found=preferred.map(name=>entry.wires.findIndex(file=>file.name.toLowerCase()===name)).find(i=>i>=0);
-      wireSelect.value=entry.wires.length?String(found??0):'';
-      const pc=entry.clouds.findIndex(file=>file.name.toLowerCase()==='pc.xyz');
-      cloudSelect.value=entry.clouds.length?String(pc<0?0:pc):'';
-      wireSelect.disabled=!entry.wires.length;cloudSelect.disabled=!entry.clouds.length;$('attach-cloud').disabled=false;
+      fillWireSelect($('wire-file'), entry.wires, entry.wires.length ? 0 : null);
+      fillWireSelect($('wire-file-2'), entry.wires, entry.wires.length > 1 ? 1 : null);
+      fillWireSelect($('wire-file-3'), entry.wires, entry.wires.length > 2 ? 2 : null);
+      const cloudSelect = $('cloud-file'); cloudSelect.replaceChildren(); option(cloudSelect, '', '不加载点云');
+      entry.clouds.forEach((file, index) => option(cloudSelect, String(index), file.name));
+      const preferredCloud = entry.clouds.findIndex(file => file.name.toLowerCase() === 'pc.xyz');
+      cloudSelect.value = entry.clouds.length ? String(preferredCloud < 0 ? 0 : preferredCloud) : '';
+      $('wire-file').disabled = !entry.wires.length; cloudSelect.disabled = !entry.clouds.length; $('attach-cloud').disabled = false;
+      $('compare-mode').checked = false; $('compare-mode').disabled = entry.wires.length < 2; $('compare-count').value = '2';
+      $('compare-count').querySelector('option[value="3"]').disabled = entry.wires.length < 3; setComparisonUI();
     }
-    list();load();
+    list(); load();
   }
   function selectFiles() {
-    if (!active) return {wire:null,cloud:null};
-    if (!isWire) return {wire:null,cloud:active.file};
-    return {wire:$('wire-file').value===''?null:active.wires[Number($('wire-file').value)],cloud:$('cloud-file').value==='overlay'?overlay:$('cloud-file').value===''?null:active.clouds[Number($('cloud-file').value)]};
+    if (!active) return { cloud: null, wires: [] };
+    if (!isWire) return { cloud: active.file, wires: [null] };
+    const ids = ['wire-file', 'wire-file-2', 'wire-file-3'].slice(0, activeViewerCount());
+    const wires = ids.map(id => $(id).value === '' ? null : active.wires[Number($(id).value)] || null);
+    const cloud = $('cloud-file').value === 'overlay' ? overlay : $('cloud-file').value === '' ? null : active.clouds[Number($('cloud-file').value)] || null;
+    return { cloud, wires };
   }
-  function cacheKey(file,kind) { return `${kind}:${file.webkitRelativePath || file.name}:${file.size}:${file.lastModified}:${kind==='cloud'?$('point-limit').value:''}`; }
-  async function read(file,kind) {
+  async function read(file, kind) {
     if (!file) return null;
-    const key=cacheKey(file,kind);
-    if (cached.has(key)) return cached.get(key);
-    const result=kind==='cloud'?parsePointCloud(await file.arrayBuffer(),file.name,{maxPoints:Number($('point-limit').value)}):parseWireOBJ(await file.text(),file.name);
-    return {parsed:result,key};
+    const variant = `${kind}:${kind === 'cloud' ? $('point-limit').value : ''}`;
+    const fileCache = cached.get(file);
+    if (fileCache?.has(variant)) return fileCache.get(variant);
+    const parsed = kind === 'cloud'
+      ? parsePointCloud(await file.arrayBuffer(), file.name, { maxPoints: Number($('point-limit').value) })
+      : parseWireOBJ(await file.text(), file.name);
+    const variants = cached.get(file) || new Map();
+    variants.set(variant, parsed);
+    if (!cached.has(file)) cached.set(file, variants);
+    while (cached.size > 10) cached.delete(cached.keys().next().value);
+    return parsed;
   }
-  async function load() {
-    if (!active) {clear();return;}
-    const version=++revision, entry=active, files=selectFiles();
-    loaded={cloud:null,wire:null}; viewer?.setData(loaded);
-    $('loading').hidden=false;$('empty-state').hidden=true;$('screenshot').disabled=true;error('');
-    $('current-title').textContent=isWire?`数据 ${entry.id}`:entry.id;$('scene-stats').textContent='正在读取所选文件…';
-    $('data-notes').textContent='';$('color-legend').hidden=true;
-    const result=await Promise.allSettled([read(files.cloud,'cloud'),read(files.wire,'wire')]);
-    if (version!==revision) return;
-    const failures=[];
-    for (let i=0;i<result.length;i++) {
-      const kind=i===0?'cloud':'wire', value=result[i];
-      if (value.status==='fulfilled') {
-        if (value.value?.parsed) {
-          loaded[kind]=value.value.parsed;cached.set(value.value.key,value.value.parsed);
-          while (cached.size>4) cached.delete(cached.keys().next().value);
-        } else loaded[kind]=value.value;
-      } else failures.push(`${i===0?'点云':'线框'}：${value.reason?.message || value.reason}`);
+  function normalizeBounds(value) {
+    const bounds = Array.isArray(value) && value.length === 2 ? value : value?.min && value?.max ? [value.min, value.max] : null;
+    if (!bounds || bounds.some(point => !point || point.length !== 3 || !Array.from(point).every(Number.isFinite))) return null;
+    const result = bounds.map(point => Array.from(point));
+    return result[0].some((value, axis) => value > result[1][axis]) ? null : result;
+  }
+  function unionBounds(items) {
+    const valid = items.map(normalizeBounds).filter(Boolean); if (!valid.length) return null;
+    const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
+    for (const bounds of valid) for (let axis = 0; axis < 3; axis++) {
+      low[axis] = Math.min(low[axis], bounds[0][axis]); high[axis] = Math.max(high[axis], bounds[1][axis]);
     }
-    currentPointName=files.cloud?.name || '';
-    messages=[...(loaded.cloud?.notes || [])];
+    return [low, high];
+  }
+  function captureView() {
+    if (!viewers[0]?.bounds) return null;
+    const viewer = viewers[0];
+    return { camera: { ...viewer.camera, pan: [...viewer.camera.pan] },
+      worldTarget: viewer.target.map((value, axis) => value + viewer.origin[axis]), baseHeight: viewer.baseHeight };
+  }
+  function restoreView(snapshot, viewer) {
+    if (!snapshot) return;
+    viewer.camera = { ...snapshot.camera, pan: [...snapshot.camera.pan] };
+    viewer.target = snapshot.worldTarget.map((value, axis) => value - viewer.origin[axis]); viewer.baseHeight = snapshot.baseHeight;
+  }
+  function updatePanelDetails(files) {
+    if (!isWire) return;
+    const count = activeViewerCount();
+    for (let index = 0; index < 3; index++) {
+      const file = files.wires[index] || null, wire = loadedWires[index] || null;
+      $(`panel-label-${index + 1}`).textContent = file?.name || '未加载线框';
+      $(`panel-stats-${index + 1}`).textContent = wire ? `${pretty(wire.edges.length)} 条线` : '—';
+      $(`panel-empty-${index + 1}`).hidden = !(index < count && file && wire && wire.edges.length === 0);
+    }
+  }
+  async function load({ preserveCamera = false } = {}) {
+    if (!active) { clear(); return; }
+    const version = ++revision, entry = active, files = selectFiles();
+    const viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
+    if (!preserveCamera) pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
+    $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
+    $('current-title').textContent = isWire ? `建筑 ${entry.id}` : entry.id; $('scene-stats').textContent = '正在读取所选文件…';
+    $('data-notes').textContent = ''; $('color-legend').hidden = true;
+    const results = await Promise.allSettled([read(files.cloud, 'cloud'), ...files.wires.map(file => read(file, 'wire'))]);
+    if (version !== revision) return;
+    const failures = [];
+    const resultValue = (result, label) => {
+      if (result.status === 'fulfilled') return result.value;
+      failures.push(`${label}：${result.reason?.message || result.reason}`); return null;
+    };
+    loaded.cloud = resultValue(results[0], '点云');
+    loadedWires = results.slice(1).map((result, index) => resultValue(result, `线框 ${index + 1}`));
+    loaded.wire = loadedWires[0] || null; selectedFiles = files; currentPointName = files.cloud?.name || '';
+    messages = [...(loaded.cloud?.notes || [])];
     try {
-      initViewer(); fields();viewer.setData(loaded);update();
-      const counts=[];
-      if (loaded.wire) counts.push(`${pretty(loaded.wire.edges.length)} 条线段`);
+      initViewers(); fields();
+      const count = activeViewerCount();
+      const sharedBounds = count > 1 ? unionBounds([loaded.cloud?.bounds, ...loadedWires.map(wire => wire?.bounds)]) : null;
+      const commonOrigin = sharedBounds ? sharedBounds[0].map((value, axis) => value + (sharedBounds[1][axis] - value) / 2) : null;
+      pauseSync(() => viewers.forEach((viewer, index) => {
+        if (index < count) viewer.setData({ cloud: loaded.cloud, wire: loadedWires[index] || null, bounds: sharedBounds, origin: commonOrigin });
+        else viewer.setData({});
+      }));
+      if (viewSnapshot) viewers.slice(0, count).forEach(viewer => restoreView(viewSnapshot, viewer));
+      syncEnabled = count > 1; update(); updatePanelDetails(files);
+      const counts = [];
+      loadedWires.forEach((wire, index) => { if (files.wires[index] && wire) counts.push(`${files.wires[index].name}：${pretty(wire.edges.length)} 条线`); });
       if (loaded.cloud) counts.push(`${pretty(loaded.cloud.count)} / ${pretty(loaded.cloud.totalCount)} 点`);
-      $('scene-stats').textContent=counts.length?counts.join(' · '):'未加载可显示的数据';
-      $('geometry-note').textContent=files.wire&&loaded.wire?`${files.wire.name}${loaded.cloud?' + '+files.cloud.name:''}`:loaded.cloud?currentPointName:'未加载数据';
-      $('empty-state').hidden=!!(loaded.wire || loaded.cloud);
-      $('screenshot').disabled=!(loaded.wire || loaded.cloud);
+      $('scene-stats').textContent = counts.length ? counts.join(' · ') : '未加载可显示的数据';
+      $('geometry-note').textContent = count > 1
+        ? `${count} 个线框共享原点、边界与相机${loaded.cloud ? ` · ${currentPointName}` : ' · 未加载点云'}`
+        : files.wires[0] && loadedWires[0] ? `${files.wires[0].name}${loaded.cloud ? ` + ${currentPointName}` : ''}` : loaded.cloud ? currentPointName : '未加载数据';
+      const hasLoaded = Boolean(loaded.cloud || loadedWires.some(Boolean));
+      $('empty-state').hidden = hasLoaded; $('screenshot').disabled = !hasLoaded;
       if (failures.length) error(failures.join('；'));
-    } catch (cause) { error('显示失败：'+cause.message); }
-    finally { $('loading').hidden=true; }
+    } catch (cause) { error(`显示失败：${cause.message}`); }
+    finally { if (version === revision) $('loading').hidden = true; }
   }
   function fields() {
-    const cloud=loaded.cloud, keys=Object.keys(cloud?.fields || {}), color=$('color-mode'), old=color.value;
-    color.replaceChildren();option(color,'height','高度 Z');option(color,'solid','单色');
-    if (cloud?.rgb) option(color,'rgb','原始 RGB');
-    if (keys.length>=3) option(color,'custom-rgb','指定 RGB 列…');
-    keys.filter(key=>!['x','y','z','rgb','rgba'].includes(key.toLowerCase())).forEach(key=>option(color,'field:'+key,fieldLabel(key)));
-    color.value=[...color.options].some(o=>o.value===old)?old:'height';
-    const extra=keys.filter(key=>!['x','y','z'].includes(key.toLowerCase()));
-    ['rgb-r','rgb-g','rgb-b'].forEach((id,i)=>{const select=$(id),previous=select.value;select.replaceChildren();keys.forEach(key=>option(select,key,fieldLabel(key)));select.value=keys.includes(previous)?previous:(extra[i] || keys[i] || '');});
-    $('rgb-fields').hidden=color.value!=='custom-rgb';
+    const cloud = loaded.cloud, keys = Object.keys(cloud?.fields || {}), color = $('color-mode'), old = color.value;
+    color.replaceChildren(); option(color, 'height', '高度 Z'); option(color, 'solid', '单色');
+    if (cloud?.rgb) option(color, 'rgb', '原始 RGB'); if (keys.length >= 3) option(color, 'custom-rgb', '指定 RGB 列…');
+    keys.filter(key => !['x', 'y', 'z', 'rgb', 'rgba'].includes(key.toLowerCase())).forEach(key => option(color, `field:${key}`, fieldLabel(key)));
+    color.value = [...color.options].some(item => item.value === old) ? old : 'height';
+    const extra = keys.filter(key => !['x', 'y', 'z'].includes(key.toLowerCase()));
+    ['rgb-r', 'rgb-g', 'rgb-b'].forEach((id, index) => {
+      const select = $(id), previous = select.value; select.replaceChildren(); keys.forEach(key => option(select, key, fieldLabel(key)));
+      select.value = keys.includes(previous) ? previous : extra[index] || keys[index] || '';
+    });
+    $('rgb-fields').hidden = color.value !== 'custom-rgb';
   }
   function update() {
-    const color=$('color-mode').value;
-    options={...options,showPoints:$('show-points').checked,showWire:isWire&&$('show-wire').checked,grid:$('show-grid').checked,pointSize:Number($('point-size').value),pointOpacity:Number($('point-opacity').value),wireColor:$('wire-color').value,colorMode:color==='custom-rgb'?'rgb':color,rgbFields:color==='custom-rgb'?['rgb-r','rgb-g','rgb-b'].map(id=>$(id).value):null};
-    $('rgb-fields').hidden=color!=='custom-rgb';$('point-size-value').value=String(options.pointSize);$('point-opacity-value').value=Math.round(options.pointOpacity*100)+'%';
-    viewer?.setOptions(options);
-    const state=viewer?.getState(),range=state?.colorRange;
-    $('color-legend').hidden=!(loaded.cloud && options.showPoints && range);
-    $('color-name').textContent=$('color-mode').selectedOptions[0]?.textContent || '';
-    $('color-min').textContent=compact(range?.min);$('color-max').textContent=compact(range?.max);
-    const notes=messages.slice();
-    if (state?.colorFallback) notes.push(state.colorFallback);
-    $('data-notes').textContent=notes.join(' ');
+    const color = $('color-mode').value;
+    options = { ...options, showPoints: $('show-points').checked, showWire: isWire && $('show-wire').checked,
+      grid: $('show-grid').checked, pointSize: Number($('point-size').value), pointOpacity: Number($('point-opacity').value),
+      wireColor: $('wire-color').value, colorMode: color === 'custom-rgb' ? 'rgb' : color,
+      rgbFields: color === 'custom-rgb' ? ['rgb-r', 'rgb-g', 'rgb-b'].map(id => $(id).value) : null };
+    $('rgb-fields').hidden = color !== 'custom-rgb'; $('point-size-value').value = String(options.pointSize);
+    $('point-opacity-value').value = `${Math.round(options.pointOpacity * 100)}%`;
+    pauseSync(() => viewers.forEach(viewer => viewer.setOptions(options))); viewers[0]?.render();
+    const state = viewers[0]?.getState(), range = state?.colorRange;
+    $('color-legend').hidden = !(loaded.cloud && options.showPoints && range);
+    $('color-name').textContent = $('color-mode').selectedOptions[0]?.textContent || '';
+    $('color-min').textContent = compact(range?.min); $('color-max').textContent = compact(range?.max);
+    const notes = messages.slice(); if (state?.colorFallback) notes.push(state.colorFallback); $('data-notes').textContent = notes.join(' ');
   }
-  $('choose-folder').onclick=()=>$('folder-input').click();
-  $('folder-input').onchange=event=>{receive(event.target.files,true);event.target.value='';};
-  $('choose-file').onclick=()=>$('file-input').click();
-  $('file-input').onchange=event=>{receive(event.target.files,false);event.target.value='';};
-  $('attach-cloud').onclick=()=>$('overlay-input').click();
-  $('overlay-input').onchange=event=>{
-    const file=event.target.files[0];event.target.value='';if(!file || !active)return;
-    if (!pointExtension.test(file.name)) {error('请选择支持的点云文件');return;}
-    overlay=file;const select=$('cloud-file');select.querySelector('option[value="overlay"]')?.remove();option(select,'overlay',file.name+'（另选）');select.disabled=false;select.value='overlay';load();
+  function preventDuplicateSelection(changed) {
+    if (!isWire || !$('compare-mode').checked || changed.value === '') return;
+    const selects = [$('wire-file'), $('wire-file-2'), $('wire-file-3')].slice(0, activeViewerCount());
+    const others = new Set(selects.filter(select => select !== changed).map(select => select.value).filter(Boolean));
+    if (!others.has(changed.value)) return;
+    const replacement = [...changed.options].find(item => item.value && !others.has(item.value));
+    changed.value = replacement?.value || ''; error('并排对比需要选择不同的线框文件，已自动改为其他可用文件。');
+  }
+  function exportScreenshot() {
+    if (!viewers[0] || !active) return;
+    const screenshotId = active.id;
+    const screenshotCloud = loaded.cloud;
+    const screenshotWires = loadedWires.slice();
+    const screenshotFiles = selectedFiles.wires.slice();
+    const count = activeViewerCount(), activeViewers = viewers.slice(0, count); activeViewers[0].render();
+    const source = activeViewers[0].canvas;
+    if (!(source.width > 0 && source.height > 0)) return error('当前画布尺寸无效，无法保存截图。');
+    const panelWidth = Math.min(count === 1 ? 1100 : 720, source.width);
+    const panelHeight = Math.max(1, Math.round(panelWidth * source.height / source.width));
+    const heading = 42, footer = 50, output = document.createElement('canvas');
+    output.width = panelWidth * count; output.height = heading + panelHeight + footer;
+    const context = output.getContext('2d'); context.fillStyle = '#fff'; context.fillRect(0, 0, output.width, output.height);
+    const pointText = screenshotCloud ? `${pretty(screenshotCloud.count)} / ${pretty(screenshotCloud.totalCount)} 点` : '未加载点云';
+    const fitText = (text, width) => {
+      let value = String(text); while (value.length > 4 && context.measureText(value).width > width) value = `${value.slice(0, -2)}…`; return value;
+    };
+    activeViewers.forEach((viewer, index) => {
+      const x = index * panelWidth, wire = screenshotWires[index] || null;
+      const label = isWire ? screenshotFiles[index]?.name || '未加载线框' : screenshotId;
+      context.fillStyle = '#193047'; context.font = 'bold 17px sans-serif'; context.fillText(fitText(label, panelWidth - 28), x + 14, 27);
+      context.drawImage(viewer.canvas, x, heading, panelWidth, panelHeight);
+      context.fillStyle = '#f4f7f6'; context.fillRect(x, heading + panelHeight, panelWidth, footer);
+      context.fillStyle = '#526b72'; context.font = '13px sans-serif';
+      const lineText = isWire ? wire ? `${pretty(wire.edges.length)} 条线${wire.edges.length ? '' : ' · 空线框'}` : '未加载线框' : '点云';
+      context.fillText(fitText(`${lineText} · ${pointText}`, panelWidth - 28), x + 14, heading + panelHeight + 30);
+    });
+    output.toBlob(blob => {
+      if (!blob) return error('浏览器无法生成截图。');
+      const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url;
+      link.download = `${isWire ? 'wireframe' : 'pointcloud'}_${screenshotId.replace(/[^a-zA-Z0-9_.-]/g, '_')}.png`;
+      link.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }, 'image/png');
+  }
+
+  $('choose-folder').onclick = () => $('folder-input').click();
+  $('folder-input').onchange = event => { receive(event.target.files, true); event.target.value = ''; };
+  $('choose-file').onclick = () => $('file-input').click();
+  $('file-input').onchange = event => { receive(event.target.files, false); event.target.value = ''; };
+  $('attach-cloud').onclick = () => $('overlay-input').click();
+  $('overlay-input').onchange = event => {
+    const file = event.target.files[0]; event.target.value = ''; if (!file || !active) return;
+    if (!pointExtension.test(file.name)) { error('请选择支持的点云文件'); return; }
+    overlay = file; const select = $('cloud-file'); select.querySelector('option[value="overlay"]')?.remove();
+    option(select, 'overlay', `${file.name}（另选）`); select.disabled = false; select.value = 'overlay'; load();
   };
-  $('search').oninput=()=>{page=0;list();};
-  $('previous-page').onclick=()=>{page--;list();$('data-list').scrollTop=0;};
-  $('next-page').onclick=()=>{page++;list();$('data-list').scrollTop=0;};
-  $('clear-selection').onclick=clear;
-  $('dismiss-error').onclick=()=>error('');
-  $('wire-file').onchange=load;$('cloud-file').onchange=load;
-  $('point-limit').onchange=()=>{if(active)load();};
-  for (const id of ['color-mode','show-points','show-wire','show-grid','wire-color','rgb-r','rgb-g','rgb-b']) $(id).onchange=update;
-  for (const id of ['point-size','point-opacity']) $(id).oninput=update;
-  $('fit-view').onclick=()=>viewer?.fit();$('zoom-in').onclick=()=>viewer?.zoomBy(1.2);$('zoom-out').onclick=()=>viewer?.zoomBy(1/1.2);
-  for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>{viewer?.setView(button.dataset.view);for(const other of document.querySelectorAll('[data-view]')){other.classList.toggle('active',other===button);other.setAttribute('aria-pressed',String(other===button));}};
-  $('screenshot').onclick=()=>{if(!viewer || !active)return;viewer.render();const link=document.createElement('a');link.href=$('scene').toDataURL('image/png');link.download=`${isWire?'wireframe':'pointcloud'}_${active.id.replace(/[^a-zA-Z0-9_.-]/g,'_')}.png`;link.click();};
-  document.addEventListener('keydown',event=>{if(!['INPUT','SELECT','TEXTAREA','BUTTON'].includes(event.target.tagName) && event.key.toLowerCase()==='f'){event.preventDefault();viewer?.fit();}});
-  try {initViewer();clear();}catch(cause){error(cause.message);}
+  $('search').oninput = () => { page = 0; list(); };
+  $('previous-page').onclick = () => { page--; list(); $('data-list').scrollTop = 0; };
+  $('next-page').onclick = () => { page++; list(); $('data-list').scrollTop = 0; };
+  $('clear-selection').onclick = clear; $('dismiss-error').onclick = () => error('');
+  $('wire-file').onchange = event => { preventDuplicateSelection(event.target); load(); };
+  $('cloud-file').onchange = () => load(); $('point-limit').onchange = () => { if (active) load(); };
+  if (isWire) {
+    for (const id of ['wire-file-2', 'wire-file-3']) $(id).onchange = event => { preventDuplicateSelection(event.target); load(); };
+    $('compare-mode').onchange = () => { setComparisonUI(); load({ preserveCamera: true }); };
+    $('compare-count').onchange = () => { setComparisonUI(); load({ preserveCamera: true }); };
+  }
+  for (const id of ['color-mode', 'show-points', 'show-wire', 'show-grid', 'wire-color', 'rgb-r', 'rgb-g', 'rgb-b']) $(id).onchange = update;
+  for (const id of ['point-size', 'point-opacity']) $(id).oninput = update;
+  $('fit-view').onclick = () => viewers[0]?.fit(); $('zoom-in').onclick = () => viewers[0]?.zoomBy(1.2); $('zoom-out').onclick = () => viewers[0]?.zoomBy(1 / 1.2);
+  for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => {
+    viewers[0]?.setView(button.dataset.view);
+    for (const other of document.querySelectorAll('[data-view]')) {
+      other.classList.toggle('active', other === button); other.setAttribute('aria-pressed', String(other === button));
+    }
+  };
+  $('screenshot').onclick = exportScreenshot;
+  document.addEventListener('keydown', event => {
+    if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(event.target.tagName) && event.key.toLowerCase() === 'f') {
+      event.preventDefault(); viewers[0]?.fit();
+    }
+  });
+  try { initViewers(); clear(); } catch (cause) { error(cause.message); }
 })();
 
 })();

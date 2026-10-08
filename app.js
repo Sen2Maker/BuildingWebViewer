@@ -224,9 +224,13 @@ function screenshot() {
     ctx.font = `${12 * ratio}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#3b5b53';
     ctx.fillText('#' + label.id, label.x * ratio, header + (label.y + 13) * ratio);
   }
-  const link = document.createElement('a');
-  link.download = `LOD_${orderedIds().join('-')}_${options.scale}.png`;
-  link.href = result.toDataURL('image/png'); link.click();
+  const filename = `LOD_${orderedIds().join('-')}_${options.scale}.png`;
+  result.toBlob(blob => {
+    if (!blob) { showError('无法生成截图，请降低窗口尺寸后重试。'); return; }
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.download = filename; link.href = url; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }, 'image/png');
 }
 
 $('replace-selection').onclick = () => applyBatch(false);

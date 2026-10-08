@@ -14,7 +14,7 @@ SITE_FILES = [
 FILES = SITE_FILES + [
     'renderer.js', 'obj-parser.js', 'app.js',
     'cloud-app.js', 'cloud-renderer.js', 'point-io.js',
-    'server.py', 'start.sh', 'build.py', 'README.md', 'point-io.test.mjs',
+    'server.py', 'start.sh', 'build.py', 'README.md', 'point-io.test.mjs', 'cloud-renderer.test.mjs',
     '.gitignore', '.gitattributes', '.github/workflows/pages.yml',
 ]
 BUNDLES = {

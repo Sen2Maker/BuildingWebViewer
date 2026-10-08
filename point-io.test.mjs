@@ -13,7 +13,16 @@ check('OBJ polyline / negative index / face fallback', () => {
   assert.deepEqual(parseWireOBJ(vertices + 'l -4 -3 -2\nl 2 1').edges, [[0, 1], [1, 2]]);
   assert.equal(parseWireOBJ(vertices + 'f 1 2 3 4').edges.length, 4);
   assert.equal(parseWireOBJ(vertices + 'l 1 2\nf 1 2 3 4').edges.length, 1);
-  for (const text of ['', 'v NaN 0 0\nl 1 1', vertices + 'l 0 1', vertices + 'l 1 5', vertices + 'l -5 -1']) assert.throws(() => parseWireOBJ(text));
+  for (const text of ['not an OBJ', 'v NaN 0 0\nl 1 1', vertices + 'l 0 1', vertices + 'l 1 5', vertices + 'l -5 -1', 'l 1 2']) assert.throws(() => parseWireOBJ(text));
+});
+check('Empty wireframes are explicit, malformed and degenerate geometry still fails', () => {
+  for (const text of ['', '# empty line prediction\n', 'o empty\ng group\n', 'v 1 2 3\n']) {
+    const parsed = parseWireOBJ(text, 'empty.obj');
+    assert.equal(parsed.id, 'empty.obj'); assert.equal(parsed.empty, true);
+    assert.deepEqual(parsed.edges, []);
+  }
+  assert.equal(parseWireOBJ('').bounds, null);
+  assert.throws(() => parseWireOBJ('v 0 0 0\nl 1 1'), /退化/);
 });
 check('Double precision and unknown columns remain independent attributes', () => {
   const value = cloud('832129.50060046 816457.03489984 17.94589928 0.58543605\n832129.37269985 816457.06679993 17.43709992 0.54385465', 'pc.xyz');
@@ -32,14 +41,22 @@ check('CSV header / comments / reordered XYZ / named colors', () => {
   assert.deepEqual([...cloud('"x","y","z"\n"1","2","3"', 'quoted.csv').positions], [1, 2, 3]);
   assert.throws(() => cloud('1,,2,3', 'missing.csv'));
 });
-check('PTS count and deterministic sample / sampled bounds', () => {
+check('PTS count and deterministic sample / full bounds include unsampled extremes', () => {
   const value = cloud('5\n0 0 0\n1 100 0\n2 2 0\n3 3 0\n4 4 0', 'points.pts', {maxPoints: 3});
   assert.equal(value.count, 3); assert.equal(value.totalCount, 5);
   assert.deepEqual([...value.positions], [0, 0, 0, 2, 2, 0, 4, 4, 0]);
-  assert.deepEqual(value.bounds, [[0, 0, 0], [4, 4, 0]]);
+  assert.deepEqual(value.bounds, [[0, 0, 0], [4, 100, 0]]);
   for (const field of Object.values(value.fields)) assert.equal(field.length, 3);
-  assert(value.notes.some(note => note.includes('样本范围')));
+  assert(value.notes.some(note => note.includes('全部原始点')));
   assert.throws(() => cloud('2\n0 0 0', 'broken.pts'));
+});
+check('Text passes preserve comments, final lines and invalid unsampled rows', () => {
+  const value = cloud('\uFEFF# header\r\n# z x y strength\r\n3 1 2 4 # first\r\n\r\n// skipped\r\n6 4 5 7', 'sample.xyz', {maxPoints: 1});
+  assert.equal(value.totalCount, 2);
+  assert.deepEqual([...value.positions], [1, 2, 3]);
+  assert.deepEqual(value.bounds, [[1, 2, 3], [4, 5, 6]]);
+  assert.throws(() => cloud('0 0 0\n1 NaN 2\n3 3 3', 'bad.xyz', {maxPoints: 2}), /第 2 行/);
+  assert.throws(() => cloud('0 0 0\n1 2\n3 3 3', 'bad.xyz', {maxPoints: 2}), /数量不一致/);
 });
 check('PLY ASCII list faces and properties', () => {
   const value = cloud('ply\nformat ascii 1.0\nelement vertex 2\nproperty double x\nproperty double y\nproperty double z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n1000000.0001 2 3 1 0 0\n4 5 6 0 255 0\n3 0 1 0\n', 'mesh.ply');

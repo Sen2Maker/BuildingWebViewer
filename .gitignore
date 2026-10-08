@@ -11,6 +11,8 @@ Thumbs.db
 .env.*
 
 # Keep local datasets out of the code repository
+local/
+screenshots/
 data/
 datasets/
 models/
