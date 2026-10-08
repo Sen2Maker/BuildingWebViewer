@@ -125,7 +125,7 @@ python3 build.py --site --zip
 
 ### 本地 Git
 
-本项目可独立于原来的 Point2Lod2 工程使用。本次建立的本地仓库使用 `codex/main` 分支，已有首次提交；不需要再执行 `git init`。
+本项目可独立于原来的 Point2Lod2 工程使用。本次建立的本地仓库使用 `main` 分支，已有首次提交；不需要再执行 `git init`。
 
 ```bash
 git status
@@ -137,7 +137,7 @@ git log --oneline -5
 从 ZIP 新解压出来的副本没有 `.git`，如需单独管理该副本，才执行以下命令：
 
 ```bash
-git init -b codex/main
+git init -b main
 git add .
 git commit -m "Initial BuildingWebViewer project"
 ```
@@ -151,10 +151,10 @@ git commit -m "Initial BuildingWebViewer project"
 
    ```bash
    git remote add origin https://github.com/YOUR_GITHUB_USERNAME/BuildingWebViewer.git
-   git push -u origin codex/main
+   git push -u origin main
    ```
 
-3. 在 GitHub 仓库确认默认分支是刚推送的 `codex/main`。打开 **Settings → Pages → Build and deployment → Source**，选择 **GitHub Actions**。
+3. 在 GitHub 仓库确认默认分支是刚推送的 `main`。打开 **Settings → Pages → Build and deployment → Source**，选择 **GitHub Actions**。
 4. 打开 **Actions → Deploy BuildingWebViewer to GitHub Pages → Run workflow**，选择默认分支运行。首次推送可能因为尚未启用 Pages 而失败，完成第 3 步后重新运行即可。
 5. 等待工作流成功。页面地址通常为 `https://YOUR_GITHUB_USERNAME.github.io/BuildingWebViewer/`，准确地址可在 **Settings → Pages** 或部署结果中查看。
 
