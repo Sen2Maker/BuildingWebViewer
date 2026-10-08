@@ -270,19 +270,36 @@ class CloudViewer {
   buildColors(cloud, count) {
     const values = new Float32Array(count * 3), fields = cloud?.fields || {};
     let mode = this.options.colorMode, fallback = null, range = null;
-    // Explicit field selection must also work for attributes named height, solid, or rgb.
+    // Explicit field selection also supports attributes named height, solid, rgb, or file.
     const fieldName = mode.startsWith('field:') ? mode.slice(6) : mode;
     if (!cloud || !count) return { values, mode, fallback, range };
     const validField = name => fields[name] && fields[name].length >= count;
-    let rgb = null, channels = null;
-    if (mode === 'rgb') {
+    let rgb = null, channels = null, sources = null;
+    if (mode === 'file') {
+      sources = Array.isArray(cloud.sources) ? [...cloud.sources].sort((a, b) => (a?.start ?? 0) - (b?.start ?? 0)) : [];
+      let covered = 0;
+      const valid = sources.length > 0 && sources.every(source => {
+        if (!source || !Number.isSafeInteger(source.start) || !Number.isSafeInteger(source.count) || source.start !== covered || source.count < 0 || source.count > count - covered) return false;
+        if ((!Array.isArray(source.color) && !ArrayBuffer.isView(source.color)) || source.color.length !== 3 || !Array.from(source.color).every(Number.isFinite)) return false;
+        covered += source.count;
+        return true;
+      });
+      if (!valid || covered !== count) { mode = 'height'; fallback = '未找到完整的点云文件来源信息，已按高度着色。'; }
+    } else if (mode === 'rgb') {
       if (this.options.rgbFields?.length === 3 && this.options.rgbFields.every(validField)) channels = this.options.rgbFields.map(name => fields[name]);
       else if (cloud.rgb?.length >= count * 3) rgb = cloud.rgb;
       else { mode = 'height'; fallback = '未找到可用的 RGB 数据，已按高度着色。'; }
     } else if (!['height', 'solid'].includes(mode) && !validField(fieldName)) {
       fallback = `字段 ${fieldName} 不存在，已按高度着色。`; mode = 'height';
     }
-    if (mode === 'rgb') {
+    if (mode === 'file') {
+      for (const source of sources) {
+        const color = Array.from(source.color, value => CLOUD_CLAMP(value, 0, 1));
+        for (let i = source.start; i < source.start + source.count; i++) {
+          values[i * 3] = color[0]; values[i * 3 + 1] = color[1]; values[i * 3 + 2] = color[2];
+        }
+      }
+    } else if (mode === 'rgb') {
       let maximum = 0;
       for (let i = 0; i < count; i++) for (let channel = 0; channel < 3; channel++) {
         const value = channels ? channels[channel][i] : rgb[i * 3 + channel];
@@ -472,6 +489,8 @@ const POINT_TYPES = {
   float: ['getFloat32', 4], float32: ['getFloat32', 4], double: ['getFloat64', 8], float64: ['getFloat64', 8],
 };
 const POINT_DECODER = new TextDecoder('utf-8');
+const POINT_TEXT_CHUNK_BYTES = 1024 * 1024;
+const POINT_TEXT_MAX_LINE_CHARS = 1024 * 1024;
 
 function pointBounds() { return [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]]; }
 function extendPointBounds(bounds, xyz) {
@@ -604,53 +623,123 @@ function* pointTextLines(text) {
   }
 }
 
-function parsePointText(bytes, filename, maxPoints) {
-  const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
+function pointTextTokens(line) {
+  return /[;,]/.test(line) ? line.trim().split(/[;,]/).map(value => value.trim()) : line.trim().split(/\s+/);
+}
+
+function pointTextCheckLine(record) {
+  if (record.text.length > POINT_TEXT_MAX_LINE_CHARS) pointError(`第 ${record.line} 行过长（超过 1,048,576 字符）；请检查换行符或文件格式`);
+}
+
+/** Shared first pass for synchronous buffers and streaming File/Blob reads. */
+function pointTextCounter(filename) {
   const notes = [];
   let header = null, declared = null, totalCount = 0, firstDataLine = 0, firstFields = null;
-  const tokens = line => (/[;,]/.test(line) ? line.trim().split(/[;,]/).map(value => value.trim()) : line.trim().split(/\s+/));
-  // Count rows before allocating sampled arrays, without retaining token arrays
-  // for every original point. The second pass validates every original row.
-  for (const record of pointTextLines(text)) {
-    let line = record.text.trim();
-    if (!line) continue;
-    if (line.startsWith('#') || line.startsWith('//')) {
-      if (!totalCount && !header) {
-        const possible = tokens(line.replace(/^(#|\/\/)\s*/, '')).map(v => v.replace(/^['"]|['"]$/g, '').toLowerCase());
-        if (['x', 'y', 'z'].every(name => possible.includes(name))) header = possible;
+  return {
+    add(record) {
+      pointTextCheckLine(record);
+      let line = record.text.trim();
+      if (!line) return;
+      if (line.startsWith('#') || line.startsWith('//')) {
+        if (!totalCount && !header) {
+          const possible = pointTextTokens(line.replace(/^(#|\/\/)\s*/, '')).map(v => v.replace(/^['"]|['"]$/g, '').toLowerCase());
+          if (['x', 'y', 'z'].every(name => possible.includes(name))) header = possible;
+        }
+        return;
       }
-      continue;
-    }
-    line = line.split('#')[0].trim();
-    const parts = tokens(line);
-    if (!totalCount && !header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
-      declared = Number(parts[0]); continue;
-    }
-    if (!totalCount && !header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
-      const candidate = pointNames(parts);
-      if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${record.line} 行不是 XYZ 数值或有效的 x/y/z 表头`);
-      header = candidate; continue;
-    }
-    if (!totalCount) { firstDataLine = record.line; firstFields = parts; }
-    totalCount++;
-  }
-  if (!totalCount) pointError('点云文件为空');
-  if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
-  if (!header) {
-    if (firstFields.length < 3) pointError('点云每行至少需要 XYZ 三列');
-    header = firstFields.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
-    if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
-  }
+      // Subsequent rows only need counting here; the second pass validates every row.
+      if (!totalCount) {
+        line = line.split('#')[0].trim();
+        const parts = pointTextTokens(line);
+        if (!header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
+          declared = Number(parts[0]); return;
+        }
+        if (!header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
+          const candidate = pointNames(parts);
+          if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${record.line} 行不是 XYZ 数值或有效的 x/y/z 表头`);
+          header = candidate; return;
+        }
+        firstDataLine = record.line; firstFields = parts;
+      }
+      totalCount++;
+    },
+    finish() {
+      if (!totalCount) pointError('点云文件为空');
+      if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
+      if (!header) {
+        if (firstFields.length < 3) pointError('点云每行至少需要 XYZ 三列');
+        header = firstFields.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
+        if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
+      }
+      return {header, totalCount, firstDataLine, notes};
+    },
+  };
+}
+
+/** Shared second pass: validate all original rows, then let the collector sample. */
+function pointTextParser(metadata, maxPoints) {
+  const {header, totalCount, firstDataLine, notes} = metadata;
   const collector = pointCollector(header, totalCount, maxPoints, notes);
   let index = 0;
-  for (const record of pointTextLines(text)) {
-    if (record.line < firstDataLine) continue;
-    let line = record.text.trim();
-    if (!line || line.startsWith('#') || line.startsWith('//')) continue;
-    line = line.split('#')[0].trim();
-    collector.add(tokens(line).map(value => numericPoint(value, `第 ${record.line} 行`)), index++);
+  return {
+    add(record) {
+      pointTextCheckLine(record);
+      if (record.line < firstDataLine) return;
+      let line = record.text.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) return;
+      line = line.split('#')[0].trim();
+      const values = pointTextTokens(line).map(value => numericPoint(value, `第 ${record.line} 行`));
+      if (values.length !== header.length) pointError(`第 ${record.line} 行：字段数量不一致（需要 ${header.length} 列，读取 ${values.length} 列）`);
+      collector.add(values, index++);
+    },
+    finish() {
+      if (index !== totalCount) pointError(`两次扫描的点数不一致：首次 ${totalCount} 点，实际读取 ${index} 点；请重新选择文件`);
+      return collector.finish();
+    },
+  };
+}
+
+function parsePointText(bytes, filename, maxPoints) {
+  const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
+  const counter = pointTextCounter(filename);
+  for (const record of pointTextLines(text)) counter.add(record);
+  const parser = pointTextParser(counter.finish(), maxPoints);
+  for (const record of pointTextLines(text)) parser.add(record);
+  return parser.finish();
+}
+
+function pointAbort(signal) {
+  if (signal?.aborted) throw new DOMException('点云读取已取消', 'AbortError');
+}
+
+async function pointTextScanFile(file, consume, phase, signal, onProgress) {
+  const decoder = new TextDecoder('utf-8');
+  let carry = '', lineNumber = 1;
+  const progress = loaded => { if (typeof onProgress === 'function') onProgress({phase, loaded, total: file.size}); };
+  pointAbort(signal);
+  progress(0);
+  for (let offset = 0; offset < file.size; offset += POINT_TEXT_CHUNK_BYTES) {
+    pointAbort(signal);
+    const end = Math.min(offset + POINT_TEXT_CHUNK_BYTES, file.size);
+    const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+    pointAbort(signal);
+    if (bytes.byteLength !== end - offset) pointError(`文件读取不完整：需要 ${end - offset} 字节，实际读取 ${bytes.byteLength} 字节`);
+    const block = carry + decoder.decode(bytes, {stream: true});
+    let start = 0, newline;
+    while ((newline = block.indexOf('\n', start)) !== -1) {
+      consume({text: block.slice(start, newline), line: lineNumber++});
+      start = newline + 1;
+    }
+    carry = block.slice(start);
+    pointTextCheckLine({text: carry, line: lineNumber});
+    progress(end);
+    // Yield between bounded chunks so rendering, progress, and cancellation remain responsive.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    pointAbort(signal);
   }
-  return collector.finish();
+  carry += decoder.decode();
+  if (carry.length) consume({text: carry, line: lineNumber});
+  pointAbort(signal);
 }
 
 /** Extract a newline-terminated ASCII header while leaving the binary payload untouched. */
@@ -789,23 +878,151 @@ function parsePointPCD(bytes, maxPoints) {
   return collector.finish();
 }
 
+function pointCloudFormat(filename, start) {
+  const extension = String(filename).split('.').pop().toLowerCase();
+  if (['las', 'laz'].includes(extension)) pointError('当前查看器暂不支持 LAS/LAZ，请先导出 XYZ、PLY 或 PCD');
+  if (extension === 'ply' || /^ply\r?\n/.test(start)) return 'ply';
+  if (extension === 'pcd' || /^#.*\.PCD/i.test(start) || /^VERSION\s+\.7/m.test(start)) return 'pcd';
+  if (['xyz', 'txt', 'csv', 'pts'].includes(extension) || !filename) return 'text';
+  pointError(`不支持的点云格式 .${extension}；请选择 XYZ、TXT、CSV、PTS、PLY 或 PCD`);
+}
+
 /** XYZ/TXT/CSV/PTS, ASCII/binary PLY, and ASCII/uncompressed-binary PCD. No LAS/LAZ. */
 function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) {
   if (!Number.isSafeInteger(maxPoints) || maxPoints < 1) pointError('maxPoints 必须为正整数');
   const bytes = arrayBuffer instanceof ArrayBuffer ? new Uint8Array(arrayBuffer) : ArrayBuffer.isView(arrayBuffer) ? new Uint8Array(arrayBuffer.buffer, arrayBuffer.byteOffset, arrayBuffer.byteLength) : null;
   if (!bytes) pointError('点云读取器需要 ArrayBuffer');
   if (!bytes.byteLength) pointError('点云文件为空');
-  const extension = String(filename).split('.').pop().toLowerCase();
-  if (['las', 'laz'].includes(extension)) pointError('当前查看器暂不支持 LAS/LAZ，请先导出 XYZ、PLY 或 PCD');
   const start = POINT_DECODER.decode(bytes.subarray(0, Math.min(256, bytes.length))).replace(/^\uFEFF/, '');
-  if (extension === 'ply' || /^ply\r?\n/.test(start)) return parsePointPLY(bytes, maxPoints);
-  if (extension === 'pcd' || /^#.*\.PCD/i.test(start) || /^VERSION\s+\.7/m.test(start)) return parsePointPCD(bytes, maxPoints);
-  if (['xyz', 'txt', 'csv', 'pts'].includes(extension) || !filename) return parsePointText(bytes, filename, maxPoints);
-  pointError(`不支持的点云格式 .${extension}；请选择 XYZ、TXT、CSV、PTS、PLY 或 PCD`);
+  const format = pointCloudFormat(filename, start);
+  if (format === 'ply') return parsePointPLY(bytes, maxPoints);
+  if (format === 'pcd') return parsePointPCD(bytes, maxPoints);
+  return parsePointText(bytes, filename, maxPoints);
+}
+
+/** Read File/Blob text clouds in bounded chunks; PLY/PCD retain their existing buffer parser. */
+async function readPointCloud(file, {maxPoints = 500000, signal, onProgress} = {}) {
+  if (!Number.isSafeInteger(maxPoints) || maxPoints < 1) pointError('maxPoints 必须为正整数');
+  pointAbort(signal);
+  if (!file || typeof file.slice !== 'function' || !Number.isSafeInteger(file.size) || file.size < 0) pointError('点云读取器需要 File 或 Blob');
+  if (!file.size) pointError('点云文件为空');
+  const filename = String(file.name || '');
+  const prefixSize = Math.min(256, file.size);
+  const prefix = new Uint8Array(await file.slice(0, prefixSize).arrayBuffer());
+  pointAbort(signal);
+  if (!prefix.byteLength) pointError('文件头读取失败，请重新选择文件');
+  const start = POINT_DECODER.decode(prefix).replace(/^\uFEFF/, '');
+  const format = pointCloudFormat(filename, start);
+  if (format !== 'text') {
+    if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: 0, total: file.size});
+    pointAbort(signal);
+    const buffer = await file.slice(0, file.size).arrayBuffer();
+    pointAbort(signal);
+    if (buffer.byteLength !== file.size) pointError('点云文件读取不完整，请重新选择文件');
+    if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: file.size, total: file.size});
+    await new Promise(resolve => setTimeout(resolve, 0));
+    pointAbort(signal);
+    return parsePointCloud(buffer, filename, {maxPoints});
+  }
+  const counter = pointTextCounter(filename);
+  await pointTextScanFile(file, record => counter.add(record), 'count', signal, onProgress);
+  const parser = pointTextParser(counter.finish(), maxPoints);
+  await pointTextScanFile(file, record => parser.add(record), 'parse', signal, onProgress);
+  return parser.finish();
+}
+
+
+// Source: cloud-combine.js
+/** Combine already sampled clouds without moving their original coordinates. */
+const CLOUD_SOURCE_PALETTE = [
+  [57, 126, 179], [222, 123, 68], [65, 151, 113], [157, 102, 181],
+  [205, 174, 56], [55, 157, 173], [206, 105, 148], [125, 139, 76],
+  [105, 122, 183], [166, 117, 91], [106, 158, 158], [187, 120, 105],
+];
+
+function cloudSourceColor(name) {
+  // FNV-1a keeps a file's color stable when the selection order changes.
+  let hash = 2166136261;
+  for (let i = 0; i < name.length; i++) hash = Math.imul(hash ^ name.charCodeAt(i), 16777619) >>> 0;
+  return CLOUD_SOURCE_PALETTE[hash % CLOUD_SOURCE_PALETTE.length].map(channel => channel / 255);
+}
+
+function cloudMergeError(name, message) { throw Error(`点云 ${name}：${message}`); }
+
+/**
+ * items: [{name, cloud}], where each cloud is a parsePointCloud/readPointCloud result.
+ * Preserves all scalar fields. Missing attributes / RGB samples are NaN, never zero.
+ * Inputs are not mutated. A singleton shares its read-only sample arrays; merged arrays,
+ * bounds, notes and source metadata are newly allocated.
+ */
+function mergePointClouds(items) {
+  if (!Array.isArray(items)) throw TypeError('点云合并需要文件列表');
+  if (!items.length) return null;
+  let count = 0, totalCount = 0;
+  const fieldNames = new Set(), records = [];
+  const bounds = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index], cloud = item?.cloud, name = String(item?.name ?? `文件 ${index + 1}`);
+    if (!cloud || !Number.isSafeInteger(cloud.count) || cloud.count < 1 ||
+        !Number.isSafeInteger(cloud.totalCount) || cloud.totalCount < cloud.count) {
+      cloudMergeError(name, '展示点数或总点数无效');
+    }
+    if (!cloud.positions || cloud.positions.length !== cloud.count * 3) cloudMergeError(name, 'XYZ 数组长度与点数不一致');
+    if (!Array.isArray(cloud.bounds) || cloud.bounds.length !== 2 || cloud.bounds.some(point => !point || point.length !== 3)) cloudMergeError(name, '坐标范围无效');
+    for (let axis = 0; axis < 3; axis++) {
+      const low = cloud.bounds[0][axis], high = cloud.bounds[1][axis];
+      if (!Number.isFinite(low) || !Number.isFinite(high) || low > high) cloudMergeError(name, '坐标范围无效');
+      bounds[0][axis] = Math.min(bounds[0][axis], low); bounds[1][axis] = Math.max(bounds[1][axis], high);
+    }
+    for (const [field, values] of Object.entries(cloud.fields || {})) {
+      if (!values || values.length !== cloud.count) cloudMergeError(name, `属性 ${field} 长度与点数不一致`);
+      fieldNames.add(field);
+    }
+    if (cloud.rgb != null && cloud.rgb.length !== cloud.count * 3) cloudMergeError(name, 'RGB 数组长度与点数不一致');
+    records.push({name, cloud, start: count});
+    count += cloud.count; totalCount += cloud.totalCount;
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(totalCount)) cloudMergeError(name, '合并点数超出可表示范围');
+  }
+  if (records.length === 1) {
+    const {name, cloud} = records[0];
+    return {...cloud, bounds, fields: Object.assign(Object.create(null), cloud.fields || {}),
+      notes: [...new Set((cloud.notes || []).filter(note => typeof note === 'string' && note.trim()))],
+      sources: [{name, start: 0, count, totalCount, color: cloudSourceColor(name)}]};
+  }
+  const positions = new Float64Array(count * 3), fields = Object.create(null);
+  for (const field of fieldNames) fields[field] = new Float32Array(count).fill(NaN);
+  const anyRGB = records.some(({cloud}) => cloud.rgb != null);
+  const rgb = anyRGB ? new Float32Array(count * 3).fill(NaN) : null;
+  const sources = [], noteGroups = new Map(), missingRGB = [];
+  for (const {name, cloud, start} of records) {
+    positions.set(cloud.positions, start * 3);
+    for (const [field, values] of Object.entries(cloud.fields || {})) fields[field].set(values, start);
+    if (rgb && cloud.rgb != null) rgb.set(cloud.rgb, start * 3);
+    else if (rgb) missingRGB.push(name);
+    sources.push({name, start, count: cloud.count, totalCount: cloud.totalCount, color: cloudSourceColor(name)});
+    for (const note of new Set(cloud.notes || [])) {
+      if (typeof note !== 'string' || !note.trim()) continue;
+      if (!noteGroups.has(note)) noteGroups.set(note, []);
+      noteGroups.get(note).push(name);
+    }
+  }
+  const notes = records.length > 1
+    ? [`叠加 ${records.length} 个文件：显示 ${count.toLocaleString()} / ${totalCount.toLocaleString()} 点；保留原始坐标，范围覆盖全部文件的原始点。`]
+    : [];
+  for (const [note, names] of noteGroups) {
+    // Explain a shared parser note once, retaining its file scope.
+    if (records.length === 1) notes.push(note);
+    else notes.push(`${names.length === records.length ? '各文件' : [...new Set(names)].join('、')}：${note}`);
+  }
+  const missingFields = [...fieldNames].filter(field => records.some(({cloud}) => !Object.hasOwn(cloud.fields || {}, field)));
+  if (missingFields.length) notes.push(`部分文件缺少属性 ${missingFields.join('、')}，对应点的属性保留为 NaN。`);
+  if (missingRGB.length) notes.push(`${[...new Set(missingRGB)].join('、')} 没有 RGB，合并后的对应 RGB 值保留为 NaN；可使用高度、属性或按文件着色。`);
+  return {positions, count, totalCount, bounds, fields, rgb, notes, sources};
 }
 
 
 // Source: cloud-app.js
+
 
 
 (() => {
@@ -820,8 +1037,8 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
   let entries = [], active = null, page = 0, revision = 0, overlay = null;
   let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
-  let currentPointName = '', messages = [];
-  const cached = new Map();
+  let currentPointName = '', messages = [], loadController = null;
+  const cached = new Map(), selectedCloudEntries = new Set();
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
@@ -867,24 +1084,27 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
     const filtered = entries.filter(entry => entry.id.toLowerCase().includes(query));
     const pages = Math.ceil(filtered.length / 50);
     page = Math.max(0, Math.min(page, Math.max(0, pages - 1)));
-    $('filter-count').textContent = `${pretty(filtered.length)} ${isWire ? '个建筑 ID' : '个文件'}`;
+    $('filter-count').textContent = `${pretty(filtered.length)} ${isWire ? '个建筑 ID' : `个文件 · 已选 ${selectedCloudEntries.size}`}`;
     $('item-count').textContent = pretty(entries.length); $('page-info').textContent = pages ? `${page + 1} / ${pages}` : '0 / 0';
     $('previous-page').disabled = page === 0; $('next-page').disabled = page >= pages - 1;
     const fragment = document.createDocumentFragment();
     for (const entry of filtered.slice(page * 50, (page + 1) * 50)) {
       const button = document.createElement('button'); button.className = 'data-entry';
-      button.setAttribute('aria-pressed', String(active?.id === entry.id));
+      const selected = isWire ? active?.id === entry.id : selectedCloudEntries.has(entry);
+      button.setAttribute('aria-pressed', String(selected));
+      if (!isWire) { button.setAttribute('role', 'checkbox'); button.setAttribute('aria-checked', String(selected)); }
       const title = document.createElement('strong'); title.textContent = isWire ? `# ${entry.id}` : entry.id;
       const detail = document.createElement('small');
       detail.textContent = isWire ? `${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云` : formatSize(entry.file.size);
       button.append(title, detail); button.title = entry.id;
-      button.onclick = () => active?.id === entry.id ? clear() : choose(entry); fragment.append(button);
+      button.onclick = () => isWire ? active?.id === entry.id ? clear() : choose(entry) : toggleCloud(entry); fragment.append(button);
     }
     if (!filtered.length) {
       const empty = document.createElement('p'); empty.className = 'empty-list';
       empty.textContent = entries.length ? '没有匹配的数据' : '先选择你的数据文件或文件夹'; fragment.append(empty);
     }
     $('data-list').replaceChildren(fragment);
+    updateCloudSelection();
   }
   function fillWireSelect(select, files, index = null) {
     select.replaceChildren(); option(select, '', '不加载线框');
@@ -922,6 +1142,8 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
     }
   }
   function clear() {
+    loadController?.abort(); loadController = null;
+    selectedCloudEntries.clear();
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
     selectedFiles = { cloud: null, wires: [] }; messages = []; currentPointName = ''; syncEnabled = false;
     pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
@@ -932,6 +1154,7 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
   }
   function receive(fileList, fromFolder) {
     const files = [...fileList]; if (!files.length) return;
+    if (!isWire) { receiveCloudFiles(files, fromFolder); return; }
     clear(); cached.clear(); entries = []; page = 0; $('search').value = ''; list();
     $('source-note').textContent = '正在检查所选文件夹'; let next = [];
     if (isWire) {
@@ -983,20 +1206,116 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
     const cloud = $('cloud-file').value === 'overlay' ? overlay : $('cloud-file').value === '' ? null : active.clouds[Number($('cloud-file').value)] || null;
     return { cloud, wires };
   }
-  async function read(file, kind) {
+  async function read(file, kind, { signal, onProgress, maxPoints = Number($('point-limit').value) } = {}) {
     if (!file) return null;
-    const variant = `${kind}:${kind === 'cloud' ? $('point-limit').value : ''}`;
+    const variant = `${kind}:${kind === 'cloud' ? maxPoints : ''}`;
     const fileCache = cached.get(file);
     if (fileCache?.has(variant)) return fileCache.get(variant);
     const parsed = kind === 'cloud'
-      ? parsePointCloud(await file.arrayBuffer(), file.name, { maxPoints: Number($('point-limit').value) })
+      ? await readPointCloud(file, { maxPoints, signal, onProgress })
       : parseWireOBJ(await file.text(), file.name);
+    if (signal?.aborted) throw new DOMException('已取消读取', 'AbortError');
     const variants = cached.get(file) || new Map();
     variants.set(variant, parsed);
+    while (variants.size > 3) variants.delete(variants.keys().next().value);
     if (!cached.has(file)) cached.set(file, variants);
     while (cached.size > 10) cached.delete(cached.keys().next().value);
     return parsed;
   }
+  function receiveCloudFiles(files, fromFolder) {
+    const existing = new Set(entries.map(entry => entry.key));
+    const names = new Set(entries.map(entry => entry.id));
+    let added = 0;
+    for (const file of files) {
+      if (!pointExtension.test(file.name)) continue;
+      const path = file.webkitRelativePath || file.name;
+      const key = `${path}\0${file.size}\0${file.lastModified}`;
+      if (existing.has(key)) continue;
+      const base = fromFolder ? path.split('/').slice(1).join('/') || file.name : file.name;
+      let id = base, suffix = 2;
+      while (names.has(id)) id = `${base} (${suffix++})`;
+      entries.push({id, key, file}); existing.add(key); names.add(id); added++;
+    }
+    entries.sort((a, b) => natural(a.id, b.id));
+    page = 0; $('search').value = ''; list();
+    $('source-note').textContent = `已列出 ${pretty(entries.length)} 个文件 · 勾选可叠加 · 可继续添加文件或文件夹`;
+    error(!added && !files.some(file => pointExtension.test(file.name)) ? '未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。' : '');
+  }
+  function toggleCloud(entry) {
+    if (selectedCloudEntries.has(entry)) selectedCloudEntries.delete(entry);
+    else selectedCloudEntries.add(entry);
+    if (!selectedCloudEntries.size) { clear(); return; }
+    active = selectedCloudEntries.values().next().value;
+    list(); load();
+  }
+  function updateCloudSelection() {
+    if (isWire) return;
+    const container = $('cloud-selection'); container.replaceChildren();
+    container.hidden = !selectedCloudEntries.size;
+    for (const entry of selectedCloudEntries) {
+      const source = loaded.cloud?.sources?.find(source => source.name === entry.id);
+      const chip = document.createElement('span'); chip.className = 'cloud-chip';
+      const dot = document.createElement('i'); dot.className = 'cloud-source-dot'; dot.setAttribute('aria-hidden', 'true');
+      if (source?.color) dot.style.background = `rgb(${source.color.map(value => Math.round(value * 255)).join(',')})`;
+      const title = document.createElement('span'); title.textContent = entry.id;
+      title.title = source ? `${entry.id} · ${pretty(source.count)} / ${pretty(source.totalCount)} 点；色标对应“按文件”着色` : entry.id;
+      const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `移除点云 ${entry.id}`);
+      remove.onclick = () => toggleCloud(entry); chip.append(dot, title, remove); container.append(chip);
+    }
+  }
+  async function loadCloudSelection({preserveCamera = false} = {}) {
+    if (!selectedCloudEntries.size) { clear(); return; }
+    loadController?.abort();
+    const controller = new AbortController(); loadController = controller;
+    const version = ++revision, selection = [...selectedCloudEntries];
+    const maxPoints = Math.floor(Number($('point-limit').value) / selection.length);
+    const snapshot = preserveCamera ? captureView() : null;
+    syncEnabled = false;
+    pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
+    loaded = {cloud: null, wire: null}; loadedWires = []; messages = [];
+    $('loading').querySelector('span').textContent = '正在读取文件…';
+    $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
+    $('current-title').textContent = selection.length === 1 ? selection[0].id : `${selection.length} 个点云叠加`;
+    $('scene-stats').textContent = '正在读取所选文件…'; $('data-notes').textContent = ''; $('color-legend').hidden = true;
+    const items = [], failures = [];
+    try {
+      if (maxPoints < 1) throw Error('所选文件数量超过总显示点数上限，请减少选择或提高上限。');
+      // Read sequentially and divide the display budget across selected files.
+      for (const [index, entry] of selection.entries()) {
+        if (version !== revision) return;
+        $('scene-stats').textContent = `读取文件 ${index + 1} / ${selection.length} · ${entry.id}`;
+        try {
+          const cloud = await read(entry.file, 'cloud', {maxPoints, signal: controller.signal, onProgress({phase, loaded, total}) {
+            if (version !== revision) return;
+            const message = `${phase === 'count' ? '统计点数' : '解析点云'} ${Math.floor(loaded / total * 100)}%`;
+            $('loading').querySelector('span').textContent = `${index + 1} / ${selection.length} · ${message}`;
+            $('scene-stats').textContent = `${entry.id} · ${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
+          }});
+          items.push({name: entry.id, cloud});
+        } catch (cause) {
+          if (version !== revision) return;
+          failures.push(`${entry.id}：${cause.message}`);
+        }
+      }
+      if (version !== revision) return;
+      loaded.cloud = mergePointClouds(items);
+      selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
+      currentPointName = items.map(item => item.name).join(' + ');
+      messages = [...(loaded.cloud?.notes || [])];
+      if (selection.length > 1) messages.push(`总显示上限在 ${selection.length} 个所选文件间均分，每个最多 ${pretty(maxPoints)} 点；全部原始点的坐标范围仍保留。`);
+      initViewers(); fields(); viewers[0].setData({cloud: loaded.cloud});
+      if (snapshot) restoreView(snapshot, viewers[0]);
+      update(); updateCloudSelection();
+      $('scene-stats').textContent = loaded.cloud
+        ? `${items.length} / ${selection.length} 个文件 · ${pretty(loaded.cloud.count)} / ${pretty(loaded.cloud.totalCount)} 点`
+        : '未加载可显示的数据';
+      $('geometry-note').textContent = items.length > 1 ? `${items.length} 个点云按原始 XYZ 坐标叠加` : currentPointName || '未加载数据';
+      $('empty-state').hidden = Boolean(loaded.cloud); $('screenshot').disabled = !loaded.cloud;
+      if (failures.length) error(failures.join('；'));
+    } catch (cause) { if (version === revision) error(`显示失败：${cause.message}`); }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
+  }
+
   function normalizeBounds(value) {
     const bounds = Array.isArray(value) && value.length === 2 ? value : value?.min && value?.max ? [value.min, value.max] : null;
     if (!bounds || bounds.some(point => !point || point.length !== 3 || !Array.from(point).every(Number.isFinite))) return null;
@@ -1033,14 +1352,26 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
     }
   }
   async function load({ preserveCamera = false } = {}) {
+    if (!isWire) return loadCloudSelection({ preserveCamera });
     if (!active) { clear(); return; }
+    loadController?.abort();
+    const controller = new AbortController(); loadController = controller;
     const version = ++revision, entry = active, files = selectFiles();
     const viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
     if (!preserveCamera) pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
+    $('loading').querySelector('span').textContent = '正在读取文件…';
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
     $('current-title').textContent = isWire ? `建筑 ${entry.id}` : entry.id; $('scene-stats').textContent = '正在读取所选文件…';
     $('data-notes').textContent = ''; $('color-legend').hidden = true;
-    const results = await Promise.allSettled([read(files.cloud, 'cloud'), ...files.wires.map(file => read(file, 'wire'))]);
+    const onProgress = ({ phase, loaded, total }) => {
+      if (version !== revision) return;
+      const label = phase === 'count' ? '统计点数' : '解析点云';
+      const message = `${label} ${Math.floor(loaded / total * 100)}%`;
+      $('loading').querySelector('span').textContent = message;
+      $('scene-stats').textContent = `${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
+    };
+    const readOptions = { signal: controller.signal, onProgress };
+    const results = await Promise.allSettled([read(files.cloud, 'cloud', readOptions), ...files.wires.map(file => read(file, 'wire', readOptions))]);
     if (version !== revision) return;
     const failures = [];
     const resultValue = (result, label) => {
@@ -1073,11 +1404,12 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
       $('empty-state').hidden = hasLoaded; $('screenshot').disabled = !hasLoaded;
       if (failures.length) error(failures.join('；'));
     } catch (cause) { error(`显示失败：${cause.message}`); }
-    finally { if (version === revision) $('loading').hidden = true; }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
   }
   function fields() {
     const cloud = loaded.cloud, keys = Object.keys(cloud?.fields || {}), color = $('color-mode'), old = color.value;
     color.replaceChildren(); option(color, 'height', '高度 Z'); option(color, 'solid', '单色');
+    if (cloud?.sources?.length) option(color, 'file', '按文件');
     if (cloud?.rgb) option(color, 'rgb', '原始 RGB'); if (keys.length >= 3) option(color, 'custom-rgb', '指定 RGB 列…');
     keys.filter(key => !['x', 'y', 'z', 'rgb', 'rgba'].includes(key.toLowerCase())).forEach(key => option(color, `field:${key}`, fieldLabel(key)));
     color.value = [...color.options].some(item => item.value === old) ? old : 'height';
@@ -1113,8 +1445,8 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
   }
   function exportScreenshot() {
     if (!viewers[0] || !active) return;
-    const screenshotId = active.id;
-    const screenshotCloud = loaded.cloud;
+    const screenshotId = isWire ? active.id : (loaded.cloud?.sources || []).map(source => source.name).join(' + ');
+    const screenshotCloud = loaded.cloud, screenshotSourceCount = loaded.cloud?.sources?.length || 0;
     const screenshotWires = loadedWires.slice();
     const screenshotFiles = selectedFiles.wires.slice();
     const count = activeViewerCount(), activeViewers = viewers.slice(0, count); activeViewers[0].render();
@@ -1142,7 +1474,8 @@ function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) 
     output.toBlob(blob => {
       if (!blob) return error('浏览器无法生成截图。');
       const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url;
-      link.download = `${isWire ? 'wireframe' : 'pointcloud'}_${screenshotId.replace(/[^a-zA-Z0-9_.-]/g, '_')}.png`;
+      const downloadId = !isWire && screenshotSourceCount > 1 ? `${screenshotSourceCount}_files` : screenshotId;
+      link.download = `${isWire ? 'wireframe' : 'pointcloud'}_${downloadId.replace(/[^a-zA-Z0-9_.-]/g, '_')}.png`;
       link.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
     }, 'image/png');
   }

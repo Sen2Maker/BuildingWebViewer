@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source = fs.readFileSync(new URL('./point-io.js', import.meta.url), 'utf8');
-const {parsePointCloud, parseWireOBJ} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {parsePointCloud, readPointCloud, parseWireOBJ} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const bytes = text => new TextEncoder().encode(text);
 const cloud = (text, name = 'sample.xyz', options) => parsePointCloud(bytes(text), name, options);
 let checks = 0;
@@ -89,5 +89,95 @@ check('Malformed inputs and unsupported compression fail explicitly', () => {
   assert.throws(() => cloud('1 2 3', 'sample.xyz', {maxPoints: 0}));
   assert.throws(() => cloud('VERSION .7\nDATA binary_compressed\n', 'sample.pcd'), /binary_compressed/);
   assert.throws(() => cloud('anything', 'sample.laz'), /LAS\/LAZ/);
+});
+
+async function checkAsync(name, work) { await work(); checks++; console.log('PASS', name); }
+const chunkBytes = 1024 * 1024;
+function blobFile(input, name = 'points.txt', {wholeRead = false} = {}) {
+  const blob = new Blob([input]), reads = [];
+  return {
+    name, size: blob.size, reads,
+    slice(start, end) { reads.push([start, end]); return blob.slice(start, end); },
+    arrayBuffer() {
+      assert(wholeRead, 'Text points must never request the entire file as an ArrayBuffer');
+      return blob.arrayBuffer();
+    },
+  };
+}
+await checkAsync('Chunked TXT preserves UTF-8, BOM, CRLF, comments, attributes and progress', async () => {
+  // Split a UTF-8 character and a CRLF across the 1 MiB boundary, respectively.
+  for (const text of [
+    '\uFEFF#' + ' '.repeat(chunkBytes - 5) + '中\r\n# z x y intensity\r\n3 1 2 .25\r\n6 4 5 .75',
+    '#' + ' '.repeat(chunkBytes - 2) + '\r\n1 2 3 4\r\n5 6 7 8\r\n',
+  ]) {
+    const file = blobFile(text), progress = [];
+    const value = await readPointCloud(file, {maxPoints: 1, onProgress: event => progress.push({...event})});
+    assert.deepEqual(value, cloud(text, file.name, {maxPoints: 1}));
+    assert(file.reads.every(([start, end]) => end - start <= chunkBytes));
+    for (const phase of ['count', 'parse']) {
+      const updates = progress.filter(item => item.phase === phase);
+      assert(updates.length >= 2);
+      assert.equal(updates.at(-1).loaded, file.size);
+      assert(updates.every((item, i) => item.total === file.size && item.loaded >= 0 && item.loaded <= file.size && (!i || item.loaded >= updates[i - 1].loaded)));
+    }
+  }
+});
+await checkAsync('Numeric rows can cross chunks; full bounds include unsampled extremes', async () => {
+  const prefix = '#' + ' '.repeat(chunkBytes - 9) + '\n';
+  const text = prefix + '0 0 0 .25\n1 100 0 .5\n2 2 0 .75';
+  const file = blobFile(text), value = await readPointCloud(file, {maxPoints: 2});
+  assert.deepEqual(value, cloud(text, file.name, {maxPoints: 2}));
+  assert.deepEqual(value.bounds, [[0, 0, 0], [2, 100, 0]]);
+  assert.deepEqual([...value.fields.column_4], [.25, .75]);
+});
+await checkAsync('Streamed headers, CSV, PTS, empty inputs and invalid unsampled rows match sync parser', async () => {
+  for (const [name, text] of [
+    ['sample.pts', '3\n0 0 0 .1\n1 2 3 .2\n4 5 6 .3'],
+    ['sample.csv', '"z","x","y","intensity"\r\n"3","1","2",".5"\r\n6,4,5,1'],
+    ['sample.xyz', '// x y z r g b\n0 0 0 255 0 0 # first\n1 1 1 0 0 255'],
+    ['sample.txt', 'x;y;z;intensity\n1;2;3;.25\n4;5;6;.75'],
+  ]) assert.deepEqual(await readPointCloud(blobFile(text, name), {maxPoints: 1}), cloud(text, name, {maxPoints: 1}));
+  for (const [text, pattern] of [
+    ['', /空/], ['# comment\n \n', /空/],
+    ['0 0 0 1\n1 NaN 2 1\n3 3 3 1', /第 2 行/],
+    ['0 0 0 1\n1 2 3\n3 3 3 1', /数量不一致/],
+  ]) await assert.rejects(readPointCloud(blobFile(text), {maxPoints: 2}), pattern);
+  await assert.rejects(readPointCloud(blobFile('2\n0 0 0', 'broken.pts')), /PTS/);
+  await assert.rejects(readPointCloud(blobFile('1 2 3'), {maxPoints: 0}), /maxPoints/);
+  await assert.rejects(readPointCloud(blobFile('1 2 3', 'unsupported.laz')), /LAS\/LAZ/);
+});
+await checkAsync('Cancellation interrupts both passes and does not continue reading', async () => {
+  for (const phase of ['count', 'parse']) {
+    const controller = new AbortController();
+    const file = blobFile('1 2 3 .5\n'.repeat(250000));
+    let readsAtAbort = null;
+    await assert.rejects(readPointCloud(file, {maxPoints: 2, signal: controller.signal, onProgress(event) {
+      if (event.phase === phase && event.loaded > 0 && event.loaded < event.total && readsAtAbort === null) {
+        readsAtAbort = file.reads.length; controller.abort();
+      }
+    }}), {name: 'AbortError'});
+    assert.notEqual(readsAtAbort, null);
+    assert.equal(file.reads.length, readsAtAbort);
+  }
+  const controller = new AbortController(); controller.abort();
+  const file = blobFile('1 2 3');
+  await assert.rejects(readPointCloud(file, {signal: controller.signal}), {name: 'AbortError'});
+  assert.equal(file.reads.length, 0);
+});
+await checkAsync('Read failures and overlong single lines are explicit, never called empty', async () => {
+  let reads = 0;
+  const file = {name: 'unreadable.txt', size: 10, slice() { return {arrayBuffer() {
+    if (++reads === 1) return Promise.resolve(bytes('1 2 3 .50\n').buffer);
+    return Promise.reject(new Error('disk read failed'));
+  }}; }};
+  await assert.rejects(readPointCloud(file), /disk read failed/);
+  await assert.rejects(readPointCloud(blobFile('1 '.repeat(1024 * 1024))), /单行|行.*超/);
+});
+await checkAsync('Blob reader retains PLY/PCD sniffing and binary compatibility', async () => {
+  for (const input of [binaryPLY(true), binaryPLY(false)]) {
+    assert.deepEqual(await readPointCloud(blobFile(input, 'misnamed.txt', {wholeRead: true})), parsePointCloud(input, 'misnamed.txt'));
+  }
+  const text = 'VERSION .7\nFIELDS x y z intensity\nSIZE 4 4 4 4\nTYPE F F F F\nWIDTH 1\nHEIGHT 1\nPOINTS 1\nDATA ascii\n1 2 3 .5\n';
+  assert.deepEqual(await readPointCloud(blobFile(text, 'sample.pcd', {wholeRead: true})), cloud(text, 'sample.pcd'));
 });
 console.log(`${checks} checks passed.`);

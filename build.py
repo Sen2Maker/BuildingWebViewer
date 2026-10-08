@@ -13,13 +13,13 @@ SITE_FILES = [
 ]
 FILES = SITE_FILES + [
     'renderer.js', 'obj-parser.js', 'app.js',
-    'cloud-app.js', 'cloud-renderer.js', 'point-io.js',
-    'server.py', 'start.sh', 'build.py', 'README.md', 'point-io.test.mjs', 'cloud-renderer.test.mjs',
+    'cloud-app.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js',
+    'server.py', 'start.sh', 'build.py', 'README.md', 'point-io.test.mjs', 'cloud-renderer.test.mjs', 'cloud-combine.test.mjs',
     '.gitignore', '.gitattributes', '.github/workflows/pages.yml',
 ]
 BUNDLES = {
     'viewer.js': ['renderer.js', 'obj-parser.js', 'app.js'],
-    'cloud-app.bundle.js': ['cloud-renderer.js', 'point-io.js', 'cloud-app.js'],
+    'cloud-app.bundle.js': ['cloud-renderer.js', 'point-io.js', 'cloud-combine.js', 'cloud-app.js'],
 }
 
 

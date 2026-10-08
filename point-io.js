@@ -6,6 +6,8 @@ const POINT_TYPES = {
   float: ['getFloat32', 4], float32: ['getFloat32', 4], double: ['getFloat64', 8], float64: ['getFloat64', 8],
 };
 const POINT_DECODER = new TextDecoder('utf-8');
+const POINT_TEXT_CHUNK_BYTES = 1024 * 1024;
+const POINT_TEXT_MAX_LINE_CHARS = 1024 * 1024;
 
 function pointBounds() { return [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]]; }
 function extendPointBounds(bounds, xyz) {
@@ -138,53 +140,123 @@ function* pointTextLines(text) {
   }
 }
 
-function parsePointText(bytes, filename, maxPoints) {
-  const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
+function pointTextTokens(line) {
+  return /[;,]/.test(line) ? line.trim().split(/[;,]/).map(value => value.trim()) : line.trim().split(/\s+/);
+}
+
+function pointTextCheckLine(record) {
+  if (record.text.length > POINT_TEXT_MAX_LINE_CHARS) pointError(`第 ${record.line} 行过长（超过 1,048,576 字符）；请检查换行符或文件格式`);
+}
+
+/** Shared first pass for synchronous buffers and streaming File/Blob reads. */
+function pointTextCounter(filename) {
   const notes = [];
   let header = null, declared = null, totalCount = 0, firstDataLine = 0, firstFields = null;
-  const tokens = line => (/[;,]/.test(line) ? line.trim().split(/[;,]/).map(value => value.trim()) : line.trim().split(/\s+/));
-  // Count rows before allocating sampled arrays, without retaining token arrays
-  // for every original point. The second pass validates every original row.
-  for (const record of pointTextLines(text)) {
-    let line = record.text.trim();
-    if (!line) continue;
-    if (line.startsWith('#') || line.startsWith('//')) {
-      if (!totalCount && !header) {
-        const possible = tokens(line.replace(/^(#|\/\/)\s*/, '')).map(v => v.replace(/^['"]|['"]$/g, '').toLowerCase());
-        if (['x', 'y', 'z'].every(name => possible.includes(name))) header = possible;
+  return {
+    add(record) {
+      pointTextCheckLine(record);
+      let line = record.text.trim();
+      if (!line) return;
+      if (line.startsWith('#') || line.startsWith('//')) {
+        if (!totalCount && !header) {
+          const possible = pointTextTokens(line.replace(/^(#|\/\/)\s*/, '')).map(v => v.replace(/^['"]|['"]$/g, '').toLowerCase());
+          if (['x', 'y', 'z'].every(name => possible.includes(name))) header = possible;
+        }
+        return;
       }
-      continue;
-    }
-    line = line.split('#')[0].trim();
-    const parts = tokens(line);
-    if (!totalCount && !header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
-      declared = Number(parts[0]); continue;
-    }
-    if (!totalCount && !header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
-      const candidate = pointNames(parts);
-      if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${record.line} 行不是 XYZ 数值或有效的 x/y/z 表头`);
-      header = candidate; continue;
-    }
-    if (!totalCount) { firstDataLine = record.line; firstFields = parts; }
-    totalCount++;
-  }
-  if (!totalCount) pointError('点云文件为空');
-  if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
-  if (!header) {
-    if (firstFields.length < 3) pointError('点云每行至少需要 XYZ 三列');
-    header = firstFields.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
-    if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
-  }
+      // Subsequent rows only need counting here; the second pass validates every row.
+      if (!totalCount) {
+        line = line.split('#')[0].trim();
+        const parts = pointTextTokens(line);
+        if (!header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
+          declared = Number(parts[0]); return;
+        }
+        if (!header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
+          const candidate = pointNames(parts);
+          if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(`第 ${record.line} 行不是 XYZ 数值或有效的 x/y/z 表头`);
+          header = candidate; return;
+        }
+        firstDataLine = record.line; firstFields = parts;
+      }
+      totalCount++;
+    },
+    finish() {
+      if (!totalCount) pointError('点云文件为空');
+      if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
+      if (!header) {
+        if (firstFields.length < 3) pointError('点云每行至少需要 XYZ 三列');
+        header = firstFields.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
+        if (header.length > 3) notes.push('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。');
+      }
+      return {header, totalCount, firstDataLine, notes};
+    },
+  };
+}
+
+/** Shared second pass: validate all original rows, then let the collector sample. */
+function pointTextParser(metadata, maxPoints) {
+  const {header, totalCount, firstDataLine, notes} = metadata;
   const collector = pointCollector(header, totalCount, maxPoints, notes);
   let index = 0;
-  for (const record of pointTextLines(text)) {
-    if (record.line < firstDataLine) continue;
-    let line = record.text.trim();
-    if (!line || line.startsWith('#') || line.startsWith('//')) continue;
-    line = line.split('#')[0].trim();
-    collector.add(tokens(line).map(value => numericPoint(value, `第 ${record.line} 行`)), index++);
+  return {
+    add(record) {
+      pointTextCheckLine(record);
+      if (record.line < firstDataLine) return;
+      let line = record.text.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) return;
+      line = line.split('#')[0].trim();
+      const values = pointTextTokens(line).map(value => numericPoint(value, `第 ${record.line} 行`));
+      if (values.length !== header.length) pointError(`第 ${record.line} 行：字段数量不一致（需要 ${header.length} 列，读取 ${values.length} 列）`);
+      collector.add(values, index++);
+    },
+    finish() {
+      if (index !== totalCount) pointError(`两次扫描的点数不一致：首次 ${totalCount} 点，实际读取 ${index} 点；请重新选择文件`);
+      return collector.finish();
+    },
+  };
+}
+
+function parsePointText(bytes, filename, maxPoints) {
+  const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
+  const counter = pointTextCounter(filename);
+  for (const record of pointTextLines(text)) counter.add(record);
+  const parser = pointTextParser(counter.finish(), maxPoints);
+  for (const record of pointTextLines(text)) parser.add(record);
+  return parser.finish();
+}
+
+function pointAbort(signal) {
+  if (signal?.aborted) throw new DOMException('点云读取已取消', 'AbortError');
+}
+
+async function pointTextScanFile(file, consume, phase, signal, onProgress) {
+  const decoder = new TextDecoder('utf-8');
+  let carry = '', lineNumber = 1;
+  const progress = loaded => { if (typeof onProgress === 'function') onProgress({phase, loaded, total: file.size}); };
+  pointAbort(signal);
+  progress(0);
+  for (let offset = 0; offset < file.size; offset += POINT_TEXT_CHUNK_BYTES) {
+    pointAbort(signal);
+    const end = Math.min(offset + POINT_TEXT_CHUNK_BYTES, file.size);
+    const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+    pointAbort(signal);
+    if (bytes.byteLength !== end - offset) pointError(`文件读取不完整：需要 ${end - offset} 字节，实际读取 ${bytes.byteLength} 字节`);
+    const block = carry + decoder.decode(bytes, {stream: true});
+    let start = 0, newline;
+    while ((newline = block.indexOf('\n', start)) !== -1) {
+      consume({text: block.slice(start, newline), line: lineNumber++});
+      start = newline + 1;
+    }
+    carry = block.slice(start);
+    pointTextCheckLine({text: carry, line: lineNumber});
+    progress(end);
+    // Yield between bounded chunks so rendering, progress, and cancellation remain responsive.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    pointAbort(signal);
   }
-  return collector.finish();
+  carry += decoder.decode();
+  if (carry.length) consume({text: carry, line: lineNumber});
+  pointAbort(signal);
 }
 
 /** Extract a newline-terminated ASCII header while leaving the binary payload untouched. */
@@ -323,17 +395,55 @@ function parsePointPCD(bytes, maxPoints) {
   return collector.finish();
 }
 
+function pointCloudFormat(filename, start) {
+  const extension = String(filename).split('.').pop().toLowerCase();
+  if (['las', 'laz'].includes(extension)) pointError('当前查看器暂不支持 LAS/LAZ，请先导出 XYZ、PLY 或 PCD');
+  if (extension === 'ply' || /^ply\r?\n/.test(start)) return 'ply';
+  if (extension === 'pcd' || /^#.*\.PCD/i.test(start) || /^VERSION\s+\.7/m.test(start)) return 'pcd';
+  if (['xyz', 'txt', 'csv', 'pts'].includes(extension) || !filename) return 'text';
+  pointError(`不支持的点云格式 .${extension}；请选择 XYZ、TXT、CSV、PTS、PLY 或 PCD`);
+}
+
 /** XYZ/TXT/CSV/PTS, ASCII/binary PLY, and ASCII/uncompressed-binary PCD. No LAS/LAZ. */
 export function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 500000} = {}) {
   if (!Number.isSafeInteger(maxPoints) || maxPoints < 1) pointError('maxPoints 必须为正整数');
   const bytes = arrayBuffer instanceof ArrayBuffer ? new Uint8Array(arrayBuffer) : ArrayBuffer.isView(arrayBuffer) ? new Uint8Array(arrayBuffer.buffer, arrayBuffer.byteOffset, arrayBuffer.byteLength) : null;
   if (!bytes) pointError('点云读取器需要 ArrayBuffer');
   if (!bytes.byteLength) pointError('点云文件为空');
-  const extension = String(filename).split('.').pop().toLowerCase();
-  if (['las', 'laz'].includes(extension)) pointError('当前查看器暂不支持 LAS/LAZ，请先导出 XYZ、PLY 或 PCD');
   const start = POINT_DECODER.decode(bytes.subarray(0, Math.min(256, bytes.length))).replace(/^\uFEFF/, '');
-  if (extension === 'ply' || /^ply\r?\n/.test(start)) return parsePointPLY(bytes, maxPoints);
-  if (extension === 'pcd' || /^#.*\.PCD/i.test(start) || /^VERSION\s+\.7/m.test(start)) return parsePointPCD(bytes, maxPoints);
-  if (['xyz', 'txt', 'csv', 'pts'].includes(extension) || !filename) return parsePointText(bytes, filename, maxPoints);
-  pointError(`不支持的点云格式 .${extension}；请选择 XYZ、TXT、CSV、PTS、PLY 或 PCD`);
+  const format = pointCloudFormat(filename, start);
+  if (format === 'ply') return parsePointPLY(bytes, maxPoints);
+  if (format === 'pcd') return parsePointPCD(bytes, maxPoints);
+  return parsePointText(bytes, filename, maxPoints);
+}
+
+/** Read File/Blob text clouds in bounded chunks; PLY/PCD retain their existing buffer parser. */
+export async function readPointCloud(file, {maxPoints = 500000, signal, onProgress} = {}) {
+  if (!Number.isSafeInteger(maxPoints) || maxPoints < 1) pointError('maxPoints 必须为正整数');
+  pointAbort(signal);
+  if (!file || typeof file.slice !== 'function' || !Number.isSafeInteger(file.size) || file.size < 0) pointError('点云读取器需要 File 或 Blob');
+  if (!file.size) pointError('点云文件为空');
+  const filename = String(file.name || '');
+  const prefixSize = Math.min(256, file.size);
+  const prefix = new Uint8Array(await file.slice(0, prefixSize).arrayBuffer());
+  pointAbort(signal);
+  if (!prefix.byteLength) pointError('文件头读取失败，请重新选择文件');
+  const start = POINT_DECODER.decode(prefix).replace(/^\uFEFF/, '');
+  const format = pointCloudFormat(filename, start);
+  if (format !== 'text') {
+    if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: 0, total: file.size});
+    pointAbort(signal);
+    const buffer = await file.slice(0, file.size).arrayBuffer();
+    pointAbort(signal);
+    if (buffer.byteLength !== file.size) pointError('点云文件读取不完整，请重新选择文件');
+    if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: file.size, total: file.size});
+    await new Promise(resolve => setTimeout(resolve, 0));
+    pointAbort(signal);
+    return parsePointCloud(buffer, filename, {maxPoints});
+  }
+  const counter = pointTextCounter(filename);
+  await pointTextScanFile(file, record => counter.add(record), 'count', signal, onProgress);
+  const parser = pointTextParser(counter.finish(), maxPoints);
+  await pointTextScanFile(file, record => parser.add(record), 'parse', signal, onProgress);
+  return parser.finish();
 }

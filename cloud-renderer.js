@@ -265,19 +265,36 @@ export class CloudViewer {
   buildColors(cloud, count) {
     const values = new Float32Array(count * 3), fields = cloud?.fields || {};
     let mode = this.options.colorMode, fallback = null, range = null;
-    // Explicit field selection must also work for attributes named height, solid, or rgb.
+    // Explicit field selection also supports attributes named height, solid, rgb, or file.
     const fieldName = mode.startsWith('field:') ? mode.slice(6) : mode;
     if (!cloud || !count) return { values, mode, fallback, range };
     const validField = name => fields[name] && fields[name].length >= count;
-    let rgb = null, channels = null;
-    if (mode === 'rgb') {
+    let rgb = null, channels = null, sources = null;
+    if (mode === 'file') {
+      sources = Array.isArray(cloud.sources) ? [...cloud.sources].sort((a, b) => (a?.start ?? 0) - (b?.start ?? 0)) : [];
+      let covered = 0;
+      const valid = sources.length > 0 && sources.every(source => {
+        if (!source || !Number.isSafeInteger(source.start) || !Number.isSafeInteger(source.count) || source.start !== covered || source.count < 0 || source.count > count - covered) return false;
+        if ((!Array.isArray(source.color) && !ArrayBuffer.isView(source.color)) || source.color.length !== 3 || !Array.from(source.color).every(Number.isFinite)) return false;
+        covered += source.count;
+        return true;
+      });
+      if (!valid || covered !== count) { mode = 'height'; fallback = '未找到完整的点云文件来源信息，已按高度着色。'; }
+    } else if (mode === 'rgb') {
       if (this.options.rgbFields?.length === 3 && this.options.rgbFields.every(validField)) channels = this.options.rgbFields.map(name => fields[name]);
       else if (cloud.rgb?.length >= count * 3) rgb = cloud.rgb;
       else { mode = 'height'; fallback = '未找到可用的 RGB 数据，已按高度着色。'; }
     } else if (!['height', 'solid'].includes(mode) && !validField(fieldName)) {
       fallback = `字段 ${fieldName} 不存在，已按高度着色。`; mode = 'height';
     }
-    if (mode === 'rgb') {
+    if (mode === 'file') {
+      for (const source of sources) {
+        const color = Array.from(source.color, value => CLOUD_CLAMP(value, 0, 1));
+        for (let i = source.start; i < source.start + source.count; i++) {
+          values[i * 3] = color[0]; values[i * 3 + 1] = color[1]; values[i * 3 + 2] = color[2];
+        }
+      }
+    } else if (mode === 'rgb') {
       let maximum = 0;
       for (let i = 0; i < count; i++) for (let channel = 0; channel < 3; channel++) {
         const value = channels ? channels[channel][i] : rgb[i * 3 + channel];
