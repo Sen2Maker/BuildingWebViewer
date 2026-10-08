@@ -16,6 +16,7 @@ import { mergePointClouds } from './cloud-combine.js';
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
   const cached = new Map(), selectedCloudEntries = new Set();
+  let cloudMode = 'multiple', lastCloudEntry = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
@@ -56,9 +57,12 @@ import { mergePointClouds } from './cloud-combine.js';
   function option(select, value, text) {
     const element = document.createElement('option'); element.value = value; element.textContent = text; select.append(element);
   }
-  function list() {
+  function matchingEntries() {
     const query = $('search').value.trim().toLowerCase();
-    const filtered = entries.filter(entry => entry.id.toLowerCase().includes(query));
+    return entries.filter(entry => entry.id.toLowerCase().includes(query));
+  }
+  function list() {
+    const filtered = matchingEntries();
     const pages = Math.ceil(filtered.length / 50);
     page = Math.max(0, Math.min(page, Math.max(0, pages - 1)));
     $('filter-count').textContent = `${pretty(filtered.length)} ${isWire ? '个建筑 ID' : `个文件 · 已选 ${selectedCloudEntries.size}`}`;
@@ -69,7 +73,7 @@ import { mergePointClouds } from './cloud-combine.js';
       const button = document.createElement('button'); button.className = 'data-entry';
       const selected = isWire ? active?.id === entry.id : selectedCloudEntries.has(entry);
       button.setAttribute('aria-pressed', String(selected));
-      if (!isWire) { button.setAttribute('role', 'checkbox'); button.setAttribute('aria-checked', String(selected)); }
+      if (!isWire && cloudMode === 'multiple') { button.setAttribute('role', 'checkbox'); button.setAttribute('aria-checked', String(selected)); }
       const title = document.createElement('strong'); title.textContent = isWire ? `# ${entry.id}` : entry.id;
       const detail = document.createElement('small');
       detail.textContent = isWire ? `${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云` : formatSize(entry.file.size);
@@ -81,7 +85,7 @@ import { mergePointClouds } from './cloud-combine.js';
       empty.textContent = entries.length ? '没有匹配的数据' : '先选择你的数据文件或文件夹'; fragment.append(empty);
     }
     $('data-list').replaceChildren(fragment);
-    updateCloudSelection();
+    updateCloudSelection(); updateCloudModeUI(filtered);
   }
   function fillWireSelect(select, files, index = null) {
     select.replaceChildren(); option(select, '', '不加载线框');
@@ -120,7 +124,7 @@ import { mergePointClouds } from './cloud-combine.js';
   }
   function clear() {
     loadController?.abort(); loadController = null;
-    selectedCloudEntries.clear();
+    selectedCloudEntries.clear(); lastCloudEntry = null;
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
     selectedFiles = { cloud: null, wires: [] }; messages = []; currentPointName = ''; syncEnabled = false;
     pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
@@ -215,15 +219,61 @@ import { mergePointClouds } from './cloud-combine.js';
     }
     entries.sort((a, b) => natural(a.id, b.id));
     page = 0; $('search').value = ''; list();
-    $('source-note').textContent = `已列出 ${pretty(entries.length)} 个文件 · 勾选可叠加 · 可继续添加文件或文件夹`;
+    $('source-note').textContent = `已列出 ${pretty(entries.length)} 个文件 · 可继续添加文件或文件夹`;
     error(!added && !files.some(file => pointExtension.test(file.name)) ? '未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。' : '');
   }
-  function toggleCloud(entry) {
-    if (selectedCloudEntries.has(entry)) selectedCloudEntries.delete(entry);
-    else selectedCloudEntries.add(entry);
+  function applyCloudSelection(preferred = null) {
     if (!selectedCloudEntries.size) { clear(); return; }
-    active = selectedCloudEntries.values().next().value;
+    if (preferred && selectedCloudEntries.has(preferred)) lastCloudEntry = preferred;
+    else if (!selectedCloudEntries.has(lastCloudEntry)) lastCloudEntry = [...selectedCloudEntries].at(-1);
+    active = lastCloudEntry;
     list(); load();
+  }
+  function toggleCloud(entry) {
+    if (cloudMode === 'single') {
+      if (selectedCloudEntries.has(entry)) return;
+      selectedCloudEntries.clear(); selectedCloudEntries.add(entry);
+      applyCloudSelection(entry); return;
+    }
+    if (selectedCloudEntries.has(entry)) selectedCloudEntries.delete(entry);
+    else { selectedCloudEntries.add(entry); lastCloudEntry = entry; }
+    applyCloudSelection();
+  }
+  function removeCloud(entry) {
+    if (selectedCloudEntries.delete(entry)) applyCloudSelection();
+  }
+  function updateCloudModeUI(filtered) {
+    if (isWire) return;
+    const multiple = cloudMode === 'multiple';
+    for (const button of document.querySelectorAll('[data-cloud-mode]')) {
+      const selected = button.dataset.cloudMode === cloudMode;
+      button.classList.toggle('active', selected); button.setAttribute('aria-pressed', String(selected));
+    }
+    $('cloud-mode-note').textContent = multiple ? '勾选多个文件，按原始坐标叠加。' : '点击文件切换显示；每次只显示一个点云。';
+    for (const id of ['select-all-clouds', 'invert-cloud-selection']) $(id).disabled = !multiple || !filtered.length;
+    $('cloud-batch-scope').textContent = !multiple ? '全选、反选仅在多点云模式下可用。'
+      : $('search').value.trim() ? `批量操作匹配的 ${pretty(filtered.length)} 个文件（含其他页），保留筛选外的选择。`
+      : `批量操作全部 ${pretty(filtered.length)} 个文件（含其他页）。`;
+    $('empty-state').querySelector('p').textContent = multiple
+      ? '添加点云文件或文件夹，再勾选左侧一个或多个文件。'
+      : '添加点云文件或文件夹，再点击左侧要查看的文件。';
+  }
+  function setCloudMode(mode) {
+    if (isWire || !['single', 'multiple'].includes(mode) || mode === cloudMode) return;
+    cloudMode = mode;
+    if (mode === 'single' && selectedCloudEntries.size > 1) {
+      const keep = selectedCloudEntries.has(lastCloudEntry) ? lastCloudEntry : [...selectedCloudEntries].at(-1);
+      selectedCloudEntries.clear(); selectedCloudEntries.add(keep); applyCloudSelection(keep);
+    } else list();
+  }
+  function batchCloudSelection(invert = false) {
+    if (isWire || cloudMode !== 'multiple') return;
+    let changed = false, preferred = null;
+    for (const entry of matchingEntries()) {
+      if (invert && selectedCloudEntries.has(entry)) { selectedCloudEntries.delete(entry); changed = true; }
+      else if (!selectedCloudEntries.has(entry)) { selectedCloudEntries.add(entry); preferred = entry; changed = true; }
+    }
+    if (changed) applyCloudSelection(preferred);
   }
   function updateCloudSelection() {
     if (isWire) return;
@@ -237,7 +287,7 @@ import { mergePointClouds } from './cloud-combine.js';
       const title = document.createElement('span'); title.textContent = entry.id;
       title.title = source ? `${entry.id} · ${pretty(source.count)} / ${pretty(source.totalCount)} 点；色标对应“按文件”着色` : entry.id;
       const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `移除点云 ${entry.id}`);
-      remove.onclick = () => toggleCloud(entry); chip.append(dot, title, remove); container.append(chip);
+      remove.onclick = () => removeCloud(entry); chip.append(dot, title, remove); container.append(chip);
     }
   }
   async function loadCloudSelection({preserveCamera = false} = {}) {
@@ -472,6 +522,11 @@ import { mergePointClouds } from './cloud-combine.js';
   $('previous-page').onclick = () => { page--; list(); $('data-list').scrollTop = 0; };
   $('next-page').onclick = () => { page++; list(); $('data-list').scrollTop = 0; };
   $('clear-selection').onclick = clear; $('dismiss-error').onclick = () => error('');
+  if (!isWire) {
+    for (const button of document.querySelectorAll('[data-cloud-mode]')) button.onclick = () => setCloudMode(button.dataset.cloudMode);
+    $('select-all-clouds').onclick = () => batchCloudSelection();
+    $('invert-cloud-selection').onclick = () => batchCloudSelection(true);
+  }
   $('wire-file').onchange = event => { preventDuplicateSelection(event.target); load(); };
   $('cloud-file').onchange = () => load(); $('point-limit').onchange = () => { if (active) load(); };
   if (isWire) {
