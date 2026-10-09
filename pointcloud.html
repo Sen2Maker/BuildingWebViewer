@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>点云查看器 · 三维数据工具箱</title><link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="cloud.css"><link rel="stylesheet" href="viewer-controls.css"><link rel="stylesheet" href="camera-controls.css"><link rel="stylesheet" href="viewer-layout.css"></head>
 <body data-tool="pointcloud">
-<header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页">←</a><div class="brand-icon" aria-hidden="true">⠿</div><div><h1>点云查看器</h1><p>单点云 / 多点云 · 颜色与数值属性</p></div><div class="header-right"><span class="local-tag"><i></i> 本地读取</span></div></header>
+<header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页">←</a><div class="brand-icon" aria-hidden="true">⠿</div><div><h1>点云查看器</h1><p>单点云 / 多点云 · 颜色与数值属性</p></div><div class="header-right"><button id="toggle-project" aria-controls="point-drop-zone" aria-expanded="true">▤ 收起项目</button><span class="local-tag"><i></i> 本地读取</span></div></header>
 <div class="workspace">
 <aside class="sidebar point-drop-zone" id="point-drop-zone" aria-label="数据选择" aria-describedby="drop-hint">
-  <div class="sidebar-heading"><h2>项目文件</h2><span id="item-count">0</span></div>
+  <div class="sidebar-heading"><h2>项目文件</h2><span id="item-count">0</span><button id="collapse-project" aria-label="收起项目栏" title="收起项目栏">‹</button></div>
   <div class="folder-section project-import">
     <div class="project-import-buttons"><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept=".xyz,.txt,.csv,.pts,.ply,.pcd" multiple hidden><button id="choose-folder">＋ 文件夹</button><input id="folder-input" type="file" webkitdirectory multiple hidden></div>
     <p id="drop-hint" class="point-drop-hint">拖入点云文件或文件夹</p>
@@ -17,8 +17,9 @@
   <div id="data-list" class="model-list project-tree" aria-label="项目文件列表"></div>
   <div id="project-controls"></div>
   <div class="pagination" hidden><button id="previous-page" disabled></button><span id="page-info"></span><button id="next-page" disabled></button></div>
-  <details class="format-help"><summary>格式与管理说明</summary><p>勾选显示点云，右侧计算与合并使用相同勾选项。点击名称后可移动或移除；也可拖入文件夹或项目根目录。新建文件夹和移动仅影响本次页面，不修改磁盘；刷新需重新添加文件。</p><p>支持 XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">文件留在本机 · 分组仅保留在本次页面</p></details>
+  <details class="format-help"><summary>格式与管理说明</summary><p>勾选显示点云，右侧计算与合并使用相同勾选项。点击名称管理，Ctrl / ⌘ 多选、Shift 连选、空白处拖动框选。右键可批量显示、隐藏、移动或移除；行末手柄用于拖动。新建文件夹和移动仅影响本次页面，不修改磁盘；刷新需重新添加文件。</p><p>支持 XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">文件留在本机 · 分组仅保留在本次页面</p></details>
 </aside>
+<div id="project-resizer" class="project-resizer" role="separator" aria-label="调整项目栏宽度" aria-orientation="vertical" aria-valuemin="240" aria-valuemax="500" aria-valuenow="300" tabindex="0" title="拖动调整宽度 · 双击恢复默认"></div>
 <main><div class="main-heading"><div><h2 id="current-title">未选择数据</h2><p id="scene-stats" aria-live="polite">从左侧选择要查看的数据</p></div><div class="point-main-actions"><select id="cloud-mode-select" aria-label="点云显示模式"><option value="single">单点云</option><option value="multiple" selected>多点云叠加</option></select><button id="screenshot" disabled>保存截图 ↓</button></div></div>
 
 <div id="cloud-selection" class="cloud-selection" aria-label="已选点云" hidden></div>

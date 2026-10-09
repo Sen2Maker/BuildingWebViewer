@@ -1,4 +1,4 @@
-import { PointProject, mountPointProject } from './point-project.js';
+import { PointProject, mountPointProject, mountProjectSidebar } from './point-project.js';
 import { mountPointDrop } from './point-drop.js';
 import { defaultPointSettings, semanticPointCloud } from './point-dataset.js';
 import { mountPointColumns } from './point-columns.js';
@@ -561,12 +561,22 @@ import { mountCameraControls } from './camera-controls.js';
     getEntries: () => entries, getSelected: () => selectedCloudEntries, getMode: () => cloudMode,
     getQuery: () => $('search').value, onToggle: entry => cloudMode === 'single' && selectedCloudEntries.has(entry) ? removeCloud(entry) : toggleCloud(entry), onRemove: deleteProjectEntries, onChange: list,
     detail: entry => formatSize(entry.file.size),
+    onVisibility: (members, checked) => {
+      if (checked && cloudMode === 'single') {
+        if (members.length !== 1) return;
+        selectedCloudEntries.clear();
+      }
+      for (const entry of members) checked ? selectedCloudEntries.add(entry) : selectedCloudEntries.delete(entry);
+      applyCloudSelection();
+    },
     onGroupSelection: (members, checked) => {
       if (cloudMode !== 'multiple') return;
       for (const entry of members) checked ? selectedCloudEntries.add(entry) : selectedCloudEntries.delete(entry);
       applyCloudSelection();
     },
   });
+  if (!isWire) mountProjectSidebar({workspace: $('point-drop-zone').parentElement, sidebar: $('point-drop-zone'),
+    toggle: $('toggle-project'), collapse: $('collapse-project'), separator: $('project-resizer')});
   if (!isWire) mountPointDrop({
     zone: $('point-drop-zone'), status: $('drop-status'),
     accepts: name => pointExtension.test(name),

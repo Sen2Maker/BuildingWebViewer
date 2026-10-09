@@ -87,8 +87,8 @@
 .point-drop-zone.drop-active::after{content:'松开以添加点云';position:absolute;inset:45% 12px auto;padding:22px 10px;text-align:center;pointer-events:none;background:#f4fcf7f5;border:1px solid #8db79e;border-radius:10px;color:#2c6348;font-size:14px;font-weight:600;box-shadow:0 6px 25px #2b694321;z-index:5}
 
 /* Compact project browser: most of the sidebar belongs to the file hierarchy. */
-body[data-tool=pointcloud] .workspace{grid-template-columns:300px minmax(0,1fr)}
-body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:300px minmax(0,1fr) 348px}
+body[data-tool=pointcloud] .workspace{grid-template-columns:var(--project-width,300px) minmax(0,1fr)}
+body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:var(--project-width,300px) minmax(0,1fr) 348px}
 .point-drop-zone.sidebar{padding:18px 12px 12px;overflow:hidden}
 .point-drop-zone .sidebar-heading{margin-bottom:12px;padding:0 5px}
 .point-drop-zone .project-import{margin:0 0 10px;flex-shrink:0}
@@ -124,7 +124,7 @@ body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:300px
 .project-status{font-size:10px;color:#557a63;line-height:1.6;overflow-wrap:anywhere}.project-status:empty{display:none}
 .point-drop-zone .format-help{flex-shrink:0;font-size:10px;margin-top:9px;padding-top:8px}.point-drop-zone .format-help[open]{max-height:130px;overflow:auto}
 .processing-selection{padding:10px;background:#edf5ef;border-radius:6px;font-size:11px;color:#447158;line-height:1.7;overflow-wrap:anywhere;margin-bottom:10px}
-@media(min-width:701px) and (max-width:1199px){body[data-tool=pointcloud] .workspace,body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:270px minmax(0,1fr)}}
+@media(min-width:701px) and (max-width:1199px){body[data-tool=pointcloud] .workspace,body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:var(--project-width,300px) minmax(0,1fr)}}
 @media(max-width:700px){body[data-tool=pointcloud] .workspace,body[data-tool=pointcloud] .workspace.inspector-open{display:flex}.point-drop-zone .project-tree{min-height:180px;max-height:300px}.point-drop-zone #project-controls{max-height:none}.point-drop-zone .cloud-mode-controls .segmented{width:100%}.point-drop-zone .project-import{margin-bottom:8px}}
 
 .point-drop-zone .list-meta .cloud-batch-actions button{padding:3px 5px;font-size:10px;background:transparent;border-color:transparent}
@@ -132,3 +132,33 @@ body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:300px
 .point-drop-zone .project-root{margin-top:8px;padding:8px}.point-drop-zone #drop-hint{font-size:10px!important}
 .point-main-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}.point-main-actions select{font-size:11px;padding:8px;color:#577264;background:#f7faf8;border:1px solid #dce6df;border-radius:6px}
 @media(max-width:900px){.point-main-actions{flex-wrap:wrap;justify-content:flex-end;max-width:155px}.point-main-actions button{font-size:11px;padding:7px}}
+
+/* Compact navigation shared by the three viewers. */
+.app-header{height:52px;padding-block:0}.app-header .brand-icon{width:30px;height:30px;font-size:20px}.app-header h1{font-size:16px}.app-header p{display:none}.app-header .back-home{width:29px;height:29px;font-size:18px}
+.workspace{height:calc(100dvh - 52px);min-height:440px}.workspace>main{padding-top:14px}
+.app-header #toggle-project{font-size:11px;padding:6px 9px;background:#f5f9f6;color:#587460}.app-header .header-right{gap:12px}
+.point-drop-zone .sidebar-heading{gap:7px}.point-drop-zone .sidebar-heading h2{flex:1}.point-drop-zone .sidebar-heading #collapse-project{border:0;background:transparent;font-size:23px;padding:0 5px;color:#8b9d92;line-height:1}
+body[data-tool=pointcloud] .workspace{position:relative}body[data-tool=pointcloud] .workspace>main{grid-column:2}body[data-tool=pointcloud] .workspace>.viewer-inspector{grid-column:3}body[data-tool=pointcloud] .workspace>.sidebar{grid-column:1}
+body[data-tool=pointcloud] .workspace.project-collapsed{grid-template-columns:0 minmax(0,1fr)}
+body[data-tool=pointcloud] .workspace.project-collapsed.inspector-open{grid-template-columns:0 minmax(0,1fr) 348px}
+.workspace.project-collapsed>.point-drop-zone,.workspace.project-collapsed>.project-resizer{display:none}
+.project-resizer{position:absolute;z-index:20;left:calc(var(--project-width,300px) - 4px);top:0;bottom:0;width:8px;cursor:col-resize;touch-action:none;background:transparent}
+.project-resizer:hover,.project-resizer:focus-visible,.project-resizing .project-resizer{background:#79a58b55;outline:none}
+.project-resizing{user-select:none}.project-resizing *{cursor:col-resize!important}
+.point-drop-zone .project-tree{padding-right:10px;user-select:none;touch-action:pan-y}
+.project-row{cursor:default;gap:2px;min-height:35px;padding-right:2px}
+.project-row .project-check-hit{display:flex;align-items:center;justify-content:center;width:30px;min-height:32px;flex:0 0 30px;cursor:pointer;border-radius:5px}
+.project-check-hit:hover{background:#dcebe2}.project-row .project-check-hit input{width:16px;height:16px;margin:0;cursor:pointer}
+.project-row .project-chevron{width:18px;flex-basis:18px;min-height:28px}
+.project-row .project-name{padding:7px 2px;cursor:default}.project-row .project-name[aria-pressed=true]{font-weight:600}
+.project-drag-handle{flex:0 0 18px;text-align:center;padding:5px 0;cursor:grab;color:#aab9b0;font-size:16px;line-height:20px;border-radius:4px}
+.project-drag-handle:hover{background:#dce9e1;color:#44765a}.project-drag-handle:active{cursor:grabbing}
+.project-selection-space{min-height:50px}.project-tree:focus-visible{outline:1px solid #92b69e;outline-offset:1px}
+.project-marquee{position:fixed;pointer-events:none;background:#55987924;border:1px solid #559879;z-index:70}
+.project-context-menu{position:fixed;z-index:90;width:208px;max-height:calc(100dvh - 12px);overflow:auto;padding:5px;background:#fff;border:1px solid #d7e4da;border-radius:9px;box-shadow:0 8px 32px #203c342b}
+.project-context-menu button{display:block;width:100%;border:0;background:none;text-align:left;padding:8px 10px;font-size:12px;border-radius:5px;color:#436151}
+.project-context-menu button:hover:not(:disabled),.project-context-menu button:focus-visible{background:#eaf3ed;outline:0}.project-context-menu button:disabled{opacity:.4}
+.project-context-menu .project-menu-danger{color:#a15c4c;border-top:1px solid #edf1ee;margin-top:4px;border-radius:0 0 5px 5px}
+.project-menu-caption{font-size:10px;color:#8c9d92;padding:6px 10px 8px}
+@media(min-width:701px) and (max-width:1199px){.viewer-inspector{top:64px}body[data-tool=pointcloud] .workspace.project-collapsed.inspector-open{grid-template-columns:0 minmax(0,1fr)}}
+@media(max-width:700px){.app-header{height:48px;padding:0 12px;gap:8px}.app-header h1{font-size:14px}.app-header .brand-icon{display:none}.app-header .local-tag{display:none}.app-header .header-right{margin-left:auto}.workspace,.workspace.inspector-open{height:auto;min-height:calc(100dvh - 48px)}.viewer-inspector{top:58px}.project-resizer{display:none}.point-drop-zone .sidebar-heading{margin-bottom:10px}}
