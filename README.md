@@ -34,9 +34,11 @@ python3 server.py
 
 **显示 · 相机 · 书签**：通过右侧设置栏切换色带、调整数值范围、拖动滑块或精确输入相机参数。视角书签保存在当前浏览器与网址中，支持 JSON 导入导出。
 
-**数据与处理**：查看、重排列并指定 RGB / HSV、法向量、强度或自定义标签；按需计算几何属性，指定新增列位置，再按当前顺序导出 PLY / TXT。[处理说明](PROCESSING.md)
+**数据与处理**：查看、重排列并指定 RGB / HSV、法向量、强度或自定义标签；按需计算几何属性，指定新增列位置，再按当前顺序导出 PLY / TXT。[处理说明](docs/PROCESSING.md)
 
 ## 使用要点
+
+首页右上角可切换中文 / English，语言会沿用到各工具。手机支持文件选择、单指旋转、双指缩放和平移；文件夹选择和大数据处理能力取决于浏览器及设备内存。
 
 - **数据留在本机**：文件在浏览器内处理，不上传；项目不附带模型数据。
 - **项目文件树**：拖入文件 / 文件夹，自动保留目录层级；支持折叠、新建分组、Ctrl / Shift 多选、框选及右键批量管理。勾选热区和拖动手柄独立；左栏可调整宽度或收起。勾选的点云用于显示、计算和合并；分组只影响本次页面，不修改磁盘文件。
@@ -46,12 +48,15 @@ python3 server.py
 
 ## 开发与打包
 
-原生 HTML / CSS / JavaScript + WebGL，无 npm 依赖。修改源码后运行：
+原生 HTML / CSS / JavaScript + WebGL，无 npm 依赖。源码按职责放在 `src/`，样式位于 `assets/css/`；`assets/js/` 是生成文件，请勿手改。[开发约定](docs/DEVELOPMENT.md)
+
+修改源码后运行：
 
 ```bash
 python3 build.py --site --zip
+python3 scripts/check.py  # 开发检查，需要 Node 18+
 ```
 
 此命令更新浏览器脚本，并生成静态站点 `_site/` 和程序包 `dist/BuildingWebViewer.zip`。提交修改时一并提交生成的脚本。
 
-实现细节与参考资料见 [设计说明](DESIGN_NOTES.md)。
+实现细节与参考资料见 [设计说明](docs/DESIGN_NOTES.md)。

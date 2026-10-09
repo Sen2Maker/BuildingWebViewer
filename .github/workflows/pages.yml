@@ -22,31 +22,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Test point and wire parsers
-        run: |
-          node point-io.test.mjs
-          node point-drop.test.mjs
-          node point-project.test.mjs
-      - name: Test shared coordinates and comparison bounds
-        run: node cloud-renderer.test.mjs
-      - name: Test multiple point-cloud composition
-        run: node cloud-combine.test.mjs
-      - name: Test file cache and saved cameras
-        run: |
-          node cloud-cache.test.mjs
-          node camera-controls.test.mjs
-          node renderer.test.mjs
-      - name: Test point-cloud processing and export
-        run: |
-          node point-processing.test.mjs
-          node point-columns.test.mjs
+      - name: Check source, regression suites and generated bundles
+        run: python3 scripts/check.py
       - name: Build static website
         run: python3 build.py --site
-      - name: Check browser bundles
-        run: |
-          node --check viewer.js
-          node --check cloud-app.bundle.js
-          git diff --exit-code -- viewer.js cloud-app.bundle.js
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload website

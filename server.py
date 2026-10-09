@@ -12,18 +12,14 @@ import sys
 from urllib.parse import unquote, urlsplit
 
 HERE = Path(__file__).resolve().parent
-HTML_FILES = ('index.html', 'lod.html', 'wireframe.html', 'pointcloud.html')
-CSS_FILES = ('hub.css', 'styles.css', 'cloud.css', 'viewer-controls.css', 'camera-controls.css', 'viewer-layout.css')
-JS_FILES = ('viewer.js', 'renderer.js', 'obj-parser.js', 'app.js',
-            'cloud-app.bundle.js', 'cloud-app.js', 'cloud-renderer.js', 'point-io.js')
-STATIC_FILES = {'/': ('index.html', 'text/html; charset=utf-8')}
-for names, content_type in ((HTML_FILES, 'text/html; charset=utf-8'),
-                            (CSS_FILES, 'text/css; charset=utf-8'),
-                            (JS_FILES, 'text/javascript; charset=utf-8'),
-                            (('favicon.svg',), 'image/svg+xml'),
-                            (('favicon.ico',), 'image/vnd.microsoft.icon'),
-                            (('favicon-32.png', 'apple-touch-icon.png'), 'image/png')):
-    STATIC_FILES.update({'/' + name: (name, content_type) for name in names})
+from build import site_files
+
+MIME_TYPES = {'.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
+              '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml',
+              '.ico': 'image/vnd.microsoft.icon', '.png': 'image/png'}
+STATIC_FILES = {'/': ('index.html', MIME_TYPES['.html'])}
+for filename in site_files():
+    STATIC_FILES['/' + filename] = (filename, MIME_TYPES[Path(filename).suffix])
 
 
 def json_bytes(value: object) -> bytes:
@@ -66,7 +62,7 @@ def make_handler():
                     filename, content_type = STATIC_FILES[path]
                     file_path = HERE / filename
                     # Only exact assets from this directory are accessible.
-                    if file_path.resolve().parent != HERE:
+                    if HERE not in file_path.resolve().parents:
                         self.error(HTTPStatus.NOT_FOUND, 'File not found.')
                         return
                     self.respond(HTTPStatus.OK, file_path.read_bytes(), content_type)

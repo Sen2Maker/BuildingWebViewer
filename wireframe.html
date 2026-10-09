@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>线框模型查看器 · 三维数据工具箱</title><link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="cloud.css"><link rel="stylesheet" href="viewer-controls.css"><link rel="stylesheet" href="camera-controls.css"><link rel="stylesheet" href="viewer-layout.css"></head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>线框模型查看器 · 三维数据工具箱</title><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/styles.css"><link rel="stylesheet" href="assets/css/cloud.css"><link rel="stylesheet" href="assets/css/viewer-controls.css"><link rel="stylesheet" href="assets/css/camera-controls.css"><link rel="stylesheet" href="assets/css/viewer-layout.css"></head>
 <body data-tool="wireframe">
 <header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页">←</a><div class="brand-icon" aria-hidden="true">⌁</div><div><h1>建筑线框查看器</h1><p>线框与点云 · 单窗或并排对照</p></div><div class="header-right"><span class="local-tag"><i></i> 本地读取</span></div></header>
 <div class="workspace">
 <aside class="sidebar" aria-label="数据选择"><div class="sidebar-heading"><h2>数据 ID</h2><span id="item-count">0</span></div>
-<div class="folder-section"><button id="choose-folder">选择数据集文件夹…</button><input id="folder-input" type="file" webkitdirectory multiple hidden><button id="choose-file" hidden>选择点云文件…</button><input id="file-input" type="file" accept=".xyz,.txt,.csv,.pts,.ply,.pcd" multiple hidden><p id="source-note">选择含各数据 ID 子目录的根文件夹，不预设路径。</p></div>
+<div class="folder-section"><button id="choose-folder">选择数据集文件夹…</button><input id="folder-input" type="file" webkitdirectory multiple hidden><button id="choose-file">选择 OBJ / 点云文件…</button><input id="file-input" type="file" accept=".obj,.xyz,.txt,.csv,.pts,.ply,.pcd" multiple hidden><p id="drop-status" role="status" hidden></p><p id="source-note">选择含各数据 ID 子目录的根文件夹，不预设路径。</p></div>
 <label class="search-label" for="search">筛选数据 ID</label><input id="search" type="search" placeholder="搜索编号或文件名" autocomplete="off">
 <div class="list-meta"><span id="filter-count">尚未读取数据</span><button class="text-button" id="clear-selection">清空选择</button></div>
 <div id="data-list" class="model-list" aria-label="数据列表"><p class="empty-list">先选择你的数据文件夹</p></div>
@@ -19,7 +19,7 @@
 <section id="viewer-panel-2" class="viewer-panel" hidden><div class="comparison-heading"><strong id="panel-label-2">线框 2</strong><span id="panel-stats-2">—</span></div><div class="viewport comparison-viewport"><canvas id="scene-2" class="scene-canvas" aria-label="第二个线框三维预览"></canvas><div id="panel-empty-2" class="wire-empty" hidden>空线框 · 0 条</div></div></section>
 <section id="viewer-panel-3" class="viewer-panel" hidden><div class="comparison-heading"><strong id="panel-label-3">线框 3</strong><span id="panel-stats-3">—</span></div><div class="viewport comparison-viewport"><canvas id="scene-3" class="scene-canvas" aria-label="第三个线框三维预览"></canvas><div id="panel-empty-3" class="wire-empty" hidden>空线框 · 0 条</div></div></section>
 </div>
-<div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span>拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span>文件不会上传</span></footer></main>
+<div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span>文件不会上传</span></footer></main>
 <aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
   <div class="inspector-heading"><div><p>VIEW SETTINGS</p><h2>查看器设置</h2></div><button type="button" data-close-settings aria-label="收起设置面板" title="收起 · Esc">×</button></div>
   <div class="inspector-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="settings-tab-display" data-settings-tab="display" aria-controls="settings-panel-display" aria-selected="true" tabindex="0">显示</button><button type="button" role="tab" id="settings-tab-camera" data-settings-tab="camera" aria-controls="settings-panel-camera" aria-selected="false" tabindex="-1">相机</button><button type="button" role="tab" id="settings-tab-bookmarks" data-settings-tab="bookmarks" aria-controls="settings-panel-bookmarks" aria-selected="false" tabindex="-1">书签</button></div>
@@ -30,4 +30,4 @@
     <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside></div>
-<script defer src="cloud-app.bundle.js"></script></body></html>
+<script defer src="assets/js/cloud.bundle.js"></script></body></html>

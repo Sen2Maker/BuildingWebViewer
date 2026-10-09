@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {mountTouchCamera} from '../src/shared/touch-camera.js';
+const events={},captured=new Set();
+const v={canvas:{clientHeight:500,setPointerCapture:id=>captured.add(id),hasPointerCapture:id=>captured.has(id),releasePointerCapture:id=>captured.delete(id)},camera:{azimuth:0,elevation:30,zoom:1,pan:[0,0]},baseHeight:10,requestRender(){},zoomBy(k){this.camera.zoom*=k;}};
+mountTouchCamera(v,(name,fn)=>events[name]=fn);
+const fire=(name,id,x,y,type='touch')=>events[name]({pointerId:id,clientX:x,clientY:y,pointerType:type,preventDefault(){}});
+fire('pointerdown',1,0,0);fire('pointermove',1,10,10);assert.equal(v.camera.azimuth,-3.5);assert.equal(v.camera.elevation,33);
+fire('pointerdown',2,30,10);fire('pointermove',2,50,10);assert.equal(v.camera.zoom,2);assert(v.camera.pan[0]<0);
+fire('pointercancel',2);const z=v.camera.zoom;fire('pointermove',1,15,10);assert.equal(v.camera.zoom,z);assert.equal(v.camera.azimuth,-5.25);
+fire('lostpointercapture',1);const before={...v.camera};fire('pointermove',1,90,90);assert.equal(v.camera.azimuth,before.azimuth);assert.equal(captured.size,0);
+fire('pointerdown',3,0,0,'mouse');fire('pointermove',3,100,100,'mouse');assert.equal(v.camera.azimuth,before.azimuth);
+console.log('PASS one-finger orbit, two-finger pinch/pan, cancellation and mouse isolation');
