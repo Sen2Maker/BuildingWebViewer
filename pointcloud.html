@@ -20,7 +20,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 </style>
 <script>/* Inlined by build.py before any stylesheet or page content can paint. */
 (() => {
-  const root = document.documentElement;
+  const root = document.documentElement, sourceTitle = document.title;
   let saved = null;
   try { saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
   const query = new URLSearchParams(location.search).get('lang');
@@ -34,6 +34,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   let ready = false;
   const slow = setTimeout(() => { if (!ready) root.classList.add('boot-slow'); }, 12000);
   window.BuildingViewerBoot = {
+    sourceTitle,
     ready() { ready = true; clearTimeout(slow); root.classList.remove('boot-pending','boot-slow','boot-failed'); document.getElementById('page-boot')?.remove(); },
     fail() { if (!ready) { clearTimeout(slow); root.classList.add('boot-failed'); } },
   };
@@ -90,4 +91,4 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
     <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
   </div><p class="inspector-footer">显示即时生效 · 数据修改需应用 · Esc 收起</p>
 </aside></div>
-<script defer src="assets/js/cloud.bundle.js?v=22efb0362616"></script></body></html>
+<script defer src="assets/js/cloud.bundle.js?v=973551d990ef"></script></body></html>

@@ -21,7 +21,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 </style>
 <script>/* Inlined by build.py before any stylesheet or page content can paint. */
 (() => {
-  const root = document.documentElement;
+  const root = document.documentElement, sourceTitle = document.title;
   let saved = null;
   try { saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
   const query = new URLSearchParams(location.search).get('lang');
@@ -35,6 +35,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   let ready = false;
   const slow = setTimeout(() => { if (!ready) root.classList.add('boot-slow'); }, 12000);
   window.BuildingViewerBoot = {
+    sourceTitle,
     ready() { ready = true; clearTimeout(slow); root.classList.remove('boot-pending','boot-slow','boot-failed'); document.getElementById('page-boot')?.remove(); },
     fail() { if (!ready) { clearTimeout(slow); root.classList.add('boot-failed'); } },
   };
@@ -80,4 +81,4 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <div class="how"><span class="how-title">开始使用</span><span><b>1</b> 选择查看工具</span><span class="step-arrow">→</span><span><b>2</b> 手动打开数据文件夹</span><span class="step-arrow">→</span><span><b>3</b> 选择需要预览的数据</span></div>
 </main>
 <footer><span>不上传文件 · 不预设目录 · 无需安装依赖</span><span>BuildingWebViewer <b> / </b> 1.0</span></footer>
-<script defer src="assets/js/hub.bundle.js?v=854364c898ea"></script></body></html>
+<script defer src="assets/js/hub.bundle.js?v=292b6f6dc3f2"></script></body></html>

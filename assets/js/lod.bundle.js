@@ -848,6 +848,8 @@ function localizeHTML(markup) {
 }
 function initializeLocale(doc = document) {
   setLanguage(currentLanguage);
+  // The early shell uses an English tab title before the full catalog is available.
+  if (globalThis.BuildingViewerBoot?.sourceTitle) doc.title = globalThis.BuildingViewerBoot.sourceTitle;
   translateTree(doc);
   globalThis.BuildingViewerBoot?.ready();
   // URL propagation also works when browser storage is disabled, including file:// usage.

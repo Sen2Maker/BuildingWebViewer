@@ -21,3 +21,9 @@ const node={nodeType:3,nodeValue:'  点云查看器  '};
 const root={nodeType:11,childNodes:[node]};translateTree(root);assert.equal(node.nodeValue,'  Point Cloud Viewer  ');
 setLanguage('zh');translateTree(root);assert.equal(node.nodeValue,'  点云查看器  ');
 console.log('PASS locale precedence, persistent links, reversible text and interpolation integrity');
+
+// Restore the source title before translating so switching back to Chinese is reversible.
+globalThis.BuildingViewerBoot = {sourceTitle:'原始标题',ready(){}};
+initializeLocale(doc);assert.equal(doc.title,'原始标题');
+delete globalThis.BuildingViewerBoot;
+assert.equal(t('toString'),'toString');

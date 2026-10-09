@@ -1,6 +1,6 @@
 /* Inlined by build.py before any stylesheet or page content can paint. */
 (() => {
-  const root = document.documentElement;
+  const root = document.documentElement, sourceTitle = document.title;
   let saved = null;
   try { saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
   const query = new URLSearchParams(location.search).get('lang');
@@ -14,6 +14,7 @@
   let ready = false;
   const slow = setTimeout(() => { if (!ready) root.classList.add('boot-slow'); }, 12000);
   window.BuildingViewerBoot = {
+    sourceTitle,
     ready() { ready = true; clearTimeout(slow); root.classList.remove('boot-pending','boot-slow','boot-failed'); document.getElementById('page-boot')?.remove(); },
     fail() { if (!ready) { clearTimeout(slow); root.classList.add('boot-failed'); } },
   };
