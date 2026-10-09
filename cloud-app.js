@@ -1,3 +1,5 @@
+import { defaultPointSettings, semanticPointCloud } from './point-dataset.js';
+import { mountPointColumns } from './point-columns.js';
 import { mountViewerLayout } from './viewer-layout.js';
 import { CloudViewer } from './cloud-renderer.js';
 import { readPointCloud, samplePointCloud } from './point-io.js';
@@ -21,12 +23,22 @@ import { mountCameraControls } from './camera-controls.js';
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
   const cached = new CloudFileCache({readCloud: (file, options) => file.generatedCloud ? samplePointCloud(file.generatedCloud, options.maxPoints) : readPointCloud(file, options)}), selectedCloudEntries = new Set();
-  let processingControls = null, displayedItems = [], resultSerial = 0;
+  let columnsControls = null, processingControls = null, displayedItems = [], resultSerial = 0;
   let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
+  function columnSettings(entry, cloud) {
+    if (!entry.columnSettings) entry.columnSettings=defaultPointSettings(cloud);
+    return entry.columnSettings;
+  }
+  function prepareColumns(entry, rawCloud) {
+    const settings=columnSettings(entry,rawCloud);
+    if(entry.columnView?.raw===rawCloud && entry.columnView.settings===settings)return entry.columnView.cloud;
+    const cloud=semanticPointCloud(rawCloud,settings);
+    entry.columnView={raw:rawCloud,settings,cloud};return cloud;
+  }
   function error(message) { $('error').hidden = !message; $('error').querySelector('span').textContent = message || ''; }
   function activeViewerCount() { return !isWire || !$('compare-mode').checked ? 1 : Number($('compare-count').value) === 3 ? 3 : 2; }
   function copyCamera(source, target) {
@@ -92,7 +104,7 @@ import { mountCameraControls } from './camera-controls.js';
       empty.textContent = entries.length ? '没有匹配的数据' : '先选择你的数据文件或文件夹'; fragment.append(empty);
     }
     $('data-list').replaceChildren(fragment);
-    updateCloudSelection(); updateCloudModeUI(filtered);
+    updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
   }
   function fillWireSelect(select, files, index = null) {
     select.replaceChildren(); option(select, '', '不加载线框');
@@ -311,7 +323,7 @@ import { mountCameraControls } from './camera-controls.js';
             $('loading').querySelector('span').textContent = `${index + 1} / ${selection.length} · ${message}`;
             $('scene-stats').textContent = `${entry.id} · ${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
           }});
-          items.push({key: entry.file, name: entry.id, cloud});
+          items.push({key: entry.file, name: entry.id, entry, rawCloud: cloud, cloud: prepareColumns(entry,cloud)});
         } catch (cause) {
           if (version !== revision) return;
           failures.push(`${entry.id}：${cause.message}`);
@@ -322,7 +334,7 @@ import { mountCameraControls } from './camera-controls.js';
       snapshot = preserveCamera ? captureView() : null;
       initViewers();
       viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color})), {preserveView: false});
-      displayedItems = items;
+      displayedItems = items; columnsControls?.refresh();
       loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
       currentPointName = items.map(item => item.name).join(' + ');
@@ -434,16 +446,23 @@ import { mountCameraControls } from './camera-controls.js';
     } catch (cause) { error(`显示失败：${cause.message}`); }
     finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
   }
+  function columnFieldLabel(key) {
+    if(isWire)return fieldLabel(key);
+    const settings=displayedItems[0]?.cloud.semantics;
+    const tag=settings?.tags[key];
+    const label=tag==='custom'?settings.custom[key]:{red:'颜色 R',green:'颜色 G',blue:'颜色 B',hue:'颜色 H',saturation:'颜色 S',value:'颜色 V',nx:'法向量 X',ny:'法向量 Y',nz:'法向量 Z',intensity:'强度',classification:'分类',return_number:'回波编号',gps_time:'GPS 时间'}[tag];
+    return label ? `${label} · ${fieldLabel(key)}` : fieldLabel(key);
+  }
   function fields() {
     const cloud = loaded.cloud, keys = Object.keys(cloud?.fields || {}), color = $('color-mode'), old = color.value;
     color.replaceChildren(); option(color, 'height', '高度 Z'); option(color, 'solid', '单色');
     if (cloud?.sources?.length) option(color, 'file', '按文件');
-    if (cloud?.rgb) option(color, 'rgb', '原始 RGB'); if (keys.length >= 3) option(color, 'custom-rgb', '指定 RGB 列…');
-    keys.filter(key => !['x', 'y', 'z', 'rgb', 'rgba'].includes(key.toLowerCase())).forEach(key => option(color, `field:${key}`, fieldLabel(key)));
+    if (cloud?.rgb) option(color, 'rgb', isWire ? '原始 RGB' : '已标记颜色（RGB / HSV）'); if (isWire && keys.length >= 3) option(color, 'custom-rgb', '指定 RGB 列…');
+    keys.filter(key => !['x', 'y', 'z', 'rgb', 'rgba'].includes(key.toLowerCase())).forEach(key => option(color, `field:${key}`, columnFieldLabel(key)));
     color.value = [...color.options].some(item => item.value === old) ? old : 'height';
     const extra = keys.filter(key => !['x', 'y', 'z'].includes(key.toLowerCase()));
     ['rgb-r', 'rgb-g', 'rgb-b'].forEach((id, index) => {
-      const select = $(id), previous = select.value; select.replaceChildren(); keys.forEach(key => option(select, key, fieldLabel(key)));
+      const select = $(id), previous = select.value; select.replaceChildren(); keys.forEach(key => option(select, key, columnFieldLabel(key)));
       select.value = keys.includes(previous) ? previous : extra[index] || keys[index] || '';
     });
     $('rgb-fields').hidden = color.value !== 'custom-rgb';
@@ -464,7 +483,7 @@ import { mountCameraControls } from './camera-controls.js';
     $('color-legend').hidden = !(loaded.cloud && options.showPoints && range);
     $('color-name').textContent = $('color-mode').selectedOptions[0]?.textContent || '';
     $('color-min').textContent = compact(range?.min); $('color-max').textContent = compact(range?.max);
-    const notes = messages.slice(); if (state?.colorFallback) notes.push(state.colorFallback); $('data-notes').textContent = notes.join(' ');
+    const notes = messages.slice(); for(const item of displayedItems) if(item.cloud.colorIssue) notes.push(`${item.name}：${item.cloud.colorIssue}`); if (state?.colorFallback) notes.push(state.colorFallback); $('data-notes').textContent = notes.join(' ');
   }
   function preventDuplicateSelection(changed) {
     if (!isWire || !$('compare-mode').checked || changed.value === '') return;
@@ -568,10 +587,10 @@ import { mountCameraControls } from './camera-controls.js';
       readCloud: async (entry, scope, signal, onProgress) => {
         signal.throwIfAborted();
         if (scope === 'display') return displayedItems.find(item => item.key === entry.file)?.cloud;
-        if (entry.file.generatedCloud) return entry.file.generatedCloud;
+        if (entry.file.generatedCloud) return prepareColumns(entry,entry.file.generatedCloud);
         const record = cached.records.get(entry.file);
-        if (record && record.value.count === record.value.totalCount) return record.value;
-        return readPointCloud(entry.file, {maxPoints: 0, signal, onProgress});
+        if (record && record.value.count === record.value.totalCount) return prepareColumns(entry,record.value);
+        return semanticPointCloud(await readPointCloud(entry.file, {maxPoints: 0, signal, onProgress}), entry.columnSettings);
       },
       addResults: async results => {
         selectedCloudEntries.clear();
@@ -584,7 +603,8 @@ import { mountCameraControls } from './camera-controls.js';
         $('source-note').textContent = `已列出 ${pretty(entries.length)} 个条目 · 计算结果请导出保存`;
         active = lastCloudEntry; page = Math.floor((entries.length - 1) / 50); $('search').value = ''; list();
         await loadCloudSelection();
-        const field = results[0]?.cloud.featureMapping.slope;
+        const mapping=results[0]?.cloud.featureMapping||{};
+        const field=mapping.slope||mapping.planarity||mapping.roughness||mapping.nz;
         if (field) { $('color-mode').value = `field:${field}`; update(); }
       },
       removeResults: selection => {
@@ -593,6 +613,17 @@ import { mountCameraControls } from './camera-controls.js';
         entries = entries.filter(entry => !removed.has(entry));
         if (removed.size) applyCloudSelection();
         return removed.size;
+      },
+    });
+    if(!isWire) columnsControls=mountPointColumns({container:$('column-controls'),
+      getItems:()=>displayedItems.filter(item=>selectedCloudEntries.has(item.entry)),
+      getSettings:columnSettings,
+      applySettings:async(entry,settings)=>{
+        if(loadController)throw Error('请等待点云加载完成');
+        const item=displayedItems.find(item=>item.entry===entry);if(!item)throw Error('请重新选择点云');
+        semanticPointCloud(item.rawCloud,settings,{strict:true});
+        processingControls?.cancel();entry.columnSettings=settings;entry.columnView=null;
+        await loadCloudSelection({preserveCamera:true});
       },
     });
     mountViewerLayout();

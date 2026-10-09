@@ -34,7 +34,7 @@ Organize wireframe data as `dataset / object-ID / wireframe.obj, points.txt`. Te
 
 **Display · Camera · Bookmarks**: use the side panel to change palettes and value ranges, adjust camera sliders or enter precise values, and save views. Bookmarks stay in the current browser and site, with JSON import and export. The viewer interface is currently in Chinese.
 
-**Processing and export**: Compute normals, slope, planarity and roughness; save or merge clouds as PLY / TXT using all points or the displayed sample. [Processing guide](PROCESSING.md)
+**Data and processing**: Inspect and reorder columns, assign RGB / HSV, normal, intensity or custom tags, compute selected features, and choose where to insert new columns before PLY / TXT export. [Processing guide](PROCESSING.md)
 
 ## Essentials
 

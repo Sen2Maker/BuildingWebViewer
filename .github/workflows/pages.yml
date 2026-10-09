@@ -34,7 +34,9 @@ jobs:
           node camera-controls.test.mjs
           node renderer.test.mjs
       - name: Test point-cloud processing and export
-        run: node point-processing.test.mjs
+        run: |
+          node point-processing.test.mjs
+          node point-columns.test.mjs
       - name: Build static website
         run: python3 build.py --site
       - name: Check browser bundles

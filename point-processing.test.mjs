@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {Worker as NodeWorker} from 'node:worker_threads';
-const moduleFrom = async name => import(`data:text/javascript;base64,${Buffer.from(await readFile(new URL(name, import.meta.url))).toString('base64')}`);
+const datasetURL=`data:text/javascript;base64,${Buffer.from(await readFile(new URL('point-dataset.js',import.meta.url))).toString('base64')}`;
+const moduleFrom = async name => import(`data:text/javascript;base64,${Buffer.from((await readFile(new URL(name, import.meta.url),'utf8')).replaceAll("'./point-dataset.js'",JSON.stringify(datasetURL))).toString('base64')}`);
 const {computePointFeatures, derivedPointCloud, runPointFeatures} = await moduleFrom('point-operations.js');
 const {writePointExport, pointExportSchema} = await moduleFrom('point-export.js');
 const {parsePointCloud, samplePointCloud} = await moduleFrom('point-io.js');

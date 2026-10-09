@@ -1,6 +1,8 @@
+import { orderedPointExportSchema } from './point-dataset.js';
 /** Streaming serializers. Coordinates are always taken from the original Float64 positions. */
 export function pointExportSchema(items, {sourceIds = true} = {}) {
   if (!items.length) throw Error('没有可导出的点云');
+  if(items.some(item=>item.cloud?.columnOrder || item.cloud?.semantics))return orderedPointExportSchema(items,{sourceIds});
   let count = 0;
   const keys = new Set();
   for (const {cloud} of items) {
@@ -37,9 +39,18 @@ export async function writePointExport(items, {format = 'ply', sourceIds = true,
   const {count, properties} = pointExportSchema(items, {sourceIds});
   const encoder = new TextEncoder();
   const check = () => { if (signal?.aborted) throw new DOMException('已取消', 'AbortError'); };
-  const comments = ['BuildingWebViewer: original coordinates; concatenation without registration or deduplication.'];
+  const comments = ['BuildingWebViewer: coordinates as selected; concatenation without registration or deduplication.'];
+  if(properties.some(p=>p.sources)) {
+    const first=items[0].cloud.semantics||{}, tags=Object.create(null), custom=Object.create(null);
+    for(const property of properties) {
+      const index=property.sources?.findIndex(Boolean) ?? -1, spec=property.sources?.[index], semantics=items[index]?.cloud.semantics;
+      tags[property.name]=semantics?.tags?.[spec?.key]||'scalar';
+      if(tags[property.name]==='custom')custom[property.name]=semantics.custom[spec.key];
+    }
+    comments.push(`bwv_columns ${JSON.stringify({tags,custom,rgbScale:first.rgbScale||'auto',hsvScale:first.hsvScale||'degrees',colorSpace:first.colorSpace||'auto'})}`);
+  }
   items.forEach(({name, cloud}, id) => {
-    comments.push(`source ${id} ${JSON.stringify({name, count: cloud.count, originalTotal: cloud.totalCount, processing: cloud.processing || null})}`);
+    comments.push(`source ${id} ${JSON.stringify({name, count: cloud.count, originalTotal: cloud.totalCount, processing: cloud.processing || null, semantics: cloud.semantics || null, columnOrder: cloud.columnOrder || null})}`);
   });
   for (const property of properties) if (property.key && property.name !== property.key) comments.push(`property_map ${property.name} ${JSON.stringify(property.key)}`);
   // ASCII-safe metadata keeps the PLY header compatible with byte-oriented readers.
@@ -51,6 +62,7 @@ export async function writePointExport(items, {format = 'ply', sourceIds = true,
   let done = 0;
   for (const [source, {cloud}] of items.entries()) {
     const value = (property, i) => {
+      if(property.sources) {const spec=property.sources[source];return spec?.axis!==undefined?cloud.positions[i*3+spec.axis]:spec?cloud.fields[spec.key][i]:NaN;}
       if (property.axis !== undefined) return cloud.positions[i * 3 + property.axis];
       if (property.channel !== undefined) return cloud.rgb?.[i * 3 + property.channel] ?? 0;
       if (property.rgbValid) return cloud.rgb && cloud.fields.rgb_valid?.[i] !== 0 ? 1 : 0;

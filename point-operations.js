@@ -1,5 +1,7 @@
 /** Self-contained kernel: also serialized into a local Blob Worker for offline use. */
-export function computePointFeatures(positions, {k = 32, radius = 0, orientation = '+z'} = {}, progress = () => {}) {
+export function computePointFeatures(positions, {k = 32, radius = 0, orientation = '+z', features = ['normals','slope','planarity','roughness']} = {}, progress = () => {}) {
+  if (!Array.isArray(features) || !features.length || features.some(name => !['normals','slope','planarity','roughness'].includes(name))) throw Error('请选择有效的计算项目');
+  const selected = new Set(features);
   const count = positions.length / 3;
   if (!Number.isSafeInteger(count) || count < 3) throw Error('至少需要 3 个点');
   if (!Number.isInteger(k) || k < 3 || k > 256) throw Error('邻域点数必须是 3–256 的整数');
@@ -74,7 +76,7 @@ export function computePointFeatures(positions, {k = 32, radius = 0, orientation
     }
   }
   const fields = Object.create(null);
-  for (const name of ['nx', 'ny', 'nz', 'slope', 'planarity', 'roughness']) fields[name] = new Float64Array(count).fill(NaN);
+  for (const name of [...(selected.has('normals') ? ['nx','ny','nz'] : []), ...['slope','planarity','roughness'].filter(name=>selected.has(name))]) fields[name] = new Float64Array(count).fill(NaN);
   fields.normal_valid = new Uint8Array(count);
   let valid = 0;
   const directionAxis = 'xyz'.indexOf(orientation[1]), sign = orientation[0] === '-' ? -1 : 1;
@@ -120,10 +122,10 @@ export function computePointFeatures(positions, {k = 32, radius = 0, orientation
         let orient = n[directionAxis];
         if (Math.abs(orient) < 1e-12) orient = n.find(value => Math.abs(value) >= 1e-12) || 1;
         if (orient * sign < 0) for (let axis = 0; axis < 3; axis++) n[axis] *= -1;
-        fields.nx[index] = n[0]; fields.ny[index] = n[1]; fields.nz[index] = n[2];
-        fields.slope[index] = Math.acos(Math.min(1, Math.abs(n[2]))) * 180 / Math.PI;
-        fields.planarity[index] = Math.max(0, Math.min(1, (mid - low) / high));
-        fields.roughness[index] = Math.abs(mx * n[0] + my * n[1] + mz * n[2]);
+        if (selected.has('normals')) { fields.nx[index] = n[0]; fields.ny[index] = n[1]; fields.nz[index] = n[2]; }
+        if (selected.has('slope')) fields.slope[index] = Math.acos(Math.min(1, Math.abs(n[2]))) * 180 / Math.PI;
+        if (selected.has('planarity')) fields.planarity[index] = Math.max(0, Math.min(1, (mid - low) / high));
+        if (selected.has('roughness')) fields.roughness[index] = Math.abs(mx * n[0] + my * n[1] + mz * n[2]);
         fields.normal_valid[index] = 1; valid++;
       }
     }
@@ -161,7 +163,26 @@ export function derivedPointCloud(cloud, result, parameters, scope) {
     while (Object.hasOwn(fields, key)) key = `${name}_${suffix++}`;
     fields[key] = values; mapping[name] = key;
   }
-  return {...cloud, fields, count: cloud.count, totalCount: cloud.count, featureMapping: mapping,
-    notes: [...(cloud.notes || []), `计算结果（${scope}）：${result.valid} / ${cloud.count} 个有效法向量；k=${parameters.k}，半径=${parameters.radius || '不限'}，方向=${parameters.orientation}。`],
+  const columnOrder = cloud.columnOrder ? [...cloud.columnOrder] : ['x','y','z',...Object.keys(cloud.fields||{}).filter(key=>!['x','y','z'].includes(key))];
+  const added=Object.values(mapping);
+  let at=columnOrder.length;
+  if(parameters.placement==='after-xyz')at=Math.max(...['x','y','z'].map(key=>columnOrder.indexOf(key)))+1;
+  if(parameters.placement==='index') {
+    if(!Number.isInteger(parameters.insertColumn)||parameters.insertColumn<1||parameters.insertColumn>columnOrder.length+1)throw Error(`插入列号需为 1–${columnOrder.length+1}`);
+    at=parameters.insertColumn-1;
+  }
+  columnOrder.splice(at,0,...added);
+  const semantics=cloud.semantics?JSON.parse(JSON.stringify(cloud.semantics)):null;
+  if(semantics) {
+    semantics.order=columnOrder;
+    for(const [name,key] of Object.entries(mapping)) {
+      if(['nx','ny','nz'].includes(name)) {
+        for(const old of Object.keys(semantics.tags))if(semantics.tags[old]===name)semantics.tags[old]='scalar';
+        semantics.tags[key]=name;
+      } else semantics.tags[key]='scalar';
+    }
+  }
+  return {...cloud, fields, columnOrder, semantics, count: cloud.count, totalCount: cloud.count, featureMapping: mapping,
+    notes: [...(cloud.notes || []), `计算结果（${scope}）：${result.valid} / ${cloud.count} 个有效邻域；k=${parameters.k}，半径=${parameters.radius || '不限'}，方向=${parameters.orientation}。`],
     processing: {parameters, scope, originalTotal: cloud.totalCount, fields: mapping, valid: result.valid}};
 }

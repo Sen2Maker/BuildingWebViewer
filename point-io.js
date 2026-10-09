@@ -212,7 +212,7 @@ function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
       }
       if (sampled) notes.push(`总计 ${totalCount.toLocaleString()} 点，使用固定种子蓄水池采样显示 ${count.toLocaleString()} 点；坐标范围仍覆盖全部原始点。`);
       else notes.push(`完整读取 ${totalCount.toLocaleString()} 点；范围为全部点范围。`);
-      const result = {positions, count, totalCount, bounds, fields, rgb, notes};
+      const result = {positions, count, totalCount, bounds, fields, rgb, notes, columnOrder:[...names]};
       if (sampleIndices) result.sampleIndices = sampleIndices;
       return result;
     },
@@ -271,18 +271,33 @@ function pointTextCheckLine(record) {
 }
 
 /** Consume each text line once, infer its schema, validate, and retain typed point blocks. */
+// Optional application metadata is data only: whitelist roles/ranges and known columns.
+function pointColumnMetadata(cloud, text) {
+  if(!text)return cloud;
+  try {
+    const value=JSON.parse(text), roles=new Set(['scalar','red','green','blue','hue','saturation','value','nx','ny','nz','intensity','classification','return_number','gps_time','custom']);
+    const tags=Object.create(null),custom=Object.create(null);
+    for(const key of Object.keys(cloud.fields)) {
+      const tag=value.tags?.[key];tags[key]=roles.has(tag)?tag:'scalar';
+      if(tags[key]==='custom') {custom[key]=String(value.custom?.[key]||key).slice(0,80);}
+    }
+    cloud.semantics={order:[...cloud.columnOrder],tags,custom,rgbScale:['auto','1','255','65535'].includes(value.rgbScale)?value.rgbScale:'auto',hsvScale:['degrees','unit','opencv'].includes(value.hsvScale)?value.hsvScale:'degrees',colorSpace:['auto','rgb','hsv'].includes(value.colorSpace)?value.colorSpace:'auto'};
+  } catch {} return cloud;
+}
+
 function pointTextParser(filename, maxPoints) {
   const notes = [];
-  let header = null, declared = null, collector = null, values = null, totalCount = 0;
+  let header = null, declared = null, collector = null, values = null, totalCount = 0, columnMetadata=null;
   return {
     add(record) {
       pointTextCheckLine(record);
       let line = record.text.trim();
       if (!line) return;
       if (line.startsWith('#') || line.startsWith('//')) {
+        if(line.startsWith('# bwv_columns '))columnMetadata=line.slice(14);
         if (!collector && !header) {
           const possible = pointTextTokens(line.replace(/^(#|\/\/)\s*/, '')).map(value => value.replace(/^['"]|['"]$/g, '').toLowerCase());
-          if (['x', 'y', 'z'].every(name => possible.includes(name))) header = pointNames(possible);
+          if (!/[{}\[\]]/.test(line) && ['x', 'y', 'z'].every(name => possible.includes(name))) header = pointNames(possible);
         }
         return;
       }
@@ -319,7 +334,7 @@ function pointTextParser(filename, maxPoints) {
     finish() {
       if (!collector) pointError('点云文件为空');
       if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
-      return collector.finish();
+      return pointColumnMetadata(collector.finish(),columnMetadata);
     },
   };
 }
@@ -441,7 +456,7 @@ function parsePointPLY(bytes, maxPoints) {
       if (element === vertex) collector.add(values, i);
     }
   }
-  return collector.finish();
+  return pointColumnMetadata(collector.finish(),lines.find(line=>line.startsWith('comment bwv_columns '))?.slice(20));
 }
 
 function parsePointPCD(bytes, maxPoints) {

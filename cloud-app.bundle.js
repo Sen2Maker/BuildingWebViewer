@@ -1445,7 +1445,7 @@ function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
       }
       if (sampled) notes.push(`总计 ${totalCount.toLocaleString()} 点，使用固定种子蓄水池采样显示 ${count.toLocaleString()} 点；坐标范围仍覆盖全部原始点。`);
       else notes.push(`完整读取 ${totalCount.toLocaleString()} 点；范围为全部点范围。`);
-      const result = {positions, count, totalCount, bounds, fields, rgb, notes};
+      const result = {positions, count, totalCount, bounds, fields, rgb, notes, columnOrder:[...names]};
       if (sampleIndices) result.sampleIndices = sampleIndices;
       return result;
     },
@@ -1504,18 +1504,33 @@ function pointTextCheckLine(record) {
 }
 
 /** Consume each text line once, infer its schema, validate, and retain typed point blocks. */
+// Optional application metadata is data only: whitelist roles/ranges and known columns.
+function pointColumnMetadata(cloud, text) {
+  if(!text)return cloud;
+  try {
+    const value=JSON.parse(text), roles=new Set(['scalar','red','green','blue','hue','saturation','value','nx','ny','nz','intensity','classification','return_number','gps_time','custom']);
+    const tags=Object.create(null),custom=Object.create(null);
+    for(const key of Object.keys(cloud.fields)) {
+      const tag=value.tags?.[key];tags[key]=roles.has(tag)?tag:'scalar';
+      if(tags[key]==='custom') {custom[key]=String(value.custom?.[key]||key).slice(0,80);}
+    }
+    cloud.semantics={order:[...cloud.columnOrder],tags,custom,rgbScale:['auto','1','255','65535'].includes(value.rgbScale)?value.rgbScale:'auto',hsvScale:['degrees','unit','opencv'].includes(value.hsvScale)?value.hsvScale:'degrees',colorSpace:['auto','rgb','hsv'].includes(value.colorSpace)?value.colorSpace:'auto'};
+  } catch {} return cloud;
+}
+
 function pointTextParser(filename, maxPoints) {
   const notes = [];
-  let header = null, declared = null, collector = null, values = null, totalCount = 0;
+  let header = null, declared = null, collector = null, values = null, totalCount = 0, columnMetadata=null;
   return {
     add(record) {
       pointTextCheckLine(record);
       let line = record.text.trim();
       if (!line) return;
       if (line.startsWith('#') || line.startsWith('//')) {
+        if(line.startsWith('# bwv_columns '))columnMetadata=line.slice(14);
         if (!collector && !header) {
           const possible = pointTextTokens(line.replace(/^(#|\/\/)\s*/, '')).map(value => value.replace(/^['"]|['"]$/g, '').toLowerCase());
-          if (['x', 'y', 'z'].every(name => possible.includes(name))) header = pointNames(possible);
+          if (!/[{}\[\]]/.test(line) && ['x', 'y', 'z'].every(name => possible.includes(name))) header = pointNames(possible);
         }
         return;
       }
@@ -1552,7 +1567,7 @@ function pointTextParser(filename, maxPoints) {
     finish() {
       if (!collector) pointError('点云文件为空');
       if (declared !== null && declared !== totalCount) pointError(`PTS 声明 ${declared} 点，实际读取 ${totalCount} 点`);
-      return collector.finish();
+      return pointColumnMetadata(collector.finish(),columnMetadata);
     },
   };
 }
@@ -1674,7 +1689,7 @@ function parsePointPLY(bytes, maxPoints) {
       if (element === vertex) collector.add(values, i);
     }
   }
-  return collector.finish();
+  return pointColumnMetadata(collector.finish(),lines.find(line=>line.startsWith('comment bwv_columns '))?.slice(20));
 }
 
 function parsePointPCD(bytes, maxPoints) {
@@ -2056,9 +2071,199 @@ class CloudFileCache {
 }
 
 
+// Source: point-dataset.js
+/** Column order and semantics never modify the source arrays or point positions. */
+const POINT_COLUMN_TAGS = {scalar:'普通数值',red:'颜色 R',green:'颜色 G',blue:'颜色 B',hue:'颜色 H',saturation:'颜色 S',value:'颜色 V',nx:'法向量 X',ny:'法向量 Y',nz:'法向量 Z',intensity:'强度',classification:'分类',return_number:'回波编号',gps_time:'GPS 时间',custom:'自定义标签'};
+function pointColumnKeys(cloud) {
+  const keys=['x','y','z',...Object.keys(cloud.fields||{}).filter(key=>!['x','y','z'].includes(key))];
+  return cloud.columnOrder ? [...cloud.columnOrder.filter(key=>keys.includes(key)),...keys.filter(key=>!cloud.columnOrder.includes(key))] : keys;
+}
+function defaultPointSettings(cloud) {
+  const order=pointColumnKeys(cloud), tags=Object.create(null), custom=Object.create(null);
+  const aliases={r:'red',g:'green',b:'blue',h:'hue',s:'saturation',v:'value',normal_x:'nx',normal_y:'ny',normal_z:'nz',diffuse_red:'red',diffuse_green:'green',diffuse_blue:'blue'};
+  const used=new Set();
+  for(const key of order) {
+    const tag=Object.hasOwn(POINT_COLUMN_TAGS,key) && key!=='custom' ? key : Object.hasOwn(aliases,key)?aliases[key]:null;
+    tags[key]=tag && !used.has(tag) ? tag : 'scalar'; if(tag)used.add(tag);
+  }
+  if(cloud.semantics?.tags) for(const key of order) { if(cloud.semantics.tags[key]&&!['x','y','z'].includes(key))tags[key]=cloud.semantics.tags[key]; custom[key]=cloud.semantics.custom?.[key]||''; }
+  return {order,tags,custom,rgbScale:cloud.semantics?.rgbScale||'auto',hsvScale:cloud.semantics?.hsvScale||'degrees',colorSpace:cloud.semantics?.colorSpace||'auto'};
+}
+function pointTagKeys(settings, roles) { return roles.map(role=>settings.order.find(key=>settings.tags[key]===role)); }
+function validatePointSettings(cloud, settings) {
+  const keys=pointColumnKeys(cloud), used=new Set(), customNames=new Set();
+  if (!Array.isArray(settings.order) || settings.order.length!==keys.length || new Set(settings.order).size!==keys.length || keys.some(key=>!settings.order.includes(key))) throw Error('列顺序必须包含全部属性且不能重复');
+  for(const key of keys) {
+    if(['x','y','z'].includes(key))continue;
+    const tag=settings.tags[key]||'scalar';
+    if(!Object.hasOwn(POINT_COLUMN_TAGS,tag))throw Error('属性标签无效');
+    if(tag==='custom') {const name=String(settings.custom[key]||'').trim();if(!name)throw Error(`请填写 ${key} 的自定义标签`);if(customNames.has(name))throw Error('同一个点云内的自定义标签不能重名');customNames.add(name);}
+    if(!['scalar','custom'].includes(tag)) {if(used.has(tag))throw Error(`标签“${POINT_COLUMN_TAGS[tag]}”只能对应一列`);used.add(tag);}
+  }
+  if(!['auto','1','255','65535'].includes(settings.rgbScale) || !['degrees','unit','opencv'].includes(settings.hsvScale) || !['auto','rgb','hsv'].includes(settings.colorSpace))throw Error('颜色取值范围无效');
+}
+function pointFieldStats(values) {
+  let min=Infinity,max=-Infinity,finite=0;
+  for(const value of values)if(Number.isFinite(value)){min=Math.min(min,value);max=Math.max(max,value);finite++;}
+  return {min:finite?min:null,max:finite?max:null,finite,missing:values.length-finite,count:values.length,preview:Array.from(values.slice(0,6))};
+}
+function hsvPointRGB(h,s,v) {
+  h=((h%360)+360)%360;
+  const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;
+  const rgb=h<60?[c,x,0]:h<120?[x,c,0]:h<180?[0,c,x]:h<240?[0,x,c]:h<300?[x,0,c]:[c,0,x];
+  return rgb.map(value=>value+m);
+}
+function semanticPointCloud(cloud, settings, {strict=false}={}) {
+  validatePointSettings(cloud,settings);
+  const rgbKeys=pointTagKeys(settings,['red','green','blue']), hsvKeys=pointTagKeys(settings,['hue','saturation','value']);
+  let space=settings.colorSpace==='auto' ? rgbKeys.every(Boolean)?'rgb':hsvKeys.every(Boolean)?'hsv':null : settings.colorSpace;
+  const selected=space==='rgb'?rgbKeys:hsvKeys;
+  let rgb=(cloud.fields.rgb || cloud.fields.rgba) ? cloud.rgb : null, colorIssue='';
+  if(space && selected.every(Boolean)) {
+    const channels=selected.map(key=>cloud.fields[key]);
+    let divisor=Number(settings.rgbScale);
+    if(space==='rgb' && settings.rgbScale==='auto') {
+      let max=0;for(const channel of channels)for(const value of channel)if(Number.isFinite(value))max=Math.max(max,value);
+      divisor=max<=1?1:max<=255?255:65535;
+    }
+    rgb=new Float32Array(cloud.count*3);let invalid=0;
+    for(let i=0;i<cloud.count;i++) {
+      let values=channels.map(channel=>channel[i]), valid=values.every(Number.isFinite);
+      if(space==='rgb') {valid=valid&&values.every(v=>v>=0&&v<=divisor);values=values.map(v=>v/divisor);}
+      else {
+        const [hmax,svmax]=settings.hsvScale==='unit'?[1,1]:settings.hsvScale==='opencv'?[180,255]:[360,1];
+        valid=valid&&values[0]>=0&&values[0]<=hmax&&values.slice(1).every(v=>v>=0&&v<=svmax);
+        values=hsvPointRGB(values[0]*360/hmax,values[1]/svmax,values[2]/svmax);
+      }
+      // Merged RGB/HSV sources may have NaN in the other source's columns.
+      if(!valid && settings.colorSpace==='auto' && space==='rgb' && hsvKeys.every(Boolean)) {
+        const h=cloud.fields[hsvKeys[0]][i],s=cloud.fields[hsvKeys[1]][i],v=cloud.fields[hsvKeys[2]][i];
+        const [hmax,svmax]=settings.hsvScale==='unit'?[1,1]:settings.hsvScale==='opencv'?[180,255]:[360,1];
+        valid=[h,s,v].every(Number.isFinite)&&h>=0&&h<=hmax&&s>=0&&s<=svmax&&v>=0&&v<=svmax;
+        if(valid)values=hsvPointRGB(h*360/hmax,s/svmax,v/svmax);
+      }
+      if(!valid){invalid++;values=[.55,.59,.61];}
+      rgb.set(values,i*3);
+    }
+    if(invalid)colorIssue=`${invalid.toLocaleString()} 个点的 ${space.toUpperCase()} 数值缺失或超出范围，颜色显示为灰色。`;
+    if(strict&&invalid)throw Error(colorIssue+' 请检查列标签与颜色范围。');
+  } else if(space) {colorIssue='颜色标签尚未配齐三列。';rgb=null;}
+  return {...cloud,rgb,columnOrder:[...settings.order],colorIssue,semantics:JSON.parse(JSON.stringify(settings))};
+}
+
+/** Construct one coherent merged schema, taking the first cloud's order then appending new fields. */
+function orderedPointExportSchema(items,{sourceIds=true}={}) {
+  const properties=[], byName=new Map(), identities=new Map(), reserved=new Set(['x','y','z']);let count=0;
+  for(const {cloud} of items) for(const tag of Object.values((cloud.semantics||defaultPointSettings(cloud)).tags))if(!['scalar','custom'].includes(tag))reserved.add(tag);
+  for(const [source,{cloud}] of items.entries()) {
+    if(!cloud?.count || cloud.positions.length!==cloud.count*3)throw Error('点云数据不完整');
+    count+=cloud.count;
+    const settings=cloud.semantics||defaultPointSettings(cloud), order=cloud.columnOrder||settings.order;
+    const used=new Set();
+    for(const key of order) {
+      const axis=['x','y','z'].indexOf(key),tag=settings.tags[key]||'scalar';
+      if(axis<0 && cloud.fields[key]?.length!==cloud.count)throw Error(`属性 ${key} 长度不匹配`);
+      let base=axis>=0?key:tag==='custom'?settings.custom[key]:tag==='scalar'?key:tag;
+      base=String(base).trim().toLowerCase().replace(/[^a-z0-9_]/g,'_')||'attribute';
+      if(axis<0 && ['scalar','custom'].includes(tag) && reserved.has(base))base=`original_${base}`;
+      const identity=axis>=0?`axis:${key}`:tag==='custom'?`custom:${settings.custom[key]}`:tag==='scalar'?`scalar:${key}`:`role:${tag}`;
+      let name=identities.get(identity),suffix=2;
+      if(!name){name=base;while(byName.has(name))name=`${base}_${suffix++}`;identities.set(identity,name);}
+      if(used.has(name))throw Error('同一文件含有重复的导出标签');used.add(name);
+      if(!byName.has(name)){const property={name,sources:[]};byName.set(name,property);properties.push(property);}
+      byName.get(name).sources[source]=axis>=0?{axis}:{key};
+    }
+  }
+  if(!Number.isSafeInteger(count)||count>4294967295)throw Error('导出点数超过支持范围');
+  if(sourceIds){let name='source_id',suffix=2;while(byName.has(name))name=`source_id_${suffix++}`;properties.push({name,source:true});}
+  return {count,properties};
+}
+
+
+// Source: point-columns.js
+
+function mountPointColumns({container,getItems,getSettings,applySettings}) {
+  if(!container)return null;
+  container.innerHTML=`<section class="inspector-section"><h3>点云列结构</h3><div class="processing-inputs"><label>编辑点云<select id="columns-file"></select></label></div><p class="processing-help">选择已加载的点云。标签和列顺序按文件保存；默认以 Z 高度色带显示。</p></section>
+  <div id="columns-body" hidden><section class="inspector-section"><h3>列顺序与标签</h3><div class="column-presets"><select id="columns-start" aria-label="快捷标记起始列"></select><select id="columns-preset" aria-label="快捷标签"><option value="rgb">连续三列 → RGB</option><option value="hsv">连续三列 → HSV</option><option value="normals">连续三列 → 法向量</option><option value="intensity">当前列 → 强度</option></select><button id="columns-mark">标记</button></div>
+  <p class="processing-help">拖动行或用 ↑ ↓ 调整顺序。点击列名查看数值。XYZ 的语义固定，但存储位置可移动。</p><div id="columns-rows" class="column-rows"></div>
+  <div class="processing-inputs column-color-options"><label>颜色来源<select id="columns-color"><option value="auto">自动（RGB 优先）</option><option value="rgb">已标记的 RGB</option><option value="hsv">已标记的 HSV</option></select></label><label>RGB 范围<select id="columns-rgb"><option value="auto">自动</option><option value="1">0–1</option><option value="255">0–255</option><option value="65535">0–65535</option></select></label><label>HSV 范围<select id="columns-hsv"><option value="degrees">H 0–360，S/V 0–1</option><option value="unit">H/S/V 0–1</option><option value="opencv">H 0–180，S/V 0–255</option></select></label><p class="processing-help">RGB / HSV 各需三列。更改标签不切换视图；在“显示 → 已标记颜色”查看颜色。自定义标签会成为导出字段名，非 ASCII 字符将转换为下划线。</p><button id="columns-apply" class="processing-primary">应用标签与列顺序</button><button id="columns-reset">恢复读取时的列设置</button></div></section>
+  <section class="inspector-section"><h3>属性数值</h3><p id="columns-stats" class="processing-help"></p><div class="column-preview"><table id="columns-preview"></table></div><p class="processing-help">预览前 5 个当前显示点；统计也基于显示样本，不会为此重新读取大文件。</p></section></div><p id="columns-status" class="processing-help" role="status"></p>`;
+  const el=id=>container.querySelector(`#${id}`), make=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
+  let items=[],current=null,draft=null,selectedKey='',dragged=null,lastSettings=null,lastCloud=null;
+  const statsCache=new WeakMap(), status=text=>{el('columns-status').textContent=text;};
+  function stats() {
+    if(!current||!selectedKey)return;
+    const values=current.rawCloud.fields[selectedKey];if(!values)return;
+    let s=statsCache.get(values);if(!s){s=pointFieldStats(values);statsCache.set(values,s);}
+    const fmt=value=>value===null?'—':Number.isFinite(value)?Number(value.toPrecision(8)).toString():String(value);
+    el('columns-stats').textContent=`${selectedKey} · ${s.count.toLocaleString()} 个值 · 有效 ${s.finite.toLocaleString()} / 缺失 ${s.missing.toLocaleString()} · 最小 ${fmt(s.min)} · 最大 ${fmt(s.max)}`;
+    const table=el('columns-preview');table.replaceChildren();const head=make('tr');head.append(make('th','点'));
+    for(const key of draft.order)head.append(make('th',key));table.append(head);
+    for(let i=0;i<Math.min(5,current.rawCloud.count);i++){const row=make('tr');row.append(make('td',String(i+1)));for(const key of draft.order)row.append(make('td',fmt(current.rawCloud.fields[key]?.[i])));table.append(row);}
+  }
+  function move(key,to) {
+    const from=draft.order.indexOf(key);if(from<0||to<0||to>=draft.order.length)return;
+    draft.order.splice(from,1);draft.order.splice(to,0,key);renderRows();status('列顺序已调整，点击“应用”生效。');
+  }
+  function renderRows() {
+    const rows=el('columns-rows'),scroll=rows.scrollTop;rows.replaceChildren();
+    draft.order.forEach((key,index)=>{
+      const row=make('div');row.className='column-row';row.draggable=true;row.dataset.column=key;
+      const number=make('span',String(index+1));number.className='column-index';
+      const name=make('button',key);name.type='button';name.className='column-name';name.title=key;name.setAttribute('aria-pressed',String(key===selectedKey));name.onclick=()=>{selectedKey=key;renderRows();};
+      row.append(number,name);
+      if(['x','y','z'].includes(key)){const fixed=make('span',`坐标 ${key.toUpperCase()}`);fixed.className='column-fixed';row.append(fixed);}
+      else {
+        const select=make('select');select.setAttribute('aria-label',`${key} 的标签`);
+        for(const [value,label] of Object.entries(POINT_COLUMN_TAGS)){const option=make('option',label);option.value=value;select.append(option);}
+        select.value=draft.tags[key]||'scalar';select.onchange=()=>{draft.tags[key]=select.value;renderRows();status('标签待应用。');};row.append(select);
+      }
+      for(const [delta,text,label] of [[-1,'↑','上移'],[1,'↓','下移']]){const button=make('button',text);button.className='column-move';button.disabled=index+delta<0||index+delta>=draft.order.length;button.setAttribute('aria-label',`${label} ${key}`);button.onclick=()=>move(key,index+delta);row.append(button);}
+      if(draft.tags[key]==='custom'){const input=make('input');input.value=draft.custom[key]||'';input.placeholder='自定义标签，例如 confidence';input.maxLength=80;input.setAttribute('aria-label',`${key} 的自定义标签`);input.className='column-custom';input.oninput=()=>{draft.custom[key]=input.value;};row.append(input);}
+      row.ondragstart=event=>{if(['INPUT','SELECT'].includes(event.target.tagName)){event.preventDefault();return;}dragged=key;event.dataTransfer.setData('text/plain',key);event.dataTransfer.effectAllowed='move';};
+      row.ondragover=event=>event.preventDefault();row.ondrop=event=>{event.preventDefault();if(dragged)move(dragged,index);dragged=null;};row.ondragend=()=>{dragged=null;};rows.append(row);
+    });rows.scrollTop=scroll;
+    const previous=el('columns-start').value;el('columns-start').replaceChildren();draft.order.forEach((key,index)=>{const option=make('option',`第 ${index+1} 列 · ${key}`);option.value=key;el('columns-start').append(option);});
+    el('columns-start').value=draft.order.includes(previous)?previous:draft.order.find(key=>!['x','y','z'].includes(key))||draft.order[0];stats();
+  }
+  function choose(item) {
+    current=item;el('columns-body').hidden=!current;if(!current){status('加载点云后，在这里查看和编辑列结构。');return;}
+    lastSettings=getSettings(current.entry,current.rawCloud);lastCloud=current.rawCloud;draft=JSON.parse(JSON.stringify(lastSettings));
+    selectedKey=draft.order.includes(selectedKey)?selectedKey:draft.order[0];
+    el('columns-color').value=draft.colorSpace;el('columns-rgb').value=draft.rgbScale;el('columns-hsv').value=draft.hsvScale;
+    renderRows();status('修改仅保存在本次页面；导出后列顺序和标签写入文件。');
+  }
+  function refresh() {
+    items=getItems();const previous=current?.entry;el('columns-file').replaceChildren();
+    items.forEach((item,index)=>{const option=make('option',item.name);option.value=String(index);el('columns-file').append(option);});
+    const index=Math.max(0,items.findIndex(item=>item.entry===previous));el('columns-file').value=String(index);const next=items[index]||null;
+    if(next?.entry!==current?.entry || next?.rawCloud!==lastCloud || next && getSettings(next.entry,next.rawCloud)!==lastSettings)choose(next);
+    else if(!next)choose(null);
+  }
+  el('columns-file').onchange=()=>choose(items[Number(el('columns-file').value)]);
+  el('columns-mark').onclick=()=>{
+    const roles={rgb:['red','green','blue'],hsv:['hue','saturation','value'],normals:['nx','ny','nz'],intensity:['intensity']}[el('columns-preset').value];
+    const from=draft.order.indexOf(el('columns-start').value),keys=draft.order.slice(from,from+roles.length);
+    if(keys.length!==roles.length||keys.some(key=>['x','y','z'].includes(key))){status('请选择足够数量的连续属性列，不能覆盖 XYZ。');return;}
+    for(const key of draft.order)if(roles.includes(draft.tags[key]))draft.tags[key]='scalar';
+    keys.forEach((key,index)=>draft.tags[key]=roles[index]);renderRows();status('已设置快捷标签，点击“应用”生效。');
+  };
+  el('columns-apply').onclick=async()=>{
+    if(!current)return;
+    draft.colorSpace=el('columns-color').value;draft.rgbScale=el('columns-rgb').value;draft.hsvScale=el('columns-hsv').value;
+    try{await applySettings(current.entry,JSON.parse(JSON.stringify(draft)));refresh();status('已应用。保留当前着色方式；导出将采用当前列顺序。');}catch(error){status(error.message);}
+  };
+  el('columns-reset').onclick=()=>{if(!current)return;draft=defaultPointSettings({...current.rawCloud,semantics:null});el('columns-color').value=draft.colorSpace;el('columns-rgb').value=draft.rgbScale;el('columns-hsv').value=draft.hsvScale;renderRows();status('已恢复读取时的设置，点击“应用”生效。');};
+  refresh();return {refresh};
+}
+
+
 // Source: point-operations.js
 /** Self-contained kernel: also serialized into a local Blob Worker for offline use. */
-function computePointFeatures(positions, {k = 32, radius = 0, orientation = '+z'} = {}, progress = () => {}) {
+function computePointFeatures(positions, {k = 32, radius = 0, orientation = '+z', features = ['normals','slope','planarity','roughness']} = {}, progress = () => {}) {
+  if (!Array.isArray(features) || !features.length || features.some(name => !['normals','slope','planarity','roughness'].includes(name))) throw Error('请选择有效的计算项目');
+  const selected = new Set(features);
   const count = positions.length / 3;
   if (!Number.isSafeInteger(count) || count < 3) throw Error('至少需要 3 个点');
   if (!Number.isInteger(k) || k < 3 || k > 256) throw Error('邻域点数必须是 3–256 的整数');
@@ -2133,7 +2338,7 @@ function computePointFeatures(positions, {k = 32, radius = 0, orientation = '+z'
     }
   }
   const fields = Object.create(null);
-  for (const name of ['nx', 'ny', 'nz', 'slope', 'planarity', 'roughness']) fields[name] = new Float64Array(count).fill(NaN);
+  for (const name of [...(selected.has('normals') ? ['nx','ny','nz'] : []), ...['slope','planarity','roughness'].filter(name=>selected.has(name))]) fields[name] = new Float64Array(count).fill(NaN);
   fields.normal_valid = new Uint8Array(count);
   let valid = 0;
   const directionAxis = 'xyz'.indexOf(orientation[1]), sign = orientation[0] === '-' ? -1 : 1;
@@ -2179,10 +2384,10 @@ function computePointFeatures(positions, {k = 32, radius = 0, orientation = '+z'
         let orient = n[directionAxis];
         if (Math.abs(orient) < 1e-12) orient = n.find(value => Math.abs(value) >= 1e-12) || 1;
         if (orient * sign < 0) for (let axis = 0; axis < 3; axis++) n[axis] *= -1;
-        fields.nx[index] = n[0]; fields.ny[index] = n[1]; fields.nz[index] = n[2];
-        fields.slope[index] = Math.acos(Math.min(1, Math.abs(n[2]))) * 180 / Math.PI;
-        fields.planarity[index] = Math.max(0, Math.min(1, (mid - low) / high));
-        fields.roughness[index] = Math.abs(mx * n[0] + my * n[1] + mz * n[2]);
+        if (selected.has('normals')) { fields.nx[index] = n[0]; fields.ny[index] = n[1]; fields.nz[index] = n[2]; }
+        if (selected.has('slope')) fields.slope[index] = Math.acos(Math.min(1, Math.abs(n[2]))) * 180 / Math.PI;
+        if (selected.has('planarity')) fields.planarity[index] = Math.max(0, Math.min(1, (mid - low) / high));
+        if (selected.has('roughness')) fields.roughness[index] = Math.abs(mx * n[0] + my * n[1] + mz * n[2]);
         fields.normal_valid[index] = 1; valid++;
       }
     }
@@ -2220,16 +2425,37 @@ function derivedPointCloud(cloud, result, parameters, scope) {
     while (Object.hasOwn(fields, key)) key = `${name}_${suffix++}`;
     fields[key] = values; mapping[name] = key;
   }
-  return {...cloud, fields, count: cloud.count, totalCount: cloud.count, featureMapping: mapping,
-    notes: [...(cloud.notes || []), `计算结果（${scope}）：${result.valid} / ${cloud.count} 个有效法向量；k=${parameters.k}，半径=${parameters.radius || '不限'}，方向=${parameters.orientation}。`],
+  const columnOrder = cloud.columnOrder ? [...cloud.columnOrder] : ['x','y','z',...Object.keys(cloud.fields||{}).filter(key=>!['x','y','z'].includes(key))];
+  const added=Object.values(mapping);
+  let at=columnOrder.length;
+  if(parameters.placement==='after-xyz')at=Math.max(...['x','y','z'].map(key=>columnOrder.indexOf(key)))+1;
+  if(parameters.placement==='index') {
+    if(!Number.isInteger(parameters.insertColumn)||parameters.insertColumn<1||parameters.insertColumn>columnOrder.length+1)throw Error(`插入列号需为 1–${columnOrder.length+1}`);
+    at=parameters.insertColumn-1;
+  }
+  columnOrder.splice(at,0,...added);
+  const semantics=cloud.semantics?JSON.parse(JSON.stringify(cloud.semantics)):null;
+  if(semantics) {
+    semantics.order=columnOrder;
+    for(const [name,key] of Object.entries(mapping)) {
+      if(['nx','ny','nz'].includes(name)) {
+        for(const old of Object.keys(semantics.tags))if(semantics.tags[old]===name)semantics.tags[old]='scalar';
+        semantics.tags[key]=name;
+      } else semantics.tags[key]='scalar';
+    }
+  }
+  return {...cloud, fields, columnOrder, semantics, count: cloud.count, totalCount: cloud.count, featureMapping: mapping,
+    notes: [...(cloud.notes || []), `计算结果（${scope}）：${result.valid} / ${cloud.count} 个有效邻域；k=${parameters.k}，半径=${parameters.radius || '不限'}，方向=${parameters.orientation}。`],
     processing: {parameters, scope, originalTotal: cloud.totalCount, fields: mapping, valid: result.valid}};
 }
 
 
 // Source: point-export.js
+
 /** Streaming serializers. Coordinates are always taken from the original Float64 positions. */
 function pointExportSchema(items, {sourceIds = true} = {}) {
   if (!items.length) throw Error('没有可导出的点云');
+  if(items.some(item=>item.cloud?.columnOrder || item.cloud?.semantics))return orderedPointExportSchema(items,{sourceIds});
   let count = 0;
   const keys = new Set();
   for (const {cloud} of items) {
@@ -2266,9 +2492,18 @@ async function writePointExport(items, {format = 'ply', sourceIds = true, signal
   const {count, properties} = pointExportSchema(items, {sourceIds});
   const encoder = new TextEncoder();
   const check = () => { if (signal?.aborted) throw new DOMException('已取消', 'AbortError'); };
-  const comments = ['BuildingWebViewer: original coordinates; concatenation without registration or deduplication.'];
+  const comments = ['BuildingWebViewer: coordinates as selected; concatenation without registration or deduplication.'];
+  if(properties.some(p=>p.sources)) {
+    const first=items[0].cloud.semantics||{}, tags=Object.create(null), custom=Object.create(null);
+    for(const property of properties) {
+      const index=property.sources?.findIndex(Boolean) ?? -1, spec=property.sources?.[index], semantics=items[index]?.cloud.semantics;
+      tags[property.name]=semantics?.tags?.[spec?.key]||'scalar';
+      if(tags[property.name]==='custom')custom[property.name]=semantics.custom[spec.key];
+    }
+    comments.push(`bwv_columns ${JSON.stringify({tags,custom,rgbScale:first.rgbScale||'auto',hsvScale:first.hsvScale||'degrees',colorSpace:first.colorSpace||'auto'})}`);
+  }
   items.forEach(({name, cloud}, id) => {
-    comments.push(`source ${id} ${JSON.stringify({name, count: cloud.count, originalTotal: cloud.totalCount, processing: cloud.processing || null})}`);
+    comments.push(`source ${id} ${JSON.stringify({name, count: cloud.count, originalTotal: cloud.totalCount, processing: cloud.processing || null, semantics: cloud.semantics || null, columnOrder: cloud.columnOrder || null})}`);
   });
   for (const property of properties) if (property.key && property.name !== property.key) comments.push(`property_map ${property.name} ${JSON.stringify(property.key)}`);
   // ASCII-safe metadata keeps the PLY header compatible with byte-oriented readers.
@@ -2280,6 +2515,7 @@ async function writePointExport(items, {format = 'ply', sourceIds = true, signal
   let done = 0;
   for (const [source, {cloud}] of items.entries()) {
     const value = (property, i) => {
+      if(property.sources) {const spec=property.sources[source];return spec?.axis!==undefined?cloud.positions[i*3+spec.axis]:spec?cloud.fields[spec.key][i]:NaN;}
       if (property.axis !== undefined) return cloud.positions[i * 3 + property.axis];
       if (property.channel !== undefined) return cloud.rgb?.[i * 3 + property.channel] ?? 0;
       if (property.rgbValid) return cloud.rgb && cloud.fields.rgb_valid?.[i] !== 0 ? 1 : 0;
@@ -2313,22 +2549,24 @@ async function writePointExport(items, {format = 'ply', sourceIds = true, signal
 function mountPointProcessing({container, getSelection, readCloud, addResults, removeResults}) {
   if (!container) return null;
   container.innerHTML = `
-    <section class="inspector-section"><h3>处理范围</h3><p class="processing-help">对左侧勾选的点云操作。计算逐文件进行，原始文件保持不变。</p>
+    <section class="inspector-section"><h3>选择操作</h3><fieldset class="processing-inputs"><label>操作<select id="process-operation"><option value="normals">计算法向量</option><option value="slope">计算坡度</option><option value="planarity">计算平面度</option><option value="roughness">计算粗糙度</option><option value="custom">自选多项计算</option><option value="export">保存 / 合并点云</option></select></label><p id="process-description" class="processing-help"></p>
+    <div id="process-features" class="feature-checks" hidden><label><input type="checkbox" value="normals" checked>法向量</label><label><input type="checkbox" value="slope">坡度</label><label><input type="checkbox" value="planarity">平面度</label><label><input type="checkbox" value="roughness">粗糙度</label></div></fieldset></section>
+    <section class="inspector-section"><h3>数据范围</h3><p class="processing-help">对左侧勾选的点云操作。计算逐文件进行，原始文件保持不变。</p>
     <fieldset class="processing-inputs"><label>数据范围<select id="process-scope"><option value="full">全部点</option><option value="display">当前显示点</option></select></label>
     <p class="processing-help">全部点会按需重新读取原文件；显示上限不影响全量处理。计算结果仅保留在本次页面中，请及时导出。</p></fieldset></section>
-    <section class="inspector-section"><h3>法向量与几何特征</h3><fieldset class="processing-inputs">
+    <section id="process-compute-panel" class="inspector-section"><h3>邻域设置</h3><fieldset class="processing-inputs">
     <label>邻域点数 k<input id="process-k" type="number" min="3" max="256" step="1" value="32"></label>
     <label>最大半径<input id="process-radius" type="number" min="0" step="any" value="0"></label>
     <p class="processing-help">k 包含点自身。半径单位与坐标相同；0 不限，非零时最多取半径内 k 个近邻。</p>
-    <label>法向量朝向<select id="process-direction"><option value="+z">+Z（向上）</option><option value="-z">−Z（向下）</option><option value="+x">+X</option><option value="-x">−X</option><option value="+y">+Y</option><option value="-y">−Y</option></select></label>
-    <button id="process-compute" class="processing-primary">计算并显示结果</button>
-    <p class="processing-help">生成 nx / ny / nz、坡度 slope、平面度 planarity、粗糙度 roughness。完成后可在“显示 → 着色依据”选择这些属性。无效点以 NaN 和 normal_valid=0 标记。</p></fieldset></section>
-    <section class="inspector-section"><h3>保存点云</h3><fieldset class="processing-inputs">
+    <label id="process-direction-row">法向量朝向<select id="process-direction"><option value="+z">+Z（向上）</option><option value="-z">−Z（向下）</option><option value="+x">+X</option><option value="-x">−X</option><option value="+y">+Y</option><option value="-y">−Y</option></select></label>
+    <label>新增列位置<select id="process-placement"><option value="end">追加到末尾</option><option value="after-xyz">放在 XYZ 后</option><option value="index">指定列号之前</option></select></label><label id="process-column-row" hidden>插入列号<input id="process-column" type="number" min="1" step="1" value="4"></label><button id="process-compute" class="processing-primary">计算并显示结果</button>
+    <p class="processing-help">只添加所选结果，原始属性保留。完成后可在“数据”查看新属性，或在“显示”切换着色。无效邻域以 NaN 和 normal_valid=0 标记。计算不改变坐标，新增属性按下方选择的位置插入。</p></fieldset></section>
+    <section id="process-export-panel" class="inspector-section" hidden><h3>保存设置</h3><fieldset class="processing-inputs">
     <label>文件格式<select id="process-format"><option value="ply">二进制 PLY（推荐）</option><option value="txt">TXT（带属性表头）</option></select></label>
     <label>保存方式<select id="process-save-method"><option value="direct">直接保存（支持时）</option><option value="download">浏览器下载（≤256 MB）</option></select></label>
     <label class="processing-check"><input id="process-source" type="checkbox" checked>附加来源编号 source_id</label>
     <button id="process-export" class="processing-primary">导出所选 / 合并为一个文件</button>
-    <p class="processing-help">保留 XYZ 和数值属性；多选时合并为一个文件，缺失属性填 NaN。按原坐标拼接，不配准、不去重。</p>
+    <p class="processing-help">保留 XYZ 和数值属性；多选时合并为一个文件，缺失属性填 NaN。按原始坐标拼接，不配准、不去重。按“数据”页列顺序保存；多选以首文件为准，新属性追加。标签写为标准字段名。</p>
     <button id="process-remove">移除所选计算结果</button></fieldset></section>
     <section class="processing-feedback" aria-label="处理进度"><progress id="process-progress" max="1" value="0" hidden></progress><p id="process-status" role="status" aria-live="polite">选择点云后即可计算或导出。</p><button id="process-cancel" hidden>取消当前操作</button></section>`;
   const el = id => container.querySelector(`#${id}`);
@@ -2359,7 +2597,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
     try { selected = getSelection(); if (!selected.length) throw Error('请先勾选点云'); }
     catch (error) { status(error.message); return; }
     const scope = el('process-scope').value, scopeLabel = scope === 'full' ? '全部点' : '当前显示点';
-    const parameters = {k: Number(el('process-k').value), radius: Number(el('process-radius').value), orientation: el('process-direction').value};
+    const parameters = {k: Number(el('process-k').value), radius: Number(el('process-radius').value), orientation: el('process-direction').value, features: selectedFeatures(), placement: el('process-placement').value, insertColumn: Number(el('process-column').value)};
     if (kind === 'compute' && (!Number.isInteger(parameters.k) || parameters.k < 3 || parameters.k > 256 || !Number.isFinite(parameters.radius) || parameters.radius < 0)) {
       status('邻域点数需为 3–256 的整数，半径需为非负数。'); return;
     }
@@ -2375,6 +2613,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
         handle = await window.showSaveFilePicker({suggestedName: filename, types: [{description: format.toUpperCase(), accept: {[format === 'ply' ? 'application/octet-stream' : 'text/plain']: [`.${format}`]}}]});
         job.signal.throwIfAborted();
       }
+      if (kind === 'compute' && !parameters.features.length) throw Error('请至少勾选一项计算');
       const items = await collect(selected, scope, job.signal);
       if (kind === 'compute') {
         const results = [];
@@ -2382,11 +2621,11 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
           const result = await runPointFeatures(item.cloud.positions, parameters, {signal: job.signal, onProgress: ({phase, done, total}) => status(
             `${index + 1} / ${items.length} · ${item.name} · ${phase === 'index' ? '建立邻域索引' : '计算几何特征'} ${Math.floor(done / total * 100)}%`, (index + done / total) / items.length)});
           job.signal.throwIfAborted();
-          results.push({name: `${item.name} · 特征（${scopeLabel}）`, cloud: derivedPointCloud(item.cloud, result, parameters, scopeLabel)});
+          results.push({source: selected[index], name: `${item.name} · 特征（${scopeLabel}）`, cloud: derivedPointCloud(item.cloud, result, parameters, scopeLabel)});
         }
         controller = null; busy(false);
         await addResults(results);
-        status(`完成：${results.length} 个独立结果，${results.reduce((n, r) => n + r.cloud.processing.valid, 0).toLocaleString()} 个有效法向量。已选中新结果，可调整着色并导出。`);
+        status(`完成：${results.length} 个独立结果，${results.reduce((n, r) => n + r.cloud.processing.valid, 0).toLocaleString()} 个有效邻域。已选中新结果，可调整着色并导出。`);
       } else {
         const schema = pointExportSchema(items, {sourceIds}), limit = 256 * 1024 * 1024;
         // A Blob download needs all output bytes in memory. Bound it before allocating.
@@ -2413,6 +2652,21 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
       if (controller === job) status(error.name === 'AbortError' ? '操作已取消。' : `操作失败：${error.message}`);
     } finally { if (controller === job) { controller = null; busy(false); } }
   }
+  function selectedFeatures() {
+    const operation = el('process-operation').value;
+    return operation === 'custom' ? [...container.querySelectorAll('#process-features input:checked')].map(input=>input.value) : [operation];
+  }
+  function changeOperation() {
+    const operation=el('process-operation').value, exporting=operation==='export';
+    el('process-compute-panel').hidden=exporting; el('process-export-panel').hidden=!exporting;
+    el('process-features').hidden=operation!=='custom';
+    el('process-direction-row').hidden=!selectedFeatures().includes('normals');
+    el('process-description').textContent={normals:'拟合局部平面，生成 nx、ny、nz。',slope:'计算局部表面坡度（0–90°），生成 slope。',planarity:'计算邻域的平面程度（0–1），生成 planarity。',roughness:'计算点到邻域拟合平面的距离，生成 roughness。',custom:'勾选需要的结果，复用同一个邻域索引。',export:'单选保存一个点云，多选合并为一个文件。'}[operation];
+  }
+  el('process-operation').onchange=changeOperation;
+  for(const input of container.querySelectorAll('#process-features input')) input.onchange=changeOperation;
+  changeOperation();
+  el('process-placement').onchange=()=>{el('process-column-row').hidden=el('process-placement').value!=='index';};
   el('process-compute').onclick = () => perform('compute');
   el('process-export').onclick = () => perform('export');
   el('process-cancel').onclick = cancel;
@@ -2422,6 +2676,8 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
 
 
 // Source: cloud-app.js
+
+
 
 
 
@@ -2444,12 +2700,22 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
   const cached = new CloudFileCache({readCloud: (file, options) => file.generatedCloud ? samplePointCloud(file.generatedCloud, options.maxPoints) : readPointCloud(file, options)}), selectedCloudEntries = new Set();
-  let processingControls = null, displayedItems = [], resultSerial = 0;
+  let columnsControls = null, processingControls = null, displayedItems = [], resultSerial = 0;
   let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
+  function columnSettings(entry, cloud) {
+    if (!entry.columnSettings) entry.columnSettings=defaultPointSettings(cloud);
+    return entry.columnSettings;
+  }
+  function prepareColumns(entry, rawCloud) {
+    const settings=columnSettings(entry,rawCloud);
+    if(entry.columnView?.raw===rawCloud && entry.columnView.settings===settings)return entry.columnView.cloud;
+    const cloud=semanticPointCloud(rawCloud,settings);
+    entry.columnView={raw:rawCloud,settings,cloud};return cloud;
+  }
   function error(message) { $('error').hidden = !message; $('error').querySelector('span').textContent = message || ''; }
   function activeViewerCount() { return !isWire || !$('compare-mode').checked ? 1 : Number($('compare-count').value) === 3 ? 3 : 2; }
   function copyCamera(source, target) {
@@ -2515,7 +2781,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
       empty.textContent = entries.length ? '没有匹配的数据' : '先选择你的数据文件或文件夹'; fragment.append(empty);
     }
     $('data-list').replaceChildren(fragment);
-    updateCloudSelection(); updateCloudModeUI(filtered);
+    updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
   }
   function fillWireSelect(select, files, index = null) {
     select.replaceChildren(); option(select, '', '不加载线框');
@@ -2734,7 +3000,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
             $('loading').querySelector('span').textContent = `${index + 1} / ${selection.length} · ${message}`;
             $('scene-stats').textContent = `${entry.id} · ${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
           }});
-          items.push({key: entry.file, name: entry.id, cloud});
+          items.push({key: entry.file, name: entry.id, entry, rawCloud: cloud, cloud: prepareColumns(entry,cloud)});
         } catch (cause) {
           if (version !== revision) return;
           failures.push(`${entry.id}：${cause.message}`);
@@ -2745,7 +3011,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
       snapshot = preserveCamera ? captureView() : null;
       initViewers();
       viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color})), {preserveView: false});
-      displayedItems = items;
+      displayedItems = items; columnsControls?.refresh();
       loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
       currentPointName = items.map(item => item.name).join(' + ');
@@ -2857,16 +3123,23 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
     } catch (cause) { error(`显示失败：${cause.message}`); }
     finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
   }
+  function columnFieldLabel(key) {
+    if(isWire)return fieldLabel(key);
+    const settings=displayedItems[0]?.cloud.semantics;
+    const tag=settings?.tags[key];
+    const label=tag==='custom'?settings.custom[key]:{red:'颜色 R',green:'颜色 G',blue:'颜色 B',hue:'颜色 H',saturation:'颜色 S',value:'颜色 V',nx:'法向量 X',ny:'法向量 Y',nz:'法向量 Z',intensity:'强度',classification:'分类',return_number:'回波编号',gps_time:'GPS 时间'}[tag];
+    return label ? `${label} · ${fieldLabel(key)}` : fieldLabel(key);
+  }
   function fields() {
     const cloud = loaded.cloud, keys = Object.keys(cloud?.fields || {}), color = $('color-mode'), old = color.value;
     color.replaceChildren(); option(color, 'height', '高度 Z'); option(color, 'solid', '单色');
     if (cloud?.sources?.length) option(color, 'file', '按文件');
-    if (cloud?.rgb) option(color, 'rgb', '原始 RGB'); if (keys.length >= 3) option(color, 'custom-rgb', '指定 RGB 列…');
-    keys.filter(key => !['x', 'y', 'z', 'rgb', 'rgba'].includes(key.toLowerCase())).forEach(key => option(color, `field:${key}`, fieldLabel(key)));
+    if (cloud?.rgb) option(color, 'rgb', isWire ? '原始 RGB' : '已标记颜色（RGB / HSV）'); if (isWire && keys.length >= 3) option(color, 'custom-rgb', '指定 RGB 列…');
+    keys.filter(key => !['x', 'y', 'z', 'rgb', 'rgba'].includes(key.toLowerCase())).forEach(key => option(color, `field:${key}`, columnFieldLabel(key)));
     color.value = [...color.options].some(item => item.value === old) ? old : 'height';
     const extra = keys.filter(key => !['x', 'y', 'z'].includes(key.toLowerCase()));
     ['rgb-r', 'rgb-g', 'rgb-b'].forEach((id, index) => {
-      const select = $(id), previous = select.value; select.replaceChildren(); keys.forEach(key => option(select, key, fieldLabel(key)));
+      const select = $(id), previous = select.value; select.replaceChildren(); keys.forEach(key => option(select, key, columnFieldLabel(key)));
       select.value = keys.includes(previous) ? previous : extra[index] || keys[index] || '';
     });
     $('rgb-fields').hidden = color.value !== 'custom-rgb';
@@ -2887,7 +3160,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
     $('color-legend').hidden = !(loaded.cloud && options.showPoints && range);
     $('color-name').textContent = $('color-mode').selectedOptions[0]?.textContent || '';
     $('color-min').textContent = compact(range?.min); $('color-max').textContent = compact(range?.max);
-    const notes = messages.slice(); if (state?.colorFallback) notes.push(state.colorFallback); $('data-notes').textContent = notes.join(' ');
+    const notes = messages.slice(); for(const item of displayedItems) if(item.cloud.colorIssue) notes.push(`${item.name}：${item.cloud.colorIssue}`); if (state?.colorFallback) notes.push(state.colorFallback); $('data-notes').textContent = notes.join(' ');
   }
   function preventDuplicateSelection(changed) {
     if (!isWire || !$('compare-mode').checked || changed.value === '') return;
@@ -2991,10 +3264,10 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
       readCloud: async (entry, scope, signal, onProgress) => {
         signal.throwIfAborted();
         if (scope === 'display') return displayedItems.find(item => item.key === entry.file)?.cloud;
-        if (entry.file.generatedCloud) return entry.file.generatedCloud;
+        if (entry.file.generatedCloud) return prepareColumns(entry,entry.file.generatedCloud);
         const record = cached.records.get(entry.file);
-        if (record && record.value.count === record.value.totalCount) return record.value;
-        return readPointCloud(entry.file, {maxPoints: 0, signal, onProgress});
+        if (record && record.value.count === record.value.totalCount) return prepareColumns(entry,record.value);
+        return semanticPointCloud(await readPointCloud(entry.file, {maxPoints: 0, signal, onProgress}), entry.columnSettings);
       },
       addResults: async results => {
         selectedCloudEntries.clear();
@@ -3007,7 +3280,8 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
         $('source-note').textContent = `已列出 ${pretty(entries.length)} 个条目 · 计算结果请导出保存`;
         active = lastCloudEntry; page = Math.floor((entries.length - 1) / 50); $('search').value = ''; list();
         await loadCloudSelection();
-        const field = results[0]?.cloud.featureMapping.slope;
+        const mapping=results[0]?.cloud.featureMapping||{};
+        const field=mapping.slope||mapping.planarity||mapping.roughness||mapping.nz;
         if (field) { $('color-mode').value = `field:${field}`; update(); }
       },
       removeResults: selection => {
@@ -3016,6 +3290,17 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
         entries = entries.filter(entry => !removed.has(entry));
         if (removed.size) applyCloudSelection();
         return removed.size;
+      },
+    });
+    if(!isWire) columnsControls=mountPointColumns({container:$('column-controls'),
+      getItems:()=>displayedItems.filter(item=>selectedCloudEntries.has(item.entry)),
+      getSettings:columnSettings,
+      applySettings:async(entry,settings)=>{
+        if(loadController)throw Error('请等待点云加载完成');
+        const item=displayedItems.find(item=>item.entry===entry);if(!item)throw Error('请重新选择点云');
+        semanticPointCloud(item.rawCloud,settings,{strict:true});
+        processingControls?.cancel();entry.columnSettings=settings;entry.columnView=null;
+        await loadCloudSelection({preserveCamera:true});
       },
     });
     mountViewerLayout();

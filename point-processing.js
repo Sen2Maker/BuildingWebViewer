@@ -4,22 +4,24 @@ import { pointExportSchema, writePointExport } from './point-export.js';
 export function mountPointProcessing({container, getSelection, readCloud, addResults, removeResults}) {
   if (!container) return null;
   container.innerHTML = `
-    <section class="inspector-section"><h3>处理范围</h3><p class="processing-help">对左侧勾选的点云操作。计算逐文件进行，原始文件保持不变。</p>
+    <section class="inspector-section"><h3>选择操作</h3><fieldset class="processing-inputs"><label>操作<select id="process-operation"><option value="normals">计算法向量</option><option value="slope">计算坡度</option><option value="planarity">计算平面度</option><option value="roughness">计算粗糙度</option><option value="custom">自选多项计算</option><option value="export">保存 / 合并点云</option></select></label><p id="process-description" class="processing-help"></p>
+    <div id="process-features" class="feature-checks" hidden><label><input type="checkbox" value="normals" checked>法向量</label><label><input type="checkbox" value="slope">坡度</label><label><input type="checkbox" value="planarity">平面度</label><label><input type="checkbox" value="roughness">粗糙度</label></div></fieldset></section>
+    <section class="inspector-section"><h3>数据范围</h3><p class="processing-help">对左侧勾选的点云操作。计算逐文件进行，原始文件保持不变。</p>
     <fieldset class="processing-inputs"><label>数据范围<select id="process-scope"><option value="full">全部点</option><option value="display">当前显示点</option></select></label>
     <p class="processing-help">全部点会按需重新读取原文件；显示上限不影响全量处理。计算结果仅保留在本次页面中，请及时导出。</p></fieldset></section>
-    <section class="inspector-section"><h3>法向量与几何特征</h3><fieldset class="processing-inputs">
+    <section id="process-compute-panel" class="inspector-section"><h3>邻域设置</h3><fieldset class="processing-inputs">
     <label>邻域点数 k<input id="process-k" type="number" min="3" max="256" step="1" value="32"></label>
     <label>最大半径<input id="process-radius" type="number" min="0" step="any" value="0"></label>
     <p class="processing-help">k 包含点自身。半径单位与坐标相同；0 不限，非零时最多取半径内 k 个近邻。</p>
-    <label>法向量朝向<select id="process-direction"><option value="+z">+Z（向上）</option><option value="-z">−Z（向下）</option><option value="+x">+X</option><option value="-x">−X</option><option value="+y">+Y</option><option value="-y">−Y</option></select></label>
-    <button id="process-compute" class="processing-primary">计算并显示结果</button>
-    <p class="processing-help">生成 nx / ny / nz、坡度 slope、平面度 planarity、粗糙度 roughness。完成后可在“显示 → 着色依据”选择这些属性。无效点以 NaN 和 normal_valid=0 标记。</p></fieldset></section>
-    <section class="inspector-section"><h3>保存点云</h3><fieldset class="processing-inputs">
+    <label id="process-direction-row">法向量朝向<select id="process-direction"><option value="+z">+Z（向上）</option><option value="-z">−Z（向下）</option><option value="+x">+X</option><option value="-x">−X</option><option value="+y">+Y</option><option value="-y">−Y</option></select></label>
+    <label>新增列位置<select id="process-placement"><option value="end">追加到末尾</option><option value="after-xyz">放在 XYZ 后</option><option value="index">指定列号之前</option></select></label><label id="process-column-row" hidden>插入列号<input id="process-column" type="number" min="1" step="1" value="4"></label><button id="process-compute" class="processing-primary">计算并显示结果</button>
+    <p class="processing-help">只添加所选结果，原始属性保留。完成后可在“数据”查看新属性，或在“显示”切换着色。无效邻域以 NaN 和 normal_valid=0 标记。计算不改变坐标，新增属性按下方选择的位置插入。</p></fieldset></section>
+    <section id="process-export-panel" class="inspector-section" hidden><h3>保存设置</h3><fieldset class="processing-inputs">
     <label>文件格式<select id="process-format"><option value="ply">二进制 PLY（推荐）</option><option value="txt">TXT（带属性表头）</option></select></label>
     <label>保存方式<select id="process-save-method"><option value="direct">直接保存（支持时）</option><option value="download">浏览器下载（≤256 MB）</option></select></label>
     <label class="processing-check"><input id="process-source" type="checkbox" checked>附加来源编号 source_id</label>
     <button id="process-export" class="processing-primary">导出所选 / 合并为一个文件</button>
-    <p class="processing-help">保留 XYZ 和数值属性；多选时合并为一个文件，缺失属性填 NaN。按原坐标拼接，不配准、不去重。</p>
+    <p class="processing-help">保留 XYZ 和数值属性；多选时合并为一个文件，缺失属性填 NaN。按原始坐标拼接，不配准、不去重。按“数据”页列顺序保存；多选以首文件为准，新属性追加。标签写为标准字段名。</p>
     <button id="process-remove">移除所选计算结果</button></fieldset></section>
     <section class="processing-feedback" aria-label="处理进度"><progress id="process-progress" max="1" value="0" hidden></progress><p id="process-status" role="status" aria-live="polite">选择点云后即可计算或导出。</p><button id="process-cancel" hidden>取消当前操作</button></section>`;
   const el = id => container.querySelector(`#${id}`);
@@ -50,7 +52,7 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
     try { selected = getSelection(); if (!selected.length) throw Error('请先勾选点云'); }
     catch (error) { status(error.message); return; }
     const scope = el('process-scope').value, scopeLabel = scope === 'full' ? '全部点' : '当前显示点';
-    const parameters = {k: Number(el('process-k').value), radius: Number(el('process-radius').value), orientation: el('process-direction').value};
+    const parameters = {k: Number(el('process-k').value), radius: Number(el('process-radius').value), orientation: el('process-direction').value, features: selectedFeatures(), placement: el('process-placement').value, insertColumn: Number(el('process-column').value)};
     if (kind === 'compute' && (!Number.isInteger(parameters.k) || parameters.k < 3 || parameters.k > 256 || !Number.isFinite(parameters.radius) || parameters.radius < 0)) {
       status('邻域点数需为 3–256 的整数，半径需为非负数。'); return;
     }
@@ -66,6 +68,7 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
         handle = await window.showSaveFilePicker({suggestedName: filename, types: [{description: format.toUpperCase(), accept: {[format === 'ply' ? 'application/octet-stream' : 'text/plain']: [`.${format}`]}}]});
         job.signal.throwIfAborted();
       }
+      if (kind === 'compute' && !parameters.features.length) throw Error('请至少勾选一项计算');
       const items = await collect(selected, scope, job.signal);
       if (kind === 'compute') {
         const results = [];
@@ -73,11 +76,11 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
           const result = await runPointFeatures(item.cloud.positions, parameters, {signal: job.signal, onProgress: ({phase, done, total}) => status(
             `${index + 1} / ${items.length} · ${item.name} · ${phase === 'index' ? '建立邻域索引' : '计算几何特征'} ${Math.floor(done / total * 100)}%`, (index + done / total) / items.length)});
           job.signal.throwIfAborted();
-          results.push({name: `${item.name} · 特征（${scopeLabel}）`, cloud: derivedPointCloud(item.cloud, result, parameters, scopeLabel)});
+          results.push({source: selected[index], name: `${item.name} · 特征（${scopeLabel}）`, cloud: derivedPointCloud(item.cloud, result, parameters, scopeLabel)});
         }
         controller = null; busy(false);
         await addResults(results);
-        status(`完成：${results.length} 个独立结果，${results.reduce((n, r) => n + r.cloud.processing.valid, 0).toLocaleString()} 个有效法向量。已选中新结果，可调整着色并导出。`);
+        status(`完成：${results.length} 个独立结果，${results.reduce((n, r) => n + r.cloud.processing.valid, 0).toLocaleString()} 个有效邻域。已选中新结果，可调整着色并导出。`);
       } else {
         const schema = pointExportSchema(items, {sourceIds}), limit = 256 * 1024 * 1024;
         // A Blob download needs all output bytes in memory. Bound it before allocating.
@@ -104,6 +107,21 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
       if (controller === job) status(error.name === 'AbortError' ? '操作已取消。' : `操作失败：${error.message}`);
     } finally { if (controller === job) { controller = null; busy(false); } }
   }
+  function selectedFeatures() {
+    const operation = el('process-operation').value;
+    return operation === 'custom' ? [...container.querySelectorAll('#process-features input:checked')].map(input=>input.value) : [operation];
+  }
+  function changeOperation() {
+    const operation=el('process-operation').value, exporting=operation==='export';
+    el('process-compute-panel').hidden=exporting; el('process-export-panel').hidden=!exporting;
+    el('process-features').hidden=operation!=='custom';
+    el('process-direction-row').hidden=!selectedFeatures().includes('normals');
+    el('process-description').textContent={normals:'拟合局部平面，生成 nx、ny、nz。',slope:'计算局部表面坡度（0–90°），生成 slope。',planarity:'计算邻域的平面程度（0–1），生成 planarity。',roughness:'计算点到邻域拟合平面的距离，生成 roughness。',custom:'勾选需要的结果，复用同一个邻域索引。',export:'单选保存一个点云，多选合并为一个文件。'}[operation];
+  }
+  el('process-operation').onchange=changeOperation;
+  for(const input of container.querySelectorAll('#process-features input')) input.onchange=changeOperation;
+  changeOperation();
+  el('process-placement').onchange=()=>{el('process-column-row').hidden=el('process-placement').value!=='index';};
   el('process-compute').onclick = () => perform('compute');
   el('process-export').onclick = () => perform('export');
   el('process-cancel').onclick = cancel;
