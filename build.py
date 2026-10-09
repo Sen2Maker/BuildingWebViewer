@@ -15,7 +15,7 @@ FILES = SITE_FILES + [
     'renderer.js', 'obj-parser.js', 'app.js',
     'cloud-app.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js',
     'viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-cache.js', 'cloud-cache.test.mjs', 'camera-controls.test.mjs', 'renderer.test.mjs',
-    'server.py', 'start.sh', 'build.py', 'README.md', 'DESIGN_NOTES.md', 'point-io.test.mjs', 'cloud-renderer.test.mjs', 'cloud-combine.test.mjs',
+    'server.py', 'start.sh', 'build.py', 'README.md', 'README.en.md', 'docs/preview.png', 'DESIGN_NOTES.md', 'point-io.test.mjs', 'cloud-renderer.test.mjs', 'cloud-combine.test.mjs',
     '.gitignore', '.gitattributes', '.github/workflows/pages.yml',
 ]
 BUNDLES = {
