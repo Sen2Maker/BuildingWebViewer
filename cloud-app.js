@@ -1,3 +1,5 @@
+import { PointProject, mountPointProject } from './point-project.js';
+import { mountPointDrop } from './point-drop.js';
 import { defaultPointSettings, semanticPointCloud } from './point-dataset.js';
 import { mountPointColumns } from './point-columns.js';
 import { mountViewerLayout } from './viewer-layout.js';
@@ -26,6 +28,7 @@ import { mountCameraControls } from './camera-controls.js';
   let columnsControls = null, processingControls = null, displayedItems = [], resultSerial = 0;
   let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
+  const pointProject = new PointProject(); let projectControls = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
@@ -78,10 +81,16 @@ import { mountCameraControls } from './camera-controls.js';
   }
   function matchingEntries() {
     const query = $('search').value.trim().toLowerCase();
-    return entries.filter(entry => entry.id.toLowerCase().includes(query));
+    return entries.filter(entry => isWire ? entry.id.toLowerCase().includes(query) : pointProject.matches(entry, query));
   }
   function list() {
     const filtered = matchingEntries();
+    if (!isWire) {
+      $('filter-count').textContent = `${pretty(filtered.length)} 个点云 · 已选 ${selectedCloudEntries.size}`;
+      $('item-count').textContent = pretty(entries.length);
+      projectControls?.render(); updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
+      processingControls?.refresh([...selectedCloudEntries], Boolean(loadController)); return;
+    }
     const pages = Math.ceil(filtered.length / 50);
     page = Math.max(0, Math.min(page, Math.max(0, pages - 1)));
     $('filter-count').textContent = `${pretty(filtered.length)} ${isWire ? '个建筑 ID' : `个文件 · 已选 ${selectedCloudEntries.size}`}`;
@@ -210,24 +219,26 @@ import { mountCameraControls } from './camera-controls.js';
   function read(file, kind, options = {}) {
     return cached.read(file, kind, {maxPoints: Number($('point-limit').value), ...options});
   }
-  function receiveCloudFiles(files, fromFolder) {
+  function receiveCloudFiles(files, fromFolder, dropPaths = null) {
     const existing = new Set(entries.map(entry => entry.key));
     const names = new Set(entries.map(entry => entry.id));
-    let added = 0;
+    let added = 0, duplicates = 0;
     for (const file of files) {
       if (!pointExtension.test(file.name)) continue;
-      const path = file.webkitRelativePath || file.name;
+      const path = dropPaths?.get(file) || file.webkitRelativePath || file.name;
       const key = `${path}\0${file.size}\0${file.lastModified}`;
-      if (existing.has(key)) continue;
-      const base = fromFolder ? path.split('/').slice(1).join('/') || file.name : file.name;
+      if (existing.has(key)) { duplicates++; continue; }
+      const base = dropPaths ? path : fromFolder ? path.split('/').slice(1).join('/') || file.name : file.name;
       let id = base, suffix = 2;
       while (names.has(id)) id = `${base} (${suffix++})`;
-      entries.push({id, key, file}); existing.add(key); names.add(id); added++;
+      const entry = {id, key, file}; pointProject.assign(entry, path);
+      entries.push(entry); existing.add(key); names.add(id); added++;
     }
     entries.sort((a, b) => natural(a.id, b.id));
     page = 0; $('search').value = ''; list();
-    $('source-note').textContent = `已列出 ${pretty(entries.length)} 个文件 · 可继续添加文件或文件夹`;
+    $('source-note').textContent = '文件留在本机 · 分组仅保留在本次页面';
     error(!added && !files.some(file => pointExtension.test(file.name)) ? '未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。' : '');
+    return { added, duplicates };
   }
   function applyCloudSelection(preferred = null) {
     if (!selectedCloudEntries.size) { clear(); return; }
@@ -249,9 +260,23 @@ import { mountCameraControls } from './camera-controls.js';
   function removeCloud(entry) {
     if (selectedCloudEntries.delete(entry)) applyCloudSelection();
   }
+  function deleteProjectEntries(selection) {
+    const removed = new Set(selection.filter(entry => entries.includes(entry)));
+    if (!removed.size) { list(); return; }
+    processingControls?.cancel(); loadController?.abort(); loadController = null; revision++;
+    for (const entry of removed) {
+      selectedCloudEntries.delete(entry); cached.forget(entry.file); entry.columnView = null;
+    }
+    entries = entries.filter(entry => !removed.has(entry));
+    displayedItems = displayedItems.filter(item => !removed.has(item.entry));
+    const keys = new Set([...removed].map(entry => entry.file));
+    viewers.forEach(viewer => viewer.forgetClouds(keys));
+    if (selectedCloudEntries.size) applyCloudSelection(); else clear();
+  }
   function updateCloudModeUI(filtered) {
     if (isWire) return;
     const multiple = cloudMode === 'multiple';
+    $('cloud-mode-select').value = cloudMode;
     for (const button of document.querySelectorAll('[data-cloud-mode]')) {
       const selected = button.dataset.cloudMode === cloudMode;
       button.classList.toggle('active', selected); button.setAttribute('aria-pressed', String(selected));
@@ -259,8 +284,8 @@ import { mountCameraControls } from './camera-controls.js';
     $('cloud-mode-note').textContent = multiple ? '勾选多个文件，按原始坐标叠加。' : '点击文件切换显示；每次只显示一个点云。';
     for (const id of ['select-all-clouds', 'invert-cloud-selection']) $(id).disabled = !multiple || !filtered.length;
     $('cloud-batch-scope').textContent = !multiple ? '全选、反选仅在多点云模式下可用。'
-      : $('search').value.trim() ? `批量操作匹配的 ${pretty(filtered.length)} 个文件（含其他页），保留筛选外的选择。`
-      : `批量操作全部 ${pretty(filtered.length)} 个文件（含其他页）。`;
+      : $('search').value.trim() ? `仅操作匹配的 ${pretty(filtered.length)} 个文件，保留筛选外选择。`
+      : `全选与反选包含收起文件夹内的点云。`;
     $('empty-state').querySelector('p').textContent = multiple
       ? '添加点云文件或文件夹，再勾选左侧一个或多个文件。'
       : '添加点云文件或文件夹，再点击左侧要查看的文件。';
@@ -293,7 +318,7 @@ import { mountCameraControls } from './camera-controls.js';
       if (source?.color) dot.style.background = `rgb(${source.color.map(value => Math.round(value * 255)).join(',')})`;
       const title = document.createElement('span'); title.textContent = entry.id;
       title.title = source ? `${entry.id} · ${pretty(source.count)} / ${pretty(source.totalCount)} 点；色标对应“按文件”着色` : entry.id;
-      const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `移除点云 ${entry.id}`);
+      const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `取消显示 ${entry.id}`);
       remove.onclick = () => removeCloud(entry); chip.append(dot, title, remove); container.append(chip);
     }
   }
@@ -302,6 +327,7 @@ import { mountCameraControls } from './camera-controls.js';
     processingControls?.cancel();
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
+    processingControls?.refresh([...selectedCloudEntries], true);
     const version = ++revision, selection = [...selectedCloudEntries];
     const maxPoints = Number($('point-limit').value);
     cached.setActive(selection.map(entry => entry.file));
@@ -351,7 +377,7 @@ import { mountCameraControls } from './camera-controls.js';
       $('empty-state').hidden = Boolean(loaded.cloud); $('screenshot').disabled = !loaded.cloud;
       if (failures.length) error(failures.join('；'));
     } catch (cause) { if (version === revision) error(`显示失败：${cause.message}`); }
-    finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false); } }
   }
 
   function normalizeBounds(value) {
@@ -444,7 +470,7 @@ import { mountCameraControls } from './camera-controls.js';
       $('empty-state').hidden = hasLoaded; $('screenshot').disabled = !hasLoaded;
       if (failures.length) error(failures.join('；'));
     } catch (cause) { error(`显示失败：${cause.message}`); }
-    finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false); } }
   }
   function columnFieldLabel(key) {
     if(isWire)return fieldLabel(key);
@@ -530,6 +556,24 @@ import { mountCameraControls } from './camera-controls.js';
     }, 'image/png');
   }
 
+  if (!isWire) projectControls = mountPointProject({
+    project: pointProject, container: $('data-list'), root: $('project-root'), controls: $('project-controls'),
+    getEntries: () => entries, getSelected: () => selectedCloudEntries, getMode: () => cloudMode,
+    getQuery: () => $('search').value, onToggle: entry => cloudMode === 'single' && selectedCloudEntries.has(entry) ? removeCloud(entry) : toggleCloud(entry), onRemove: deleteProjectEntries, onChange: list,
+    detail: entry => formatSize(entry.file.size),
+    onGroupSelection: (members, checked) => {
+      if (cloudMode !== 'multiple') return;
+      for (const entry of members) checked ? selectedCloudEntries.add(entry) : selectedCloudEntries.delete(entry);
+      applyCloudSelection();
+    },
+  });
+  if (!isWire) mountPointDrop({
+    zone: $('point-drop-zone'), status: $('drop-status'),
+    accepts: name => pointExtension.test(name),
+    onFiles: records => receiveCloudFiles(records.map(item => item.file), false,
+      new Map(records.map(item => [item.file, item.path]))),
+  });
+
   $('choose-folder').onclick = () => $('folder-input').click();
   $('folder-input').onchange = event => { receive(event.target.files, true); event.target.value = ''; };
   $('choose-file').onclick = () => $('file-input').click();
@@ -547,6 +591,7 @@ import { mountCameraControls } from './camera-controls.js';
   $('clear-selection').onclick = clear; $('dismiss-error').onclick = () => error('');
   if (!isWire) {
     for (const button of document.querySelectorAll('[data-cloud-mode]')) button.onclick = () => setCloudMode(button.dataset.cloudMode);
+    $('cloud-mode-select').onchange = event => setCloudMode(event.target.value);
     $('select-all-clouds').onclick = () => batchCloudSelection();
     $('invert-cloud-selection').onclick = () => batchCloudSelection(true);
   }
@@ -597,6 +642,8 @@ import { mountCameraControls } from './camera-controls.js';
         for (const result of results) {
           const serial = ++resultSerial, file = {name: result.name, size: cached.bytes(result.cloud), generatedCloud: result.cloud};
           const entry = {id: `${result.name} #${serial}`, key: `generated:${serial}`, file};
+          entry.group = result.source?.group || ''; entry.treeName = `${result.source?.treeName || result.name} · 特征 #${serial}`;
+          if (entry.group) pointProject.groups.get(entry.group).collapsed = false;
           entries.push(entry); selectedCloudEntries.add(entry); lastCloudEntry = entry;
         }
         if (results.length > 1) cloudMode = 'multiple';
@@ -606,13 +653,6 @@ import { mountCameraControls } from './camera-controls.js';
         const mapping=results[0]?.cloud.featureMapping||{};
         const field=mapping.slope||mapping.planarity||mapping.roughness||mapping.nz;
         if (field) { $('color-mode').value = `field:${field}`; update(); }
-      },
-      removeResults: selection => {
-        const removed = new Set(selection.filter(entry => entry.file.generatedCloud));
-        for (const entry of removed) { selectedCloudEntries.delete(entry); cached.records.delete(entry.file); }
-        entries = entries.filter(entry => !removed.has(entry));
-        if (removed.size) applyCloudSelection();
-        return removed.size;
       },
     });
     if(!isWire) columnsControls=mountPointColumns({container:$('column-controls'),

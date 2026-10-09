@@ -23,6 +23,11 @@ export class CloudFileCache {
     for (const task of [...this.pending.values()]) this.cancelTask(task);
     this.records.clear();
   }
+  forget(file) {
+    this.active.delete(file);
+    const pending = this.pending.get(file); if (pending) this.cancelTask(pending);
+    this.records.delete(file);
+  }
   bytes(value) {
     const buffers = new Set();
     for (const array of [value.positions, value.rgb, value.sampleIndices, ...Object.values(value.fields || {})]) {

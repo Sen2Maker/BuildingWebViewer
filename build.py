@@ -14,14 +14,14 @@ SITE_FILES = [
 FILES = SITE_FILES + [
     'renderer.js', 'obj-parser.js', 'app.js',
     'point-dataset.js', 'point-columns.js', 'point-columns.test.mjs', 'point-operations.js', 'point-export.js', 'point-processing.js', 'point-processing.test.mjs', 'PROCESSING.md',
-    'cloud-app.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js',
+    'point-project.js', 'point-project.test.mjs', 'point-drop.js', 'point-drop.test.mjs', 'cloud-app.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js',
     'viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-cache.js', 'cloud-cache.test.mjs', 'camera-controls.test.mjs', 'renderer.test.mjs',
     'server.py', 'start.sh', 'build.py', 'README.md', 'README.en.md', 'docs/preview.png', 'DESIGN_NOTES.md', 'point-io.test.mjs', 'cloud-renderer.test.mjs', 'cloud-combine.test.mjs',
     '.gitignore', '.gitattributes', '.github/workflows/pages.yml',
 ]
 BUNDLES = {
     'viewer.js': ['viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'renderer.js', 'obj-parser.js', 'app.js'],
-    'cloud-app.bundle.js': ['viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js', 'cloud-cache.js', 'point-dataset.js', 'point-columns.js', 'point-operations.js', 'point-export.js', 'point-processing.js', 'cloud-app.js'],
+    'cloud-app.bundle.js': ['viewer-layout.js', 'palettes.js', 'palette-controls.js', 'camera-controls.js', 'cloud-renderer.js', 'point-io.js', 'cloud-combine.js', 'cloud-cache.js', 'point-dataset.js', 'point-columns.js', 'point-operations.js', 'point-export.js', 'point-processing.js', 'point-drop.js', 'point-project.js', 'cloud-app.js'],
 }
 
 

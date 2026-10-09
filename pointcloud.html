@@ -3,16 +3,23 @@
 <body data-tool="pointcloud">
 <header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页">←</a><div class="brand-icon" aria-hidden="true">⠿</div><div><h1>点云查看器</h1><p>单点云 / 多点云 · 颜色与数值属性</p></div><div class="header-right"><span class="local-tag"><i></i> 本地读取</span></div></header>
 <div class="workspace">
-<aside class="sidebar" aria-label="数据选择"><div class="sidebar-heading"><h2>点云文件</h2><span id="item-count">0</span></div>
-<div class="folder-section"><button id="choose-folder">添加点云文件夹…</button><input id="folder-input" type="file" webkitdirectory multiple hidden><button id="choose-file" >添加点云文件…</button><input id="file-input" type="file" accept=".xyz,.txt,.csv,.pts,.ply,.pcd" multiple hidden><p id="source-note">选择文件或文件夹，不预设路径。</p></div>
-<div class="cloud-mode-controls"><span>显示模式</span><div class="segmented" role="group" aria-label="点云显示模式"><button data-cloud-mode="single" aria-pressed="false">单点云</button><button data-cloud-mode="multiple" class="active" aria-pressed="true">多点云</button></div><span id="cloud-mode-note">勾选多个文件，按原始坐标叠加。</span></div>
-<label class="search-label" for="search">筛选点云文件</label><input id="search" type="search" placeholder="搜索编号或文件名" autocomplete="off">
-<div class="list-meta"><span id="filter-count">尚未读取数据</span><button class="text-button" id="clear-selection">清空选择</button></div>
-<div class="cloud-batch-actions" aria-label="点云批量选择"><button id="select-all-clouds" disabled>全选</button><button id="invert-cloud-selection" disabled>反选</button></div><p id="cloud-batch-scope" class="cloud-batch-scope">批量操作全部文件（含其他页）。</p>
-<div id="data-list" class="model-list" aria-label="数据列表"><p class="empty-list">先选择你的数据文件夹</p></div>
-<div class="pagination"><button id="previous-page" aria-label="上一页" disabled>←</button><span id="page-info">0 / 0</span><button id="next-page" aria-label="下一页" disabled>→</button></div>
-<details class="format-help"><summary>支持的目录与格式</summary><p>单点云模式点击文件切换显示；多点云模式可勾选叠加，并支持全选、反选。批量操作覆盖所有搜索匹配文件（包括其他页），保留筛选外的选择。支持继续添加文件。</p><p>点云：XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p></details></aside>
-<main><div class="main-heading"><div><h2 id="current-title">未选择数据</h2><p id="scene-stats" aria-live="polite">从左侧选择要查看的数据</p></div><button id="screenshot" disabled>保存截图 ↓</button></div>
+<aside class="sidebar point-drop-zone" id="point-drop-zone" aria-label="数据选择" aria-describedby="drop-hint">
+  <div class="sidebar-heading"><h2>项目文件</h2><span id="item-count">0</span></div>
+  <div class="folder-section project-import">
+    <div class="project-import-buttons"><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept=".xyz,.txt,.csv,.pts,.ply,.pcd" multiple hidden><button id="choose-folder">＋ 文件夹</button><input id="folder-input" type="file" webkitdirectory multiple hidden></div>
+    <p id="drop-hint" class="point-drop-hint">拖入点云文件或文件夹</p>
+    <p id="drop-status" class="point-drop-status" role="status" hidden></p>
+  </div>
+  <span id="cloud-mode-note" hidden></span>
+  <input id="search" type="search" aria-label="搜索点云或文件夹" placeholder="搜索点云或文件夹…" autocomplete="off">
+  <div class="list-meta"><span id="filter-count">尚未读取数据</span><div class="cloud-batch-actions" aria-label="点云批量选择"><button id="select-all-clouds" disabled>全选</button><button id="invert-cloud-selection" disabled>反选</button><button id="clear-selection">取消</button></div></div><p id="cloud-batch-scope" hidden></p>
+  <button id="project-root" class="project-root" title="拖到这里移出文件夹">▱ 项目根目录 <span>拖到此处移出分组</span></button>
+  <div id="data-list" class="model-list project-tree" aria-label="项目文件列表"></div>
+  <div id="project-controls"></div>
+  <div class="pagination" hidden><button id="previous-page" disabled></button><span id="page-info"></span><button id="next-page" disabled></button></div>
+  <details class="format-help"><summary>格式与管理说明</summary><p>勾选显示点云，右侧计算与合并使用相同勾选项。点击名称后可移动或移除；也可拖入文件夹或项目根目录。新建文件夹和移动仅影响本次页面，不修改磁盘；刷新需重新添加文件。</p><p>支持 XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">文件留在本机 · 分组仅保留在本次页面</p></details>
+</aside>
+<main><div class="main-heading"><div><h2 id="current-title">未选择数据</h2><p id="scene-stats" aria-live="polite">从左侧选择要查看的数据</p></div><div class="point-main-actions"><select id="cloud-mode-select" aria-label="点云显示模式"><option value="single">单点云</option><option value="multiple" selected>多点云叠加</option></select><button id="screenshot" disabled>保存截图 ↓</button></div></div>
 
 <div id="cloud-selection" class="cloud-selection" aria-label="已选点云" hidden></div>
 

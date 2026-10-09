@@ -41,7 +41,7 @@ The export button saves one cloud or concatenates all selected clouds. It preser
 - XYZ 与数值属性使用双精度保存，属性取并集，缺失值为 NaN；并非所有第三方 TXT 工具都接受 NaN。
 - 可附加 `source_id`；从 0 开始的编号、源文件名、计算参数及字段改名映射写在文件注释中。字段名会规范为 ASCII；已有同名属性不会被覆盖。
 - 标记的列写为标准字段名（例如 red / green / blue、nx / ny / nz、intensity），原始数值不变；保存的不是屏幕上的高度色带。
-- 计算结果暂存在内存，刷新即清除；请导出文件留存。“移除所选计算结果”释放不再需要的结果引用。
+- 计算结果暂存在内存，刷新即清除；请导出文件留存。在左侧点击条目名称后选择“移除”，可释放原始点云或计算结果；文件夹移除会包含其子项。
 
 Coordinates and scalar attributes are written as doubles; missing attributes use NaN. Source IDs, names, processing parameters and renamed-field mappings appear in comments. Tagged columns receive standard field names while retaining raw values. Export saves data attributes, not the current screen palette. Results are held in memory until export and are lost on refresh.
 

@@ -1,12 +1,12 @@
 import { runPointFeatures, derivedPointCloud } from './point-operations.js';
 import { pointExportSchema, writePointExport } from './point-export.js';
 
-export function mountPointProcessing({container, getSelection, readCloud, addResults, removeResults}) {
+export function mountPointProcessing({container, getSelection, readCloud, addResults}) {
   if (!container) return null;
   container.innerHTML = `
     <section class="inspector-section"><h3>选择操作</h3><fieldset class="processing-inputs"><label>操作<select id="process-operation"><option value="normals">计算法向量</option><option value="slope">计算坡度</option><option value="planarity">计算平面度</option><option value="roughness">计算粗糙度</option><option value="custom">自选多项计算</option><option value="export">保存 / 合并点云</option></select></label><p id="process-description" class="processing-help"></p>
     <div id="process-features" class="feature-checks" hidden><label><input type="checkbox" value="normals" checked>法向量</label><label><input type="checkbox" value="slope">坡度</label><label><input type="checkbox" value="planarity">平面度</label><label><input type="checkbox" value="roughness">粗糙度</label></div></fieldset></section>
-    <section class="inspector-section"><h3>数据范围</h3><p class="processing-help">对左侧勾选的点云操作。计算逐文件进行，原始文件保持不变。</p>
+    <section class="inspector-section"><h3>数据范围</h3><p id="process-selection" class="processing-selection"></p><p class="processing-help">勾选决定显示与处理；收起文件夹不改变勾选。计算逐文件进行。</p>
     <fieldset class="processing-inputs"><label>数据范围<select id="process-scope"><option value="full">全部点</option><option value="display">当前显示点</option></select></label>
     <p class="processing-help">全部点会按需重新读取原文件；显示上限不影响全量处理。计算结果仅保留在本次页面中，请及时导出。</p></fieldset></section>
     <section id="process-compute-panel" class="inspector-section"><h3>邻域设置</h3><fieldset class="processing-inputs">
@@ -22,13 +22,20 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
     <label class="processing-check"><input id="process-source" type="checkbox" checked>附加来源编号 source_id</label>
     <button id="process-export" class="processing-primary">导出所选 / 合并为一个文件</button>
     <p class="processing-help">保留 XYZ 和数值属性；多选时合并为一个文件，缺失属性填 NaN。按原始坐标拼接，不配准、不去重。按“数据”页列顺序保存；多选以首文件为准，新属性追加。标签写为标准字段名。</p>
-    <button id="process-remove">移除所选计算结果</button></fieldset></section>
+    <p class="processing-help">移除原始点云或计算结果，请在左侧点击名称后选择“移除”。</p></fieldset></section>
     <section class="processing-feedback" aria-label="处理进度"><progress id="process-progress" max="1" value="0" hidden></progress><p id="process-status" role="status" aria-live="polite">选择点云后即可计算或导出。</p><button id="process-cancel" hidden>取消当前操作</button></section>`;
   const el = id => container.querySelector(`#${id}`);
-  let controller = null;
+  let controller = null, latestSelection = [], selectionLoading = false;
+  function refresh(selection = latestSelection, loading = selectionLoading) {
+    latestSelection = selection; selectionLoading = loading;
+    const summary = el('process-selection');
+    summary.textContent = loading ? `正在加载 ${selection.length} 个点云…` : selection.length ? `当前勾选 ${selection.length} 个点云：${selection.slice(0, 3).map(entry => entry.treeName || entry.id).join('、')}${selection.length > 3 ? '…' : ''}` : '尚未勾选点云';
+    summary.title = selection.map(entry => entry.id).join('\n');
+    for (const id of ['process-compute', 'process-export']) el(id).disabled = !!controller || loading || !selection.length;
+  }
   function busy(value) {
     for (const fieldset of container.querySelectorAll('fieldset')) fieldset.disabled = value;
-    el('process-cancel').hidden = !value; el('process-progress').hidden = !value;
+    el('process-cancel').hidden = !value; el('process-progress').hidden = !value; refresh();
   }
   function status(text, fraction = 0) { el('process-status').textContent = text; el('process-progress').value = fraction; }
   function cancel() {
@@ -125,6 +132,6 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
   el('process-compute').onclick = () => perform('compute');
   el('process-export').onclick = () => perform('export');
   el('process-cancel').onclick = cancel;
-  el('process-remove').onclick = () => { try { const count = removeResults(getSelection()); status(count ? `已移除 ${count} 个计算结果。` : '所选点云中没有计算结果。'); } catch (error) { status(error.message); } };
-  return {cancel};
+  refresh();
+  return {cancel, refresh};
 }

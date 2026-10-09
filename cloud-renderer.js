@@ -232,6 +232,17 @@ export class CloudViewer {
     }
   }
 
+  forgetClouds(keys) {
+    this.ensureCache();
+    if (this.activeClouds.some(entry => keys.has(entry.key))) {
+      this.setClouds(this.activeClouds.filter(entry => !keys.has(entry.key)).map(entry => entry.item));
+    }
+    for (const key of keys) {
+      const entry = this.entityCache.get(key);
+      if (entry) { this.deleteEntity(entry); this.entityCache.delete(key); }
+    }
+  }
+
   clearCache() {
     this.ensureCache();
     const active = new Set(this.activeClouds.map(entry => entry.key));

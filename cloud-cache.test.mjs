@@ -169,3 +169,14 @@ function delayedReader() {
   reader.calls[0].resolve(full); assert.equal(await goodSubscriber, full);
   console.log('PASS one bad progress subscriber does not stop other consumers');
 }
+
+const deletion = new CloudFileCache({readCloud: async () => full});
+await deletion.read(fileA, 'cloud'); await deletion.read(fileB, 'cloud');
+deletion.forget(fileA); assert(!deletion.records.has(fileA)); assert(deletion.records.has(fileB));
+let resolveRemoved;
+const delayedDeletion = new CloudFileCache({readCloud: () => new Promise(resolve => {resolveRemoved=resolve;})});
+delayedDeletion.setActive([fileA]);
+const deletingRead = delayedDeletion.read(fileA,'cloud'); const rejectedDeletion = assert.rejects(deletingRead,{name:'AbortError'});
+await Promise.resolve(); delayedDeletion.forget(fileA); resolveRemoved(full); await rejectedDeletion;
+await Promise.resolve(); assert(!delayedDeletion.records.has(fileA)); assert(!delayedDeletion.pending.has(fileA)); assert(!delayedDeletion.active.has(fileA));
+console.log('PASS removal releases only the target and prevents in-flight reads from reviving deleted files');

@@ -77,3 +77,58 @@
 .column-row .column-custom{grid-column:2/-1;width:100%;min-width:0;padding:6px;font-size:11px}.column-color-options{margin-top:15px}
 .column-preview{max-height:210px;overflow:auto;border:1px solid #e1eae4;border-radius:7px;margin:8px 0 12px}.column-preview table{border-collapse:collapse;font-size:10px;white-space:nowrap}.column-preview th,.column-preview td{padding:7px 9px;border:1px solid #edf1ee;text-align:right}.column-preview th{background:#f0f6f2;font-weight:600}
 #columns-status{margin-top:12px;padding:10px;background:#f2f7f4;border-radius:7px;overflow-wrap:anywhere}
+
+.point-drop-zone{position:relative;transition:background-color .15s,box-shadow .15s}
+.point-drop-hint{border:1px dashed #b8cfc2;border-radius:8px;padding:11px 8px!important;color:#47745e!important;text-align:center;font-size:11px!important;line-height:1.6!important;background:#f6faf7}
+.point-drop-hint span{display:block;font-size:10px;color:#8a9f91;margin-top:3px}
+.point-drop-status{font-size:11px!important;line-height:1.7!important;color:#47745e!important;overflow-wrap:anywhere}
+.point-drop-zone.drop-active{background:#e9f5ed;box-shadow:inset 0 0 0 2px #438468}
+.point-drop-zone.drop-active .point-drop-hint{background:#d5ecdf;border-color:#438468;color:#22563e!important}
+.point-drop-zone.drop-active::after{content:'松开以添加点云';position:absolute;inset:45% 12px auto;padding:22px 10px;text-align:center;pointer-events:none;background:#f4fcf7f5;border:1px solid #8db79e;border-radius:10px;color:#2c6348;font-size:14px;font-weight:600;box-shadow:0 6px 25px #2b694321;z-index:5}
+
+/* Compact project browser: most of the sidebar belongs to the file hierarchy. */
+body[data-tool=pointcloud] .workspace{grid-template-columns:300px minmax(0,1fr)}
+body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:300px minmax(0,1fr) 348px}
+.point-drop-zone.sidebar{padding:18px 12px 12px;overflow:hidden}
+.point-drop-zone .sidebar-heading{margin-bottom:12px;padding:0 5px}
+.point-drop-zone .project-import{margin:0 0 10px;flex-shrink:0}
+.project-import-buttons{display:flex;gap:6px}.project-import-buttons button{flex:1;text-align:center;border-style:solid;font-size:11px;padding:7px 6px}
+.project-import-buttons button+input+button{margin-top:0}
+.point-drop-zone .point-drop-hint{padding:7px!important;margin-top:7px!important}
+.point-drop-zone .point-drop-status{max-height:65px;overflow:auto}
+.point-drop-zone .cloud-mode-controls{margin:0 0 10px;flex-shrink:0}
+.point-drop-zone .cloud-mode-controls .segmented button{padding:6px;font-size:11px}
+.point-drop-zone #search{flex-shrink:0;padding:8px 10px;font-size:11px;width:100%}
+.point-drop-zone .list-meta{margin:9px 3px 7px;font-size:10px;flex-shrink:0}
+.point-drop-zone .list-meta button{font-size:10px;padding:0}
+.point-drop-zone .cloud-batch-actions{gap:5px;flex-shrink:0}
+.point-drop-zone .cloud-batch-actions button{padding:5px;font-size:10px;background:#fafcfb}
+.project-root{display:flex;align-items:center;justify-content:space-between;text-align:left;border:0;border-radius:5px;background:#eef4f0;color:#4e7160;padding:9px 8px;font-size:11px;margin:10px 0 5px;flex-shrink:0}
+.project-root span{font-size:9px;font-weight:400;color:#91a296}
+.point-drop-zone .project-tree{display:block;padding:0;min-height:130px;max-height:none;overflow:auto}
+.project-row{display:flex;align-items:center;gap:5px;min-height:33px;padding:2px 5px 2px calc(2px + var(--tree-depth)*12px);border-radius:5px;cursor:grab;border:1px solid transparent}
+.project-row:hover{background:#f3f7f4}.project-row[data-focused=true]{background:#e8f1ec;border-color:#c7dcce}
+.project-row input{width:12px;height:12px;accent-color:#438468;padding:0;flex-shrink:0;cursor:pointer}
+.project-row .project-chevron{width:14px;flex:0 0 14px;padding:0;border:0;background:none;font-size:13px;color:#7a9484}
+.project-row .project-name{flex:1;min-width:0;border:0;background:none;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:5px 0;font-size:11px;color:#536c5e}
+.project-row.project-folder .project-name{font-weight:600;color:#38694e}
+.project-meta{font-size:9px;color:#8d9e93;flex-shrink:0;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-drop-target{background:#dceee2!important;border-color:#539170!important;outline:1px dashed #539170;outline-offset:-2px}
+.project-dragging{opacity:.5}
+#project-controls{border-top:1px solid #e5ece7;margin-top:8px;padding-top:9px;flex-shrink:0;max-height:48%;overflow:auto}
+.project-tools{display:flex;gap:6px}.project-tools button{font-size:11px;padding:7px 8px;flex:1}.project-tools button:first-child{flex:1.4;color:#347256}
+.project-focus{font-size:10px;color:#889b8e;margin:7px 2px 0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.project-editor{display:flex;flex-direction:column;gap:8px;margin-top:9px;background:#f4f8f5;border:1px solid #d9e6de;border-radius:7px;padding:10px}
+.project-editor strong{font-size:11px;color:#456b55;overflow-wrap:anywhere}.project-editor input,.project-editor select{font-size:11px;padding:7px;width:100%}
+.project-editor p{font-size:10px;color:#87988c;line-height:1.7}.project-editor-actions{display:flex;gap:7px}.project-editor-actions button{font-size:11px;padding:6px 9px}.project-editor-actions button:first-child{background:#347457;border-color:#347457;color:white}
+.project-status{font-size:10px;color:#557a63;line-height:1.6;overflow-wrap:anywhere}.project-status:empty{display:none}
+.point-drop-zone .format-help{flex-shrink:0;font-size:10px;margin-top:9px;padding-top:8px}.point-drop-zone .format-help[open]{max-height:130px;overflow:auto}
+.processing-selection{padding:10px;background:#edf5ef;border-radius:6px;font-size:11px;color:#447158;line-height:1.7;overflow-wrap:anywhere;margin-bottom:10px}
+@media(min-width:701px) and (max-width:1199px){body[data-tool=pointcloud] .workspace,body[data-tool=pointcloud] .workspace.inspector-open{grid-template-columns:270px minmax(0,1fr)}}
+@media(max-width:700px){body[data-tool=pointcloud] .workspace,body[data-tool=pointcloud] .workspace.inspector-open{display:flex}.point-drop-zone .project-tree{min-height:180px;max-height:300px}.point-drop-zone #project-controls{max-height:none}.point-drop-zone .cloud-mode-controls .segmented{width:100%}.point-drop-zone .project-import{margin-bottom:8px}}
+
+.point-drop-zone .list-meta .cloud-batch-actions button{padding:3px 5px;font-size:10px;background:transparent;border-color:transparent}
+.point-drop-zone .list-meta .cloud-batch-actions{gap:0}.point-drop-zone .list-meta{margin-bottom:0}
+.point-drop-zone .project-root{margin-top:8px;padding:8px}.point-drop-zone #drop-hint{font-size:10px!important}
+.point-main-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}.point-main-actions select{font-size:11px;padding:8px;color:#577264;background:#f7faf8;border:1px solid #dce6df;border-radius:6px}
+@media(max-width:900px){.point-main-actions{flex-wrap:wrap;justify-content:flex-end;max-width:155px}.point-main-actions button{font-size:11px;padding:7px}}

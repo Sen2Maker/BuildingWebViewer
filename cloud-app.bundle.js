@@ -816,6 +816,17 @@ class CloudViewer {
     }
   }
 
+  forgetClouds(keys) {
+    this.ensureCache();
+    if (this.activeClouds.some(entry => keys.has(entry.key))) {
+      this.setClouds(this.activeClouds.filter(entry => !keys.has(entry.key)).map(entry => entry.item));
+    }
+    for (const key of keys) {
+      const entry = this.entityCache.get(key);
+      if (entry) { this.deleteEntity(entry); this.entityCache.delete(key); }
+    }
+  }
+
   clearCache() {
     this.ensureCache();
     const active = new Set(this.activeClouds.map(entry => entry.key));
@@ -1940,6 +1951,11 @@ class CloudFileCache {
     for (const task of [...this.pending.values()]) this.cancelTask(task);
     this.records.clear();
   }
+  forget(file) {
+    this.active.delete(file);
+    const pending = this.pending.get(file); if (pending) this.cancelTask(pending);
+    this.records.delete(file);
+  }
   bytes(value) {
     const buffers = new Set();
     for (const array of [value.positions, value.rgb, value.sampleIndices, ...Object.values(value.fields || {})]) {
@@ -2546,12 +2562,12 @@ async function writePointExport(items, {format = 'ply', sourceIds = true, signal
 // Source: point-processing.js
 
 
-function mountPointProcessing({container, getSelection, readCloud, addResults, removeResults}) {
+function mountPointProcessing({container, getSelection, readCloud, addResults}) {
   if (!container) return null;
   container.innerHTML = `
     <section class="inspector-section"><h3>选择操作</h3><fieldset class="processing-inputs"><label>操作<select id="process-operation"><option value="normals">计算法向量</option><option value="slope">计算坡度</option><option value="planarity">计算平面度</option><option value="roughness">计算粗糙度</option><option value="custom">自选多项计算</option><option value="export">保存 / 合并点云</option></select></label><p id="process-description" class="processing-help"></p>
     <div id="process-features" class="feature-checks" hidden><label><input type="checkbox" value="normals" checked>法向量</label><label><input type="checkbox" value="slope">坡度</label><label><input type="checkbox" value="planarity">平面度</label><label><input type="checkbox" value="roughness">粗糙度</label></div></fieldset></section>
-    <section class="inspector-section"><h3>数据范围</h3><p class="processing-help">对左侧勾选的点云操作。计算逐文件进行，原始文件保持不变。</p>
+    <section class="inspector-section"><h3>数据范围</h3><p id="process-selection" class="processing-selection"></p><p class="processing-help">勾选决定显示与处理；收起文件夹不改变勾选。计算逐文件进行。</p>
     <fieldset class="processing-inputs"><label>数据范围<select id="process-scope"><option value="full">全部点</option><option value="display">当前显示点</option></select></label>
     <p class="processing-help">全部点会按需重新读取原文件；显示上限不影响全量处理。计算结果仅保留在本次页面中，请及时导出。</p></fieldset></section>
     <section id="process-compute-panel" class="inspector-section"><h3>邻域设置</h3><fieldset class="processing-inputs">
@@ -2567,13 +2583,20 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
     <label class="processing-check"><input id="process-source" type="checkbox" checked>附加来源编号 source_id</label>
     <button id="process-export" class="processing-primary">导出所选 / 合并为一个文件</button>
     <p class="processing-help">保留 XYZ 和数值属性；多选时合并为一个文件，缺失属性填 NaN。按原始坐标拼接，不配准、不去重。按“数据”页列顺序保存；多选以首文件为准，新属性追加。标签写为标准字段名。</p>
-    <button id="process-remove">移除所选计算结果</button></fieldset></section>
+    <p class="processing-help">移除原始点云或计算结果，请在左侧点击名称后选择“移除”。</p></fieldset></section>
     <section class="processing-feedback" aria-label="处理进度"><progress id="process-progress" max="1" value="0" hidden></progress><p id="process-status" role="status" aria-live="polite">选择点云后即可计算或导出。</p><button id="process-cancel" hidden>取消当前操作</button></section>`;
   const el = id => container.querySelector(`#${id}`);
-  let controller = null;
+  let controller = null, latestSelection = [], selectionLoading = false;
+  function refresh(selection = latestSelection, loading = selectionLoading) {
+    latestSelection = selection; selectionLoading = loading;
+    const summary = el('process-selection');
+    summary.textContent = loading ? `正在加载 ${selection.length} 个点云…` : selection.length ? `当前勾选 ${selection.length} 个点云：${selection.slice(0, 3).map(entry => entry.treeName || entry.id).join('、')}${selection.length > 3 ? '…' : ''}` : '尚未勾选点云';
+    summary.title = selection.map(entry => entry.id).join('\n');
+    for (const id of ['process-compute', 'process-export']) el(id).disabled = !!controller || loading || !selection.length;
+  }
   function busy(value) {
     for (const fieldset of container.querySelectorAll('fieldset')) fieldset.disabled = value;
-    el('process-cancel').hidden = !value; el('process-progress').hidden = !value;
+    el('process-cancel').hidden = !value; el('process-progress').hidden = !value; refresh();
   }
   function status(text, fraction = 0) { el('process-status').textContent = text; el('process-progress').value = fraction; }
   function cancel() {
@@ -2670,12 +2693,307 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
   el('process-compute').onclick = () => perform('compute');
   el('process-export').onclick = () => perform('export');
   el('process-cancel').onclick = cancel;
-  el('process-remove').onclick = () => { try { const count = removeResults(getSelection()); status(count ? `已移除 ${count} 个计算结果。` : '所选点云中没有计算结果。'); } catch (error) { status(error.message); } };
-  return {cancel};
+  refresh();
+  return {cancel, refresh};
+}
+
+
+// Source: point-drop.js
+// Capture drag handles synchronously: browsers protect the data store after drop returns.
+function capturePointDrop(dataTransfer) {
+  const roots = [];
+  for (const item of Array.from(dataTransfer?.items || [])) {
+    if (item.kind !== 'file') continue;
+    let entry = null, file = null;
+    try { entry = (item.getAsEntry || item.webkitGetAsEntry)?.call(item); } catch {}
+    try { file = item.getAsFile?.(); } catch {}
+    if (entry || file) roots.push({ entry, file });
+  }
+  if (!roots.length) for (const file of Array.from(dataTransfer?.files || [])) roots.push({ file });
+  return roots;
+}
+
+async function scanPointDrop(roots, accepts, onProgress = () => {}) {
+  const result = { files: [], skipped: 0, errors: [], directories: 0 };
+  const pending = roots.map(root => ({ ...root, parent: '' })).reverse();
+  let visited = 0;
+  while (pending.length) {
+    const { entry, file, parent } = pending.pop();
+    const path = parent + (entry?.name || file?.webkitRelativePath || file?.name || '未知文件');
+    try {
+      if (entry?.isDirectory) {
+        result.directories++;
+        const reader = entry.createReader();
+        // Chromium returns directory entries in batches (often 100 at a time).
+        while (true) {
+          const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+          if (!batch.length) break;
+          for (const child of batch) pending.push({ entry: child, parent: path + '/' });
+        }
+      } else if (!accepts(entry?.name || file?.name || '')) {
+        result.skipped++;
+      } else {
+        const resolved = entry?.isFile
+          ? await new Promise((resolve, reject) => entry.file(resolve, reject)) : file;
+        if (!resolved) throw new Error('无法读取文件');
+        result.files.push({ file: resolved, path });
+      }
+    } catch (err) {
+      result.errors.push({ path, message: err?.message || '无法读取' });
+    }
+    if (++visited % 100 === 0) {
+      onProgress(result);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+  return result;
+}
+
+function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
+  let depth = 0, queue = Promise.resolve();
+  const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files') ||
+    Array.from(event.dataTransfer?.items || []).some(item => item.kind === 'file');
+  const reset = () => { depth = 0; zone.classList.remove('drop-active'); };
+  const say = message => { status.hidden = false; status.textContent = message; };
+  const inside = event => zone.contains(event.target);
+  const onEnter = event => {
+    if (!hasFiles(event)) return;
+    event.preventDefault(); depth++; zone.classList.add('drop-active');
+  };
+  const onLeave = event => {
+    if (depth && --depth === 0) reset();
+  };
+  const onOver = event => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = inside(event) ? 'copy' : 'none';
+    if (inside(event)) zone.classList.add('drop-active'); else reset();
+  };
+  const onDrop = event => {
+    if (!hasFiles(event)) return;
+    event.preventDefault(); reset();
+    if (!inside(event)) { say('请将点云文件或文件夹拖到左侧文件区域。'); return; }
+    const roots = capturePointDrop(event.dataTransfer);
+    say('正在整理拖入的文件…');
+    // A second drop can arrive during directory scanning; handles are already captured.
+    queue = queue.then(async () => {
+      const result = await scanPointDrop(roots, accepts, progress =>
+        say(`正在查找点云… 已找到 ${progress.files.length.toLocaleString('zh-CN')} 个文件`));
+      const received = result.files.length ? await onFiles(result.files) : { added: 0, duplicates: 0 };
+      const parts = [`新增 ${received.added} 个点云`];
+      if (received.duplicates) parts.push(`${received.duplicates} 个已存在`);
+      if (result.skipped) parts.push(`跳过 ${result.skipped} 个其他格式文件`);
+      if (result.errors.length) parts.push(`${result.errors.length} 项无法读取：${result.errors.slice(0, 3).map(error => error.path).join('、')}`);
+      if (!result.files.length) parts.push('未找到支持的点云；也可使用“添加点云文件夹…”按钮');
+      say(parts.join(' · '));
+    }).catch(err => say(`添加失败：${err?.message || '无法读取拖入的文件'}。可改用添加文件 / 文件夹按钮。`));
+    return queue;
+  };
+  zone.addEventListener('dragenter', onEnter);
+  zone.addEventListener('dragleave', onLeave);
+  host.addEventListener('dragover', onOver);
+  host.addEventListener('drop', onDrop);
+  host.addEventListener('dragend', reset);
+  return () => {
+    zone.removeEventListener('dragenter', onEnter);
+    zone.removeEventListener('dragleave', onLeave);
+    host.removeEventListener('dragover', onOver);
+    host.removeEventListener('drop', onDrop);
+    host.removeEventListener('dragend', reset);
+    reset();
+  };
+}
+
+
+// Source: point-project.js
+// Project groups are virtual: source identity and disk paths never change on a move.
+class PointProject {
+  constructor() { this.groups = new Map(); this.serial = 0; }
+  create(name, parent = '') {
+    name = name.trim();
+    if (!name || /[/\\\x00-\x1f]/.test(name)) throw Error('请输入文件夹名称，不含斜线或控制字符');
+    if (parent && !this.groups.has(parent)) throw Error('目标文件夹已不存在');
+    if ([...this.groups.values()].some(group => group.parent === parent && group.name === name)) throw Error('此位置已有同名文件夹');
+    const group = {id: `group:${++this.serial}`, name, parent, collapsed: false};
+    this.groups.set(group.id, group); return group.id;
+  }
+  assign(entry, path) {
+    const parts = path.split('/').filter(Boolean); entry.treeName = parts.pop() || entry.id;
+    let parent = '';
+    for (const name of parts) {
+      parent = [...this.groups.values()].find(group => group.parent === parent && group.name === name)?.id || this.create(name, parent);
+    }
+    entry.group = parent;
+  }
+  within(groupId, ancestor) {
+    if (!ancestor) return true;
+    for (let group = this.groups.get(groupId); group; group = this.groups.get(group.parent)) if (group.id === ancestor) return true;
+    return false;
+  }
+  path(id) {
+    const parts = [];
+    for (let group = this.groups.get(id); group; group = this.groups.get(group.parent)) parts.unshift(group.name);
+    return parts.join('/');
+  }
+  members(id, entries) { return entries.filter(entry => this.within(entry.group, id)); }
+  move(target, parent) {
+    if (parent && !this.groups.has(parent)) throw Error('目标文件夹已不存在');
+    if (typeof target === 'string') {
+      const group = this.groups.get(target); if (!group) throw Error('文件夹已不存在');
+      if (this.within(parent, target)) throw Error('不能移动到自身或其子文件夹');
+      if ([...this.groups.values()].some(other => other.id !== target && other.parent === parent && other.name === group.name)) throw Error('目标位置已有同名文件夹');
+      group.parent = parent;
+    } else target.group = parent;
+    if (parent) this.groups.get(parent).collapsed = false;
+  }
+  removeGroup(id) {
+    const removed = [...this.groups.keys()].filter(key => this.within(key, id));
+    for (const key of removed) this.groups.delete(key);
+  }
+  matches(entry, query) {
+    return `${this.path(entry.group)}/${entry.treeName || entry.id} ${entry.id}`.toLowerCase().includes(query.toLowerCase().trim());
+  }
+}
+
+function mountPointProject({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
+  onToggle, onGroupSelection, onRemove, onChange, detail}) {
+  const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
+  const button = (text, label, fn) => { const node = make('button', text); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label); node.onclick = fn; return node; };
+  const dragType = 'application/x-buildingwebviewer-node';
+  let focused = null, dragged = null, limit = 200, lastQuery = '', editorMode = null;
+  const tools = make('div', null, 'project-tools');
+  const createButton = button('+ 文件夹', '新建项目内文件夹', () => openEditor('create'));
+  const moveButton = button('移动', '移动当前条目', () => openEditor('move'));
+  const deleteButton = button('移除', '移除当前条目', () => openEditor('remove'));
+  tools.append(createButton, moveButton, deleteButton);
+  const focusNote = make('p', '点击名称管理，勾选方框显示', 'project-focus');
+  const editor = make('form', null, 'project-editor'); editor.hidden = true;
+  const editorTitle = make('strong'), nameInput = make('input'); nameInput.placeholder = '文件夹名称'; nameInput.setAttribute('aria-label', '新文件夹名称');
+  const destinations = make('select'); destinations.setAttribute('aria-label', '目标文件夹');
+  const editorNote = make('p'), actions = make('div', null, 'project-editor-actions');
+  const submit = make('button', '确定'); submit.type = 'submit';
+  const cancel = button('取消', '取消管理操作', () => { editorMode = null; editor.hidden = true; });
+  actions.append(submit, cancel); editor.append(editorTitle, nameInput, destinations, editorNote, actions);
+  controls.append(tools, focusNote, editor);
+  const status = make('p', null, 'project-status'); status.setAttribute('role', 'status'); controls.append(status);
+  function label(target) { return typeof target === 'string' ? project.path(target) : target?.treeName || target?.id || '项目根目录'; }
+  function exists(target) { return typeof target === 'string' ? project.groups.has(target) : getEntries().includes(target); }
+  function focus(target) { focused = target; editor.hidden = true; editorMode = null; render(); }
+  function candidates(target = focused) { return typeof target === 'string' ? project.members(target, getEntries()) : target ? [target] : []; }
+  function fillDestinations() {
+    destinations.replaceChildren();
+    const add = (value, text) => { const option = make('option', text); option.value = value; destinations.append(option); };
+    add('', '项目根目录');
+    for (const group of [...project.groups.values()].sort((a,b) => project.path(a.id).localeCompare(project.path(b.id), undefined, {numeric:true}))) {
+      if (editorMode === 'move' && typeof focused === 'string' && project.within(group.id, focused)) continue;
+      add(group.id, project.path(group.id));
+    }
+    destinations.value = typeof focused === 'string' ? editorMode === 'create' ? focused : project.groups.get(focused)?.parent || '' : focused?.group || '';
+  }
+  function openEditor(mode) {
+    if (mode !== 'create' && !focused) return;
+    editorMode = mode; editor.hidden = false; status.textContent = ''; nameInput.value = '';
+    editorTitle.textContent = {create:'新建项目文件夹',move:`移动：${label(focused)}`,remove:`移除：${label(focused)}`}[mode];
+    nameInput.hidden = mode !== 'create'; destinations.hidden = mode === 'remove';
+    submit.textContent = mode === 'remove' ? '确认移除' : mode === 'move' ? '移动到此处' : '创建';
+    editorNote.textContent = mode === 'remove'
+      ? `从页面移除 ${candidates().length} 个点云${typeof focused === 'string' ? '及其文件夹' : ''}。磁盘文件不变；未导出的计算结果将丢失。`
+      : '仅调整当前页面的分组，不修改磁盘文件。';
+    fillDestinations(); if (mode === 'create') nameInput.focus();
+  }
+  editor.onsubmit = event => {
+    event.preventDefault();
+    try {
+      if (editorMode === 'create') focused = project.create(nameInput.value, destinations.value);
+      else if (editorMode === 'move') project.move(focused, destinations.value);
+      else if (editorMode === 'remove') {
+        const removed = candidates(); if (typeof focused === 'string') project.removeGroup(focused);
+        focused = null; onRemove(removed);
+      }
+      editorMode = null; editor.hidden = true; status.textContent = ''; onChange();
+    } catch (error) { status.textContent = error.message; }
+  };
+  function wireDrag(row, target, parent) {
+    row.draggable = target !== null;
+    row.ondragstart = event => {
+      if (!target) return;
+      dragged = target; event.dataTransfer.setData(dragType, 'project-node'); event.dataTransfer.setData('text/plain', label(target)); event.dataTransfer.effectAllowed = 'move';
+      row.classList.add('project-dragging'); event.stopPropagation();
+    };
+    row.ondragend = () => { dragged = null; row.classList.remove('project-dragging'); container.querySelectorAll('.project-drop-target').forEach(node => node.classList.remove('project-drop-target')); root.classList.remove('project-drop-target'); };
+    row.ondragover = event => {
+      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
+      event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; row.classList.add('project-drop-target');
+    };
+    row.ondragleave = event => { if (!row.contains(event.relatedTarget)) row.classList.remove('project-drop-target'); };
+    row.ondrop = event => {
+      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
+      event.preventDefault(); event.stopPropagation(); row.classList.remove('project-drop-target');
+      try { project.move(dragged, parent); focused = dragged; status.textContent = `已移动到 ${project.path(parent) || '项目根目录'}`; }
+      catch (error) { status.textContent = error.message; }
+      dragged = null; editor.hidden = true; editorMode = null; onChange();
+    };
+  }
+  wireDrag(root, null, ''); root.onclick = () => focus(null);
+  function render() {
+    const entries = getEntries(), selected = getSelected(), query = getQuery().trim().toLowerCase();
+    if (focused && !exists(focused)) { focused = null; editorMode = null; editor.hidden = true; }
+    if (query !== lastQuery) { limit = 200; lastQuery = query; }
+    moveButton.disabled = deleteButton.disabled = !focused;
+    focusNote.textContent = focused ? `管理：${label(focused)}` : '点击名称管理 · 勾选方框显示'; focusNote.title = focusNote.textContent;
+    const groupsByParent = new Map(), entriesByGroup = new Map(), membersByGroup = new Map();
+    const matching = entries.filter(entry => project.matches(entry, query));
+    const push = (map, key, value) => { if (!map.has(key)) map.set(key, []); map.get(key).push(value); };
+    for (const entry of matching) {
+      push(entriesByGroup, entry.group || '', entry);
+      for (let group = project.groups.get(entry.group); group; group = project.groups.get(group.parent)) push(membersByGroup, group.id, entry);
+    }
+    const visibleGroups = new Set(membersByGroup.keys());
+    for (const group of project.groups.values()) if (!query || project.path(group.id).toLowerCase().includes(query)) {
+      for (let current = group; current; current = project.groups.get(current.parent)) visibleGroups.add(current.id);
+    }
+    for (const group of project.groups.values()) if (visibleGroups.has(group.id)) push(groupsByParent, group.parent, group);
+    const sort = (a,b) => (a.name || a.treeName || a.id).localeCompare(b.name || b.treeName || b.id, undefined, {numeric:true});
+    for (const map of [groupsByParent, entriesByGroup]) for (const rows of map.values()) rows.sort(sort);
+    const flat = [], stack = [{id:'',depth:0}];
+    while (stack.length) {
+      const task = stack.pop();
+      if (task.entry || task.group) { flat.push(task); if (task.entry || task.group.collapsed && !query) continue; }
+      const parent = task.group?.id || task.id, depth = task.group ? task.depth + 1 : task.depth;
+      const rows = [...(groupsByParent.get(parent) || []).map(group => ({group,depth})), ...(entriesByGroup.get(parent) || []).map(entry => ({entry,depth}))];
+      stack.push(...rows.reverse());
+    }
+    const fragment = document.createDocumentFragment();
+    for (const item of flat.slice(0, limit)) {
+      const target = item.group?.id || item.entry, row = make('div', null, 'project-row' + (item.group ? ' project-folder' : ''));
+      row.style.setProperty('--tree-depth', Math.min(item.depth, 8)); row.dataset.focused = String(focused === target);
+      const members = item.group ? membersByGroup.get(item.group.id) || [] : [item.entry];
+      const count = members.filter(entry => selected.has(entry)).length;
+      const check = make('input'); check.type = 'checkbox'; check.checked = members.length > 0 && count === members.length; check.indeterminate = count > 0 && count < members.length;
+      check.disabled = !!item.group && (getMode() === 'single' || !members.length);
+      check.setAttribute('aria-label', `显示 ${label(target)}`);
+      check.title = item.group && query ? '仅选择当前搜索匹配的点云' : '勾选后用于显示、计算与合并';
+      check.onchange = () => item.group ? onGroupSelection(members, check.checked) : onToggle(item.entry);
+      if (item.group) {
+        const toggle = button(item.group.collapsed && !query ? '▸' : '▾', `${item.group.collapsed ? '展开' : '收起'} ${item.group.name}`, () => { item.group.collapsed = !item.group.collapsed; focus(target); });
+        toggle.className = 'project-chevron'; toggle.setAttribute('aria-expanded', String(!item.group.collapsed || !!query)); row.append(toggle);
+      } else row.append(make('span', '', 'project-chevron'));
+      const name = button((item.group ? '▱ ' : '⠿ ') + (item.group?.name || item.entry.treeName || item.entry.id), `管理 ${label(target)}`, () => focus(target));
+      name.className = 'project-name'; name.title = item.group ? project.path(target) : `${project.path(item.entry.group) || '项目根目录'} / ${item.entry.treeName || item.entry.id}\n来源：${item.entry.id}`;
+      const meta = make('span', item.group ? String(project.members(target, entries).length) : item.entry.file.generatedCloud ? '结果' : detail(item.entry), 'project-meta');
+      row.append(check, name, meta); wireDrag(row, target, item.group ? item.group.id : item.entry.group || ''); fragment.append(row);
+    }
+    if (flat.length > limit) fragment.append(button(`显示更多（剩余 ${flat.length - limit} 项）`, '显示更多项目条目', () => { limit += 200; render(); }));
+    if (!flat.length) fragment.append(make('p', query ? '没有匹配的点云' : '拖入文件或文件夹\n开始整理你的点云', 'empty-list'));
+    const scroll = container.scrollTop; container.replaceChildren(fragment); container.scrollTop = scroll;
+  }
+  return {render};
 }
 
 
 // Source: cloud-app.js
+
+
 
 
 
@@ -2703,6 +3021,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
   let columnsControls = null, processingControls = null, displayedItems = [], resultSerial = 0;
   let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
+  const pointProject = new PointProject(); let projectControls = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
@@ -2755,10 +3074,16 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
   }
   function matchingEntries() {
     const query = $('search').value.trim().toLowerCase();
-    return entries.filter(entry => entry.id.toLowerCase().includes(query));
+    return entries.filter(entry => isWire ? entry.id.toLowerCase().includes(query) : pointProject.matches(entry, query));
   }
   function list() {
     const filtered = matchingEntries();
+    if (!isWire) {
+      $('filter-count').textContent = `${pretty(filtered.length)} 个点云 · 已选 ${selectedCloudEntries.size}`;
+      $('item-count').textContent = pretty(entries.length);
+      projectControls?.render(); updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
+      processingControls?.refresh([...selectedCloudEntries], Boolean(loadController)); return;
+    }
     const pages = Math.ceil(filtered.length / 50);
     page = Math.max(0, Math.min(page, Math.max(0, pages - 1)));
     $('filter-count').textContent = `${pretty(filtered.length)} ${isWire ? '个建筑 ID' : `个文件 · 已选 ${selectedCloudEntries.size}`}`;
@@ -2887,24 +3212,26 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
   function read(file, kind, options = {}) {
     return cached.read(file, kind, {maxPoints: Number($('point-limit').value), ...options});
   }
-  function receiveCloudFiles(files, fromFolder) {
+  function receiveCloudFiles(files, fromFolder, dropPaths = null) {
     const existing = new Set(entries.map(entry => entry.key));
     const names = new Set(entries.map(entry => entry.id));
-    let added = 0;
+    let added = 0, duplicates = 0;
     for (const file of files) {
       if (!pointExtension.test(file.name)) continue;
-      const path = file.webkitRelativePath || file.name;
+      const path = dropPaths?.get(file) || file.webkitRelativePath || file.name;
       const key = `${path}\0${file.size}\0${file.lastModified}`;
-      if (existing.has(key)) continue;
-      const base = fromFolder ? path.split('/').slice(1).join('/') || file.name : file.name;
+      if (existing.has(key)) { duplicates++; continue; }
+      const base = dropPaths ? path : fromFolder ? path.split('/').slice(1).join('/') || file.name : file.name;
       let id = base, suffix = 2;
       while (names.has(id)) id = `${base} (${suffix++})`;
-      entries.push({id, key, file}); existing.add(key); names.add(id); added++;
+      const entry = {id, key, file}; pointProject.assign(entry, path);
+      entries.push(entry); existing.add(key); names.add(id); added++;
     }
     entries.sort((a, b) => natural(a.id, b.id));
     page = 0; $('search').value = ''; list();
-    $('source-note').textContent = `已列出 ${pretty(entries.length)} 个文件 · 可继续添加文件或文件夹`;
+    $('source-note').textContent = '文件留在本机 · 分组仅保留在本次页面';
     error(!added && !files.some(file => pointExtension.test(file.name)) ? '未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。' : '');
+    return { added, duplicates };
   }
   function applyCloudSelection(preferred = null) {
     if (!selectedCloudEntries.size) { clear(); return; }
@@ -2926,9 +3253,23 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
   function removeCloud(entry) {
     if (selectedCloudEntries.delete(entry)) applyCloudSelection();
   }
+  function deleteProjectEntries(selection) {
+    const removed = new Set(selection.filter(entry => entries.includes(entry)));
+    if (!removed.size) { list(); return; }
+    processingControls?.cancel(); loadController?.abort(); loadController = null; revision++;
+    for (const entry of removed) {
+      selectedCloudEntries.delete(entry); cached.forget(entry.file); entry.columnView = null;
+    }
+    entries = entries.filter(entry => !removed.has(entry));
+    displayedItems = displayedItems.filter(item => !removed.has(item.entry));
+    const keys = new Set([...removed].map(entry => entry.file));
+    viewers.forEach(viewer => viewer.forgetClouds(keys));
+    if (selectedCloudEntries.size) applyCloudSelection(); else clear();
+  }
   function updateCloudModeUI(filtered) {
     if (isWire) return;
     const multiple = cloudMode === 'multiple';
+    $('cloud-mode-select').value = cloudMode;
     for (const button of document.querySelectorAll('[data-cloud-mode]')) {
       const selected = button.dataset.cloudMode === cloudMode;
       button.classList.toggle('active', selected); button.setAttribute('aria-pressed', String(selected));
@@ -2936,8 +3277,8 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
     $('cloud-mode-note').textContent = multiple ? '勾选多个文件，按原始坐标叠加。' : '点击文件切换显示；每次只显示一个点云。';
     for (const id of ['select-all-clouds', 'invert-cloud-selection']) $(id).disabled = !multiple || !filtered.length;
     $('cloud-batch-scope').textContent = !multiple ? '全选、反选仅在多点云模式下可用。'
-      : $('search').value.trim() ? `批量操作匹配的 ${pretty(filtered.length)} 个文件（含其他页），保留筛选外的选择。`
-      : `批量操作全部 ${pretty(filtered.length)} 个文件（含其他页）。`;
+      : $('search').value.trim() ? `仅操作匹配的 ${pretty(filtered.length)} 个文件，保留筛选外选择。`
+      : `全选与反选包含收起文件夹内的点云。`;
     $('empty-state').querySelector('p').textContent = multiple
       ? '添加点云文件或文件夹，再勾选左侧一个或多个文件。'
       : '添加点云文件或文件夹，再点击左侧要查看的文件。';
@@ -2970,7 +3311,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
       if (source?.color) dot.style.background = `rgb(${source.color.map(value => Math.round(value * 255)).join(',')})`;
       const title = document.createElement('span'); title.textContent = entry.id;
       title.title = source ? `${entry.id} · ${pretty(source.count)} / ${pretty(source.totalCount)} 点；色标对应“按文件”着色` : entry.id;
-      const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `移除点云 ${entry.id}`);
+      const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `取消显示 ${entry.id}`);
       remove.onclick = () => removeCloud(entry); chip.append(dot, title, remove); container.append(chip);
     }
   }
@@ -2979,6 +3320,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
     processingControls?.cancel();
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
+    processingControls?.refresh([...selectedCloudEntries], true);
     const version = ++revision, selection = [...selectedCloudEntries];
     const maxPoints = Number($('point-limit').value);
     cached.setActive(selection.map(entry => entry.file));
@@ -3028,7 +3370,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
       $('empty-state').hidden = Boolean(loaded.cloud); $('screenshot').disabled = !loaded.cloud;
       if (failures.length) error(failures.join('；'));
     } catch (cause) { if (version === revision) error(`显示失败：${cause.message}`); }
-    finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false); } }
   }
 
   function normalizeBounds(value) {
@@ -3121,7 +3463,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
       $('empty-state').hidden = hasLoaded; $('screenshot').disabled = !hasLoaded;
       if (failures.length) error(failures.join('；'));
     } catch (cause) { error(`显示失败：${cause.message}`); }
-    finally { if (version === revision) { $('loading').hidden = true; loadController = null; } }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false); } }
   }
   function columnFieldLabel(key) {
     if(isWire)return fieldLabel(key);
@@ -3207,6 +3549,24 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
     }, 'image/png');
   }
 
+  if (!isWire) projectControls = mountPointProject({
+    project: pointProject, container: $('data-list'), root: $('project-root'), controls: $('project-controls'),
+    getEntries: () => entries, getSelected: () => selectedCloudEntries, getMode: () => cloudMode,
+    getQuery: () => $('search').value, onToggle: entry => cloudMode === 'single' && selectedCloudEntries.has(entry) ? removeCloud(entry) : toggleCloud(entry), onRemove: deleteProjectEntries, onChange: list,
+    detail: entry => formatSize(entry.file.size),
+    onGroupSelection: (members, checked) => {
+      if (cloudMode !== 'multiple') return;
+      for (const entry of members) checked ? selectedCloudEntries.add(entry) : selectedCloudEntries.delete(entry);
+      applyCloudSelection();
+    },
+  });
+  if (!isWire) mountPointDrop({
+    zone: $('point-drop-zone'), status: $('drop-status'),
+    accepts: name => pointExtension.test(name),
+    onFiles: records => receiveCloudFiles(records.map(item => item.file), false,
+      new Map(records.map(item => [item.file, item.path]))),
+  });
+
   $('choose-folder').onclick = () => $('folder-input').click();
   $('folder-input').onchange = event => { receive(event.target.files, true); event.target.value = ''; };
   $('choose-file').onclick = () => $('file-input').click();
@@ -3224,6 +3584,7 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
   $('clear-selection').onclick = clear; $('dismiss-error').onclick = () => error('');
   if (!isWire) {
     for (const button of document.querySelectorAll('[data-cloud-mode]')) button.onclick = () => setCloudMode(button.dataset.cloudMode);
+    $('cloud-mode-select').onchange = event => setCloudMode(event.target.value);
     $('select-all-clouds').onclick = () => batchCloudSelection();
     $('invert-cloud-selection').onclick = () => batchCloudSelection(true);
   }
@@ -3274,6 +3635,8 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
         for (const result of results) {
           const serial = ++resultSerial, file = {name: result.name, size: cached.bytes(result.cloud), generatedCloud: result.cloud};
           const entry = {id: `${result.name} #${serial}`, key: `generated:${serial}`, file};
+          entry.group = result.source?.group || ''; entry.treeName = `${result.source?.treeName || result.name} · 特征 #${serial}`;
+          if (entry.group) pointProject.groups.get(entry.group).collapsed = false;
           entries.push(entry); selectedCloudEntries.add(entry); lastCloudEntry = entry;
         }
         if (results.length > 1) cloudMode = 'multiple';
@@ -3283,13 +3646,6 @@ function mountPointProcessing({container, getSelection, readCloud, addResults, r
         const mapping=results[0]?.cloud.featureMapping||{};
         const field=mapping.slope||mapping.planarity||mapping.roughness||mapping.nz;
         if (field) { $('color-mode').value = `field:${field}`; update(); }
-      },
-      removeResults: selection => {
-        const removed = new Set(selection.filter(entry => entry.file.generatedCloud));
-        for (const entry of removed) { selectedCloudEntries.delete(entry); cached.records.delete(entry.file); }
-        entries = entries.filter(entry => !removed.has(entry));
-        if (removed.size) applyCloudSelection();
-        return removed.size;
       },
     });
     if(!isWire) columnsControls=mountPointColumns({container:$('column-controls'),

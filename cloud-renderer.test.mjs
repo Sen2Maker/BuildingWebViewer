@@ -116,3 +116,14 @@ for(const name of Object.keys(PALETTE_DEFINITIONS)) {
   assert.deepEqual(samplePalette(0,name,true),samplePalette(1,name,false));
 }
 console.log('PASS five palettes share identical UI samples and GPU uniform stops');
+
+const removalQA = fixture(), removalViewer = removalQA.viewer;
+removalViewer.setClouds([a,b]); const keepBuffer=removalViewer.entityCache.get(b.key).points.buffer;
+const removedBuffer=removalViewer.entityCache.get(a.key).points.buffer;
+removalViewer.forgetClouds(new Set([a.key]));
+assert(!removalViewer.entityCache.has(a.key)); assert(removalQA.deleted.includes(removedBuffer));
+assert.equal(removalViewer.activeClouds.length,1); assert.equal(removalViewer.activeClouds[0].key,b.key);
+assert.equal(removalViewer.entityCache.get(b.key).points.buffer,keepBuffer); assert(!removalQA.deleted.includes(keepBuffer));
+assert.deepEqual(removalViewer.data.clouds.map(item=>item.key),[b.key]);
+removalViewer.setClouds([]); removalViewer.forgetClouds(new Set([b.key])); assert(!removalViewer.entityCache.has(b.key));
+console.log('PASS project deletion removes active/inactive GPU data and restore sources, preserving retained buffers');
