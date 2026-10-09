@@ -1,38 +1,56 @@
-name: Deploy BuildingWebViewer to GitHub Pages
-
+name: Deploy published release to GitHub Pages
 on:
-  push:
+  release:
+    types: [published]
   workflow_dispatch:
-
+    inputs:
+      release_tag:
+        description: Previously published stable release tag (for example v1.0.0)
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
   group: pages
   cancel-in-progress: false
-
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pages: read
-    # Follow the repository's default branch, including after a branch rename.
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout the release tag
         uses: actions/checkout@v6
-      - name: Check source, regression suites and generated bundles
-        run: python3 scripts/check.py
-      - name: Build static website
-        run: python3 build.py --site
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload website
-        uses: actions/upload-pages-artifact@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
+          fetch-depth: 0
+      - name: Require a published stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          tag = os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Use a stable version tag'
+          url = 'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/releases/tags/' + tag
+          request = urllib.request.Request(url, headers={'Authorization':'Bearer ' + os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(request, timeout=30) as response: release = json.load(response)
+          assert not release['draft'] and not release['prerelease'], 'Release must be published and stable'
+          PY
+      - name: Validate and build the tagged release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          python3 scripts/check.py
+          python3 build.py --site --zip
+          python3 scripts/release.py --check-tag "$RELEASE_TAG"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
-
   deploy:
     needs: build
     runs-on: ubuntu-latest

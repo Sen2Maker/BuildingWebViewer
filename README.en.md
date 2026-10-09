@@ -1,8 +1,8 @@
 <div align="center">
 
 <h1>BuildingWebViewer</h1>
-<p>Inspect building models, wireframes, and point clouds in your browser.</p>
-<p><a href="README.md">简体中文</a> · <strong>English</strong> · <a href="https://sen2maker.github.io/BuildingWebViewer/">Live demo ↗</a></p>
+<p>A general 3D toolbox for LOD meshes, OBJ wireframes and point clouds, with attribute editing, geometric processing and export.</p>
+<p><a href="README.md">简体中文</a> · <strong>English</strong> · <a href="https://sen2maker.github.io/BuildingWebViewer/">Live demo ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">Download release</a></p>
 
 </div>
 
@@ -12,7 +12,7 @@
 
 **Online** → [Open the viewer](https://sen2maker.github.io/BuildingWebViewer/), choose a tool, add local files or a folder, then select the objects to display.
 
-**Offline** → Download and fully extract the project, then open `index.html`. No installation required; Chrome or Edge is recommended.
+**Offline** → Download the versioned ZIP from [Releases](https://github.com/Sen2Maker/BuildingWebViewer/releases/latest) and extract everything, then open `index.html`. No installation required; Chrome or Edge is recommended.
 
 Alternatively, start a local server from the project folder (Python 3 required):
 
@@ -57,6 +57,8 @@ python3 build.py --site --zip
 python3 scripts/check.py  # Development checks; requires Node 18+
 ```
 
-This updates the browser bundles and creates `_site/` for static hosting and `dist/BuildingWebViewer.zip` for distribution. Commit the generated bundles alongside source changes.
+This updates the browser bundles and creates `_site/` for static hosting and `dist/BuildingWebViewer-vX.Y.Z.zip` for distribution (plus an unversioned local copy). Commit the generated bundles alongside source changes.
 
 See [design notes](docs/DESIGN_NOTES.md) (Chinese) for implementation details and references.
+
+**Versioning**: `v1.0.0` is the first stable baseline. Future changes are tested, recorded in the [changelog](CHANGELOG.md) and reported before uploading under a release instruction. Only stable Releases update the live website. [Release guide](docs/RELEASING.md)

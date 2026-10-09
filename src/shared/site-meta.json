@@ -1,0 +1,18 @@
+{
+  "index.html": {
+    "title": "BuildingWebViewer · 三维数据工具箱 / 3D Data Workspace",
+    "description": "在浏览器中查看 LOD 建筑模型、OBJ 线框与点云，支持属性映射、几何计算和导出，数据仅在本机处理。Browser-based LOD mesh, wireframe and point cloud viewers with attribute mapping, geometric processing and export. Files stay on your device."
+  },
+  "lod.html": {
+    "title": "LOD 模型查看器 / LOD Model Viewer · BuildingWebViewer",
+    "description": "本地 OBJ 建筑模型查看器：多栋陈列、实体与线框、色带、相机书签和项目文件管理。Local OBJ mesh viewer with multiple buildings, solid and wireframe display, palettes, camera bookmarks and project folders."
+  },
+  "wireframe.html": {
+    "title": "线框查看器 / Wireframe Viewer · BuildingWebViewer",
+    "description": "通用 OBJ 线框查看器：按目录分组、点云叠加、最多三个面板对比与相机同步。General OBJ wireframe viewer with folder groups, point cloud overlays, up to three comparison panes and synchronized cameras."
+  },
+  "pointcloud.html": {
+    "title": "点云查看器 / Point Cloud Viewer · BuildingWebViewer",
+    "description": "本地点云查看与处理：TXT、XYZ、CSV、PTS、PLY、PCD，多文件叠加、RGB/HSV、属性映射、法向量计算与合并导出。Local point cloud viewing and processing: multi-file overlays, RGB/HSV, attribute mapping, normals and merged export."
+  }
+}

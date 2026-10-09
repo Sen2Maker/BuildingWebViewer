@@ -22,7 +22,7 @@ python3 scripts/check.py
 python3 server.py --port 8765
 ```
 
-`_site/` is the only deployment payload. `dist/BuildingWebViewer.zip` includes source, tests and ready-to-use assets. Neither includes user datasets. GitHub Actions runs the same checks before deploying the default branch.
+`_site/` is the only deployment payload. `dist/BuildingWebViewer-vX.Y.Z.zip` includes source, tests and ready-to-use assets. Neither includes user datasets. GitHub Actions checks pushes/PRs; only a published stable Release deploys its tag. See [release guide](RELEASING.md).
 
 ## Change rules
 
@@ -47,3 +47,5 @@ python3 server.py --port 8765
 `build.py` injects `src/shared/page-boot.{js,css,html}` into the marked regions of every entry page. Do not edit generated boot regions in HTML. This tiny inline shell resolves the URL/storage locale before first paint and hides untranslated content until `initializeLocale()` finishes. It has slow-network/retry and reduced-motion states; it does not impose a minimum loading delay. No remote fonts, loader images, or locale fetches are required. Asset URLs carry content hashes so a deployment cannot pair the new startup shell with a stale cached bundle.
 
 Tool artwork lives in `assets/icons/` and is reused on the homepage, viewer header and empty state. The site favicon is independent.
+
+`package.json.version` controls generated page version links and package names. `src/shared/site-meta.json` and `site-footer.html` own page descriptions and shared project links; `build.py` also generates `sitemap.xml`. Run the build after changing them. `scripts/release.py` validates the release contract and never uploads anything.

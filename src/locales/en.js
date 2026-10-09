@@ -788,4 +788,10 @@ export const EN_MESSAGES = {
   "搜索项目模型": "Search project models",
   "再勾选左侧的建筑条目。": "Then check a building in the project tree.",
   "选择数据集文件夹，再勾选左侧的建筑条目。": "Open a dataset folder, then check a building in the project tree.",
+  "在浏览器中查看 LOD 模型、线框与点云。": "View LOD meshes, wireframes and point clouds in your browser.",
+  "支持属性编辑、几何计算与导出，数据始终留在本机。": "Edit attributes, compute geometry and export. Your data stays local.",
+  "项目信息": "Project information",
+  "个人主页 ↗": "Author ↗",
+  "项目仓库 ↗": "Repository ↗",
+  "版本更新记录": "Release notes",
 };

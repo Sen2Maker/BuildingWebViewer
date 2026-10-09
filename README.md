@@ -1,8 +1,8 @@
 <div align="center">
 
 <h1>BuildingWebViewer</h1>
-<p>在浏览器中查看建筑模型、线框与点云。</p>
-<p><strong>简体中文</strong> · <a href="README.en.md">English</a> · <a href="https://sen2maker.github.io/BuildingWebViewer/">在线体验 ↗</a></p>
+<p>通用三维数据工具箱：在浏览器中查看 LOD 模型、OBJ 线框与点云，支持属性编辑、几何计算和导出。</p>
+<p><strong>简体中文</strong> · <a href="README.en.md">English</a> · <a href="https://sen2maker.github.io/BuildingWebViewer/">在线体验 ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">下载正式版</a></p>
 
 </div>
 
@@ -12,7 +12,7 @@
 
 **在线使用** → [打开查看器](https://sen2maker.github.io/BuildingWebViewer/)，选择工具，添加本地文件或文件夹，再勾选要查看的对象。
 
-**离线使用** → 下载并完整解压项目，双击 `index.html`。无需安装依赖，推荐使用 Chrome / Edge。
+**离线使用** → 从 [Releases](https://github.com/Sen2Maker/BuildingWebViewer/releases/latest) 下载版本 ZIP 并完整解压，双击 `index.html`。无需安装依赖，推荐使用 Chrome / Edge。
 
 也可以在项目目录启动本地服务（需要 Python 3）：
 
@@ -57,6 +57,8 @@ python3 build.py --site --zip
 python3 scripts/check.py  # 开发检查，需要 Node 18+
 ```
 
-此命令更新浏览器脚本，并生成静态站点 `_site/` 和程序包 `dist/BuildingWebViewer.zip`。提交修改时一并提交生成的脚本。
+此命令更新浏览器脚本，并生成静态站点 `_site/` 和带版本号的程序包 `dist/BuildingWebViewer-vX.Y.Z.zip`（同时保留无版本号本地副本）。提交修改时一并提交生成的脚本。
 
 实现细节与参考资料见 [设计说明](docs/DESIGN_NOTES.md)。
+
+**版本与发布**：以 `v1.0.0` 为正式基线。后续修改先验证、写[更新日志](CHANGELOG.md)并汇报，再按发布指令上传；正式 Release 才更新在线网站。[发布约定](docs/RELEASING.md)

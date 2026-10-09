@@ -1,5 +1,14 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>线框模型查看器 · 三维数据工具箱</title><!-- boot-head:start -->
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>线框模型查看器 · 三维数据工具箱</title><!-- site-meta:start -->
+<meta name="description" content="通用 OBJ 线框查看器：按目录分组、点云叠加、最多三个面板对比与相机同步。General OBJ wireframe viewer with folder groups, point cloud overlays, up to three comparison panes and synchronized cameras.">
+<meta name="application-name" content="BuildingWebViewer">
+<meta name="application-version" content="1.0.0">
+<link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/wireframe.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="线框查看器 / Wireframe Viewer · BuildingWebViewer">
+<meta property="og:description" content="通用 OBJ 线框查看器：按目录分组、点云叠加、最多三个面板对比与相机同步。General OBJ wireframe viewer with folder groups, point cloud overlays, up to three comparison panes and synchronized cameras.">
+<meta property="og:url" content="https://sen2maker.github.io/BuildingWebViewer/wireframe.html">
+<!-- site-meta:end --><!-- boot-head:start -->
 <style>/* Critical startup styles are inline: they cannot be delayed by another request. */
 html.boot-pending{background:#f5f8f6}
 html.boot-pending body>:not(#page-boot){visibility:hidden!important}
@@ -43,7 +52,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   }, true);
 })();
 </script>
-<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/styles.css?v=0f47acdbe1b1"><link rel="stylesheet" href="assets/css/cloud.css?v=4e636ab53689"><link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=50ac4a406682"><link rel="stylesheet" href="assets/css/project-tree.css?v=783125685d9b"></head>
+<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/styles.css?v=0f47acdbe1b1"><link rel="stylesheet" href="assets/css/cloud.css?v=4e636ab53689"><link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=50ac4a406682"><link rel="stylesheet" href="assets/css/project-tree.css?v=783125685d9b"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"></head>
 <body data-tool="wireframe"><!-- boot-body:start -->
 <div id="page-boot" role="status" aria-live="polite" data-no-i18n>
   <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
@@ -70,7 +79,10 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <section id="viewer-panel-2" class="viewer-panel" hidden><div class="comparison-heading"><strong id="panel-label-2">线框 2</strong><span id="panel-stats-2">—</span></div><div class="viewport comparison-viewport"><canvas id="scene-2" class="scene-canvas" aria-label="第二个线框三维预览"></canvas><div id="panel-empty-2" class="wire-empty" hidden>空线框 · 0 条</div></div></section>
 <section id="viewer-panel-3" class="viewer-panel" hidden><div class="comparison-heading"><strong id="panel-label-3">线框 3</strong><span id="panel-stats-3">—</span></div><div class="viewport comparison-viewport"><canvas id="scene-3" class="scene-canvas" aria-label="第三个线框三维预览"></canvas><div id="panel-empty-3" class="wire-empty" hidden>空线框 · 0 条</div></div></section>
 </div>
-<div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span>文件不会上传</span></footer></main>
+<div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">文件不会上传</span><!-- site-footer:start -->
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">个人主页 ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.0.0</a></nav>
+
+<!-- site-footer:end --></footer></main>
 <aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
   <div class="inspector-heading"><div><p>VIEW SETTINGS</p><h2>查看器设置</h2></div><button type="button" data-close-settings aria-label="收起设置面板" title="收起 · Esc">×</button></div>
   <div class="inspector-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="settings-tab-display" data-settings-tab="display" aria-controls="settings-panel-display" aria-selected="true" tabindex="0">显示</button><button type="button" role="tab" id="settings-tab-camera" data-settings-tab="camera" aria-controls="settings-panel-camera" aria-selected="false" tabindex="-1">相机</button><button type="button" role="tab" id="settings-tab-bookmarks" data-settings-tab="bookmarks" aria-controls="settings-panel-bookmarks" aria-selected="false" tabindex="-1">书签</button></div>
@@ -81,4 +93,4 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
     <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside></div>
-<script defer src="assets/js/cloud.bundle.js?v=973551d990ef"></script></body></html>
+<script defer src="assets/js/cloud.bundle.js?v=24b9a622e1ee"></script></body></html>

@@ -3,7 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LOD 模型查看器</title><!-- boot-head:start -->
+  <title>LOD 模型查看器</title><!-- site-meta:start -->
+<meta name="description" content="本地 OBJ 建筑模型查看器：多栋陈列、实体与线框、色带、相机书签和项目文件管理。Local OBJ mesh viewer with multiple buildings, solid and wireframe display, palettes, camera bookmarks and project folders.">
+<meta name="application-name" content="BuildingWebViewer">
+<meta name="application-version" content="1.0.0">
+<link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/lod.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="LOD 模型查看器 / LOD Model Viewer · BuildingWebViewer">
+<meta property="og:description" content="本地 OBJ 建筑模型查看器：多栋陈列、实体与线框、色带、相机书签和项目文件管理。Local OBJ mesh viewer with multiple buildings, solid and wireframe display, palettes, camera bookmarks and project folders.">
+<meta property="og:url" content="https://sen2maker.github.io/BuildingWebViewer/lod.html">
+<!-- site-meta:end --><!-- boot-head:start -->
 <style>/* Critical startup styles are inline: they cannot be delayed by another request. */
 html.boot-pending{background:#f5f8f6}
 html.boot-pending body>:not(#page-boot){visibility:hidden!important}
@@ -50,7 +59,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <!-- boot-head:end -->
   <link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2">
   <link rel="stylesheet" href="assets/css/styles.css?v=0f47acdbe1b1">
-<link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=50ac4a406682"><link rel="stylesheet" href="assets/css/project-tree.css?v=783125685d9b"></head>
+<link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=50ac4a406682"><link rel="stylesheet" href="assets/css/project-tree.css?v=783125685d9b"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"></head>
 <body data-tool="lod"><!-- boot-body:start -->
 <div id="page-boot" role="status" aria-live="polite" data-no-i18n>
   <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
@@ -98,7 +107,10 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
         <div id="error" class="error-banner" role="alert" hidden><span></span><button id="retry">重新加载</button><button id="dismiss-error" aria-label="关闭提示">×</button></div>
         <div class="viewport-bottom"><div id="height-legend" class="scalar-legend" hidden><span>离地高度</span><i></i><span id="height-min"></span><span>—</span><span id="height-max"></span></div><div class="legend" id="legend"><span><i class="roof"></i>屋顶 / 坡面</span><span><i class="wall"></i>墙面</span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div>
       </div>
-      <footer><span class="desktop-hint">拖动旋转 <b>·</b> 滚轮缩放 <b>·</b> 右键 / Shift 拖动平移 <b>·</b> F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span>点击编号可单独查看 · 最多 24 栋</span></footer>
+      <footer><span class="desktop-hint">拖动旋转 <b>·</b> 滚轮缩放 <b>·</b> 右键 / Shift 拖动平移 <b>·</b> F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">点击编号可单独查看 · 最多 24 栋</span><!-- site-footer:start -->
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">个人主页 ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.0.0</a></nav>
+
+<!-- site-footer:end --></footer>
     </main>
 <aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
   <div class="inspector-heading"><div><p>VIEW SETTINGS</p><h2>查看器设置</h2></div><button type="button" data-close-settings aria-label="收起设置面板" title="收起 · Esc">×</button></div>
@@ -115,6 +127,6 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside>
   </div>
-  <script defer src="assets/js/lod.bundle.js?v=73eecd9f5b73"></script>
+  <script defer src="assets/js/lod.bundle.js?v=ab8462993393"></script>
 </body>
 </html>

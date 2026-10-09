@@ -3,6 +3,8 @@
 from pathlib import Path
 import argparse
 import hashlib
+import html
+import json
 import re
 import shutil
 import zipfile
@@ -41,7 +43,7 @@ def bundle(entry):
 
 
 def site_files():
-    return [*PAGES, *ICONS, *[str(p.relative_to(HERE)) for p in sorted((HERE / 'assets').rglob('*')) if p.is_file()]]
+    return [*PAGES, *ICONS, 'sitemap.xml', *[str(p.relative_to(HERE)) for p in sorted((HERE / 'assets').rglob('*')) if p.is_file()]]
 
 
 def boot_page(source):
@@ -54,12 +56,55 @@ def boot_page(source):
     return source
 
 
+def project_config():
+    config = json.loads((HERE / 'package.json').read_text(encoding='utf-8'))
+    if not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', config['version']):
+        raise ValueError('package.json version must be MAJOR.MINOR.PATCH')
+    return config
+
+
+def site_page(source, name, config):
+    info = json.loads((HERE / 'src/shared/site-meta.json').read_text(encoding='utf-8'))[name]
+    url = config['homepage'] + ('' if name == 'index.html' else name)
+    esc = lambda value: html.escape(value, quote=True)
+    metadata = '\n'.join([
+        '<meta name="description" content="' + esc(info['description']) + '">',
+        '<meta name="application-name" content="BuildingWebViewer">',
+        '<meta name="application-version" content="' + config['version'] + '">',
+        '<link rel="canonical" href="' + url + '">',
+        '<meta property="og:type" content="website">',
+        '<meta property="og:title" content="' + esc(info['title']) + '">',
+        '<meta property="og:description" content="' + esc(info['description']) + '">',
+        '<meta property="og:url" content="' + url + '">',
+    ])
+    footer = (HERE / 'src/shared/site-footer.html').read_text(encoding='utf-8')
+    repo = re.sub(r'\.git$', '', config['repository']['url'])
+    for key, value in {'author':config['author']['url'], 'repository':repo, 'release':repo + '/releases/tag/v' + config['version'], 'version':config['version']}.items():
+        footer = footer.replace('{{' + key + '}}', esc(value))
+    for marker, content in [('site-meta',metadata), ('site-footer',footer)]:
+        pattern = r'<!-- ' + marker + r':start -->[\s\S]*?<!-- ' + marker + r':end -->'
+        if len(re.findall(pattern,source)) != 1: raise ValueError(f'Missing or repeated {marker} block: {name}')
+        source = re.sub(pattern, lambda _: '<!-- ' + marker + ':start -->\n' + content + '\n<!-- ' + marker + ':end -->', source)
+    return source
+
+
+def sitemap(config):
+    urls = [config['homepage'] + ('' if name == 'index.html' else name) for name in PAGES]
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + ''.join('  <url><loc>' + html.escape(url) + '</loc></url>\n' for url in urls) + '</urlset>\n'
+
+
 def main():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument('--site', action='store_true')
     cli.add_argument('--zip', action='store_true')
     cli.add_argument('--check', action='store_true', help='Fail if tracked bundles are stale; do not write')
     args = cli.parse_args()
+    config = project_config()
+    target_map = HERE / 'sitemap.xml'
+    if args.check:
+        if not target_map.exists() or target_map.read_text(encoding='utf-8') != sitemap(config):
+            raise SystemExit('Stale sitemap; run python3 build.py')
+    else: target_map.write_text(sitemap(config),encoding='utf-8')
     for name, entry in ENTRIES.items():
         target = HERE / 'assets' / 'js' / f'{name}.bundle.js'
         output = bundle(entry)
@@ -73,7 +118,7 @@ def main():
     for name in PAGES:
         path = HERE / name
         source = path.read_text(encoding='utf-8')
-        output = boot_page(source)
+        output = site_page(boot_page(source), name, config)
         def asset_version(match):
             name = match[2]
             digest = hashlib.sha256((HERE / name).read_bytes()).hexdigest()[:12]
@@ -94,13 +139,21 @@ def main():
         (target / '.nojekyll').touch()
         print(f'Static website: {target}')
     if args.zip:
-        files = site_files() + ['build.py','server.py','start.sh','package.json','README.md','README.en.md','.gitignore','.gitattributes']
+        files = site_files() + ['build.py','server.py','start.sh','package.json','README.md','README.en.md','CHANGELOG.md','AGENTS.md','.gitignore','.gitattributes']
         for folder in ['src','tests','scripts','docs','.github']:
             files.extend(str(f.relative_to(HERE)) for f in sorted((HERE / folder).rglob('*')) if f.is_file())
-        target = HERE / 'dist' / 'BuildingWebViewer.zip'
+        target = HERE / 'dist' / ('BuildingWebViewer-v' + config['version'] + '.zip')
         target.parent.mkdir(exist_ok=True)
         with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
-            for name in sorted(set(files)): archive.write(HERE / name, 'BuildingWebViewer/' + name)
+            for name in sorted(set(files)):
+                # Stable timestamps and modes make the download reproducible from its tag.
+                info = zipfile.ZipInfo('BuildingWebViewer/' + name, date_time=(2020,1,1,0,0,0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = (0o100755 if name == 'start.sh' else 0o100644) << 16
+                archive.writestr(info, (HERE / name).read_bytes())
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        (target.parent / 'SHA256SUMS.txt').write_text(digest + '  ' + target.name + '\n',encoding='utf-8')
+        shutil.copy2(target,target.parent / 'BuildingWebViewer.zip')
         print(f'Package: {target} ({target.stat().st_size:,} bytes; no datasets)')
 
 

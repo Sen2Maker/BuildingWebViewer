@@ -1,0 +1,17 @@
+name: Check source and release package
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/check.py
+      - run: python3 build.py --zip
+      - run: python3 scripts/release.py

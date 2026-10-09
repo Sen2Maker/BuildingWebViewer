@@ -1,6 +1,15 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BuildingWebViewer · 三维数据工具箱</title><!-- boot-head:start -->
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BuildingWebViewer · 三维数据工具箱</title><!-- site-meta:start -->
+<meta name="description" content="在浏览器中查看 LOD 建筑模型、OBJ 线框与点云，支持属性映射、几何计算和导出，数据仅在本机处理。Browser-based LOD mesh, wireframe and point cloud viewers with attribute mapping, geometric processing and export. Files stay on your device.">
+<meta name="application-name" content="BuildingWebViewer">
+<meta name="application-version" content="1.0.0">
+<link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="BuildingWebViewer · 三维数据工具箱 / 3D Data Workspace">
+<meta property="og:description" content="在浏览器中查看 LOD 建筑模型、OBJ 线框与点云，支持属性映射、几何计算和导出，数据仅在本机处理。Browser-based LOD mesh, wireframe and point cloud viewers with attribute mapping, geometric processing and export. Files stay on your device.">
+<meta property="og:url" content="https://sen2maker.github.io/BuildingWebViewer/">
+<!-- site-meta:end --><!-- boot-head:start -->
 <style>/* Critical startup styles are inline: they cannot be delayed by another request. */
 html.boot-pending{background:#f5f8f6}
 html.boot-pending body>:not(#page-boot){visibility:hidden!important}
@@ -44,7 +53,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   }, true);
 })();
 </script>
-<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/hub.css?v=9b0731e72172"></head>
+<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/hub.css?v=9b0731e72172"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"></head>
 <body><!-- boot-body:start -->
 <div id="page-boot" role="status" aria-live="polite" data-no-i18n>
   <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
@@ -55,7 +64,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <!-- boot-body:end -->
 <header><a class="wordmark" href="index.html"><img class="brand" src="favicon.svg" width="34" height="34" alt=""> 三维数据工具箱</a><div class="header-actions"><span class="local"><i></i> 完全本地运行</span><button id="language-toggle" class="language-switch" type="button" role="switch" aria-checked="false" aria-label="Switch to English"><span lang="zh-CN">中文</span><span lang="en">EN</span></button></div></header>
 <main>
-  <div class="intro"><div><div class="eyebrow">3D DATA WORKSPACE</div><h1>为每一种三维数据，<br>找到合适的视角。</h1></div><p>选择一个工具，打开自己的数据。<br class="mobile-break"> 模型与点云始终留在你的设备上。</p></div>
+  <div class="intro"><div><div class="eyebrow">3D DATA WORKSPACE</div><h1>为每一种三维数据，<br>找到合适的视角。</h1></div><p>在浏览器中查看 LOD 模型、线框与点云。<br class="mobile-break"> 支持属性编辑、几何计算与导出，数据始终留在本机。</p></div>
   <div class="tools" aria-label="查看工具">
     <a class="tool lod" href="lod.html">
       <div class="card-top"><span class="number">01 / MESH</span><span class="arrow" aria-hidden="true">↗</span></div>
@@ -80,5 +89,8 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   </div>
   <div class="how"><span class="how-title">开始使用</span><span><b>1</b> 选择查看工具</span><span class="step-arrow">→</span><span><b>2</b> 手动打开数据文件夹</span><span class="step-arrow">→</span><span><b>3</b> 选择需要预览的数据</span></div>
 </main>
-<footer><span>不上传文件 · 不预设目录 · 无需安装依赖</span><span>BuildingWebViewer <b> / </b> 1.0</span></footer>
-<script defer src="assets/js/hub.bundle.js?v=292b6f6dc3f2"></script></body></html>
+<footer><span>不上传文件 · 不预设目录 · 无需安装依赖</span><!-- site-footer:start -->
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">个人主页 ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.0.0</a></nav>
+
+<!-- site-footer:end --></footer>
+<script defer src="assets/js/hub.bundle.js?v=59773ec91f45"></script></body></html>
