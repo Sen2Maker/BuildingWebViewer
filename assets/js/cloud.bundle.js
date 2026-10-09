@@ -776,7 +776,23 @@ const EN_MESSAGES = {
   "应用标签与列顺序": "Apply tags and column order",
   "恢复读取时的列设置": "Restore original column settings",
   "属性数值": "Attribute values",
-  "预览前 5 个当前显示点；统计也基于显示样本，不会为此重新读取大文件。": "Preview shows the first 5 displayed points. Statistics use the displayed sample and do not reread large files."
+  "预览前 5 个当前显示点；统计也基于显示样本，不会为此重新读取大文件。": "Preview shows the first 5 displayed points. Statistics use the displayed sample and do not reread large files.",
+  "已选 {0} 项管理 · {1} 个数据条目": "Managing {0} items · {1} datasets",
+  "已选 {0} 项 · {1} 个数据条目": "Selected {0} items · {1} datasets",
+  "显示选中数据": "Show selected data",
+  "隐藏选中数据": "Hide selected data",
+  "从页面移除 {0} 个数据条目{1}。磁盘文件不变；未导出的计算结果将丢失。": "Remove {0} datasets{1} from this page. Disk files stay unchanged; unsaved computed results will be lost.",
+  "仅选择当前搜索匹配的数据": "Select only data matching the current search",
+  "勾选后显示数据": "Check to display data",
+  "拖入文件或文件夹\n开始整理你的项目": "Drop files or folders\nStart organizing your project",
+  "每次预览一个建筑组；可多选管理": "Preview one building set at a time; select multiple items to manage",
+  "{0} 个建筑 ID": "{0} building sets",
+  "项目模型": "Project models",
+  "项目建筑": "Project buildings",
+  "按编号批量选择": "Select by model IDs",
+  "搜索项目模型": "Search project models",
+  "再勾选左侧的建筑条目。": "Then check a building in the project tree.",
+  "选择数据集文件夹，再勾选左侧的建筑条目。": "Open a dataset folder, then check a building in the project tree.",
 };
 
 
@@ -798,7 +814,7 @@ function setLanguage(language) {
 }
 /** Source-language keys keep messages readable; positional arguments are never translated. */
 function t(message, values = []) {
-  const format = currentLanguage === 'en' ? EN_MESSAGES[message] ?? message : message;
+  const format = currentLanguage === 'en' && Object.hasOwn(EN_MESSAGES,message) ? EN_MESSAGES[message] : message;
   return format.replace(/\{(\d+)\}/g, (token,index) => index < values.length ? String(values[index]) : token);
 }
 const sourceText = new WeakMap(), sourceAttributes = new WeakMap();
@@ -833,6 +849,7 @@ function localizeHTML(markup) {
 function initializeLocale(doc = document) {
   setLanguage(currentLanguage);
   translateTree(doc);
+  globalThis.BuildingViewerBoot?.ready();
   // URL propagation also works when browser storage is disabled, including file:// usage.
   for(const link of doc.querySelectorAll('a[href]')) {
     const href=link.getAttribute('href');
@@ -844,10 +861,10 @@ function initializeLocale(doc = document) {
 }
 
 
-// Source: src/pointcloud/point-project.js
+// Source: src/shared/project-model.js
 
 // Project groups are virtual: source identity and disk paths never change on a move.
-class PointProject {
+class ViewerProject {
   constructor() { this.groups = new Map(); this.serial = 0; }
   create(name, parent = '') {
     name = name.trim();
@@ -922,7 +939,7 @@ class PointProject {
   }
 }
 
-class PointManagementSelection {
+class ProjectSelection {
   constructor() { this.items = new Set(); this.anchor = null; }
   select(target, {toggle = false, range = false, ordered = []} = {}) {
     const from = ordered.indexOf(this.anchor), to = ordered.indexOf(target);
@@ -939,15 +956,20 @@ class PointManagementSelection {
   clear() { this.items.clear(); this.anchor = null; }
 }
 
-function pointBoxIntersects(a, b) {
+function projectBoxIntersects(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
-function mountPointProject({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
-  onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail}) {
+
+
+// Source: src/shared/project-tree.js
+
+
+function mountProjectTree({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
+  onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail = () => '', selectionHint = '勾选后显示数据'}) {
   const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
   const button = (text, label, fn) => { const node = make('button', text); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label); node.onclick = fn; return node; };
-  const dragType = 'application/x-buildingwebviewer-node', management = new PointManagementSelection();
+  const dragType = 'application/x-buildingwebviewer-node', management = new ProjectSelection();
   let focused = null, dragged = null, limit = 200, lastQuery = '', editorMode = null, editorTargets = [], rowTargets = new Map(), visible = [];
   const tools = make('div', null, 'project-tools');
   const createButton = button(t('+ 文件夹'), t('新建项目内文件夹'), () => openEditor('create'));
@@ -973,7 +995,7 @@ function mountPointProject({project, container, root, controls, getEntries, getS
       row.querySelector('.project-name').setAttribute('aria-pressed', String(selected));
     }
     moveButton.disabled = deleteButton.disabled = !management.items.size;
-    focusNote.textContent = management.items.size ? t("已选 {0} 项管理 · {1} 个点云", [management.items.size, project.files(management.items, getEntries()).length]) : t('Ctrl 多选 · 空白处框选 · 右键管理');
+    focusNote.textContent = management.items.size ? t("已选 {0} 项管理 · {1} 个数据条目", [management.items.size, project.files(management.items, getEntries()).length]) : t('Ctrl 多选 · 空白处框选 · 右键管理');
     focusNote.title = [...management.items].map(label).join('\n') || focusNote.textContent;
   }
   function selectTarget(target, event = {}) {
@@ -1001,7 +1023,7 @@ function mountPointProject({project, container, root, controls, getEntries, getS
     nameInput.hidden = mode !== 'create'; destinations.hidden = mode === 'remove';
     submit.textContent = mode === 'remove' ? t('确认移除') : mode === 'move' ? t('移动到此处') : t('创建');
     editorNote.textContent = mode === 'remove'
-      ? t("从页面移除 {0} 个点云{1}。磁盘文件不变；未导出的计算结果将丢失。", [project.files(editorTargets, getEntries()).length, editorTargets.some(target => typeof target === 'string') ? t('及所选文件夹') : ''])
+      ? t("从页面移除 {0} 个数据条目{1}。磁盘文件不变；未导出的计算结果将丢失。", [project.files(editorTargets, getEntries()).length, editorTargets.some(target => typeof target === 'string') ? t('及所选文件夹') : ''])
       : t('仅调整当前页面的分组，不修改磁盘文件。');
     fillDestinations(); (mode === 'create' ? nameInput : mode === 'move' ? destinations : submit).focus();
   }
@@ -1061,10 +1083,10 @@ function mountPointProject({project, container, root, controls, getEntries, getS
       const item = button(text, text, () => { closeMenu(); action(); }); item.setAttribute('role','menuitem'); item.disabled = !enabled; item.className = cls; menu.append(item);
     };
     menu.replaceChildren();
-    const caption = make('div', hasItems ? t("已选 {0} 项 · {1} 个点云", [management.items.size, files.length]) : t('项目管理'), 'project-menu-caption'); menu.append(caption);
+    const caption = make('div', hasItems ? t("已选 {0} 项 · {1} 个数据条目", [management.items.size, files.length]) : t('项目管理'), 'project-menu-caption'); menu.append(caption);
     add(t('新建文件夹…'), () => openEditor('create'));
-    add(t('显示选中点云'), () => onVisibility(files, true), files.length > 0 && (getMode() !== 'single' || files.length === 1));
-    add(t('隐藏选中点云'), () => onVisibility(files, false), files.some(entry => getSelected().has(entry)));
+    add(t('显示选中数据'), () => onVisibility(files, true), files.length > 0 && (getMode() !== 'single' || files.length === 1));
+    add(t('隐藏选中数据'), () => onVisibility(files, false), files.some(entry => getSelected().has(entry)));
     add(t('移动到…'), () => openEditor('move'), hasItems);
     add(t('移到项目根目录'), () => { try { project.moveMany(management.items, ''); onChange(); } catch(error) { status.textContent = error.message; } }, hasItems);
     add(t('展开全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = false; render(); }, project.groups.size > 0);
@@ -1110,7 +1132,7 @@ function mountPointProject({project, container, root, controls, getEntries, getS
     const area = {left:Math.max(bounds.left,selectionArea.left),right:Math.min(bounds.right,selectionArea.right),top:Math.max(bounds.top,selectionArea.top),bottom:Math.min(bounds.bottom,selectionArea.bottom)};
     Object.assign(marquee.style,{left:`${area.left}px`,top:`${area.top}px`,width:`${Math.max(0,area.right-area.left)}px`,height:`${Math.max(0,area.bottom-area.top)}px`});
     const hits = [];
-    for (const [row,target] of rowTargets) if (typeof target !== 'string' && pointBoxIntersects(selectionArea,row.getBoundingClientRect())) hits.push(target);
+    for (const [row,target] of rowTargets) if (typeof target !== 'string' && projectBoxIntersects(selectionArea,row.getBoundingClientRect())) hits.push(target);
     management.box(hits, band.additive ? band.before : []); focused = [...management.items].at(-1) || null; paintSelection();
   }
   function tickBand() { updateBand(); if (band?.active) animation = requestAnimationFrame(tickBand); }
@@ -1178,7 +1200,7 @@ function mountPointProject({project, container, root, controls, getEntries, getS
       const check = make('input'); check.type = 'checkbox'; check.checked = members.length > 0 && count === members.length; check.indeterminate = count > 0 && count < members.length;
       check.disabled = !!item.group && (getMode() === 'single' || !members.length);
       check.setAttribute('aria-label', t("显示 {0}", [label(target)]));
-      const hit = make('label', null, 'project-check-hit'); hit.title = item.group && query ? t('仅选择当前搜索匹配的点云') : t('勾选后用于显示、计算与合并'); hit.append(check);
+      const hit = make('label', null, 'project-check-hit'); hit.title = item.group && query ? t('仅选择当前搜索匹配的数据') : t(selectionHint); hit.append(check);
       hit.onpointerdown = event => { closeMenu(); event.stopPropagation(); }; hit.onclick = event => event.stopPropagation(); hit.ondragstart = event => event.preventDefault();
       check.onchange = () => item.group ? onGroupSelection(members, check.checked) : onToggle(item.entry);
       if (item.group) {
@@ -1187,15 +1209,66 @@ function mountPointProject({project, container, root, controls, getEntries, getS
       } else row.append(make('span', '', 'project-chevron'));
       const name = button((item.group ? '▱ ' : '') + (item.group?.name || item.entry.treeName || item.entry.id), t("管理 {0}", [label(target)]), event => selectTarget(target,event));
       name.className = 'project-name'; name.title = item.group ? project.path(target) : t("{0} / {1}\n来源：{2}", [project.path(item.entry.group) || t('项目根目录'), item.entry.treeName || item.entry.id, item.entry.id]);
-      const meta = make('span', item.group ? String(project.members(target, entries).length) : item.entry.file.generatedCloud ? t('结果') : detail(item.entry), 'project-meta');
+      const meta = make('span', item.group ? String(project.members(target, entries).length) : detail(item.entry), 'project-meta');
       row.append(hit, name, meta, gripFor(target)); wireDrop(row, item.group ? item.group.id : item.entry.group || ''); fragment.append(row);
     }
     if (flat.length > limit) fragment.append(button(t("显示更多（剩余 {0} 项）", [flat.length - limit]), t('显示更多项目条目'), () => { limit += 200; render(); }));
-    if (!flat.length) fragment.append(make('p', query ? t('没有匹配的点云') : t('拖入文件或文件夹\n开始整理你的点云'), 'empty-list'));
+    if (!flat.length) fragment.append(make('p', query ? t('没有匹配的数据') : t('拖入文件或文件夹\n开始整理你的项目'), 'empty-list'));
     const blank = make('div', null, 'project-selection-space'); blank.setAttribute('aria-hidden','true'); fragment.append(blank);
     const scroll = container.scrollTop; container.replaceChildren(fragment); container.scrollTop = scroll; paintSelection();
   }
   return {render};
+}
+
+
+// Source: src/shared/project-import.js
+/** Import adapters preserve entry/File identity so tree edits do not invalidate render caches. */
+function projectFilePath(file, paths) {
+  return (paths?.get(file) || file.webkitRelativePath || file.name).replaceAll('\\', '/');
+}
+function projectFileKey(file, path) { return `${path}\0${file.size}\0${file.lastModified}`; }
+function projectUniqueId(base, names) {
+  let id = base, suffix = 2;
+  while (names.has(id)) id = `${base}_${suffix++}`;
+  names.add(id); return id;
+}
+function appendLodFiles(entries, project, files, paths) {
+  const keys = new Set(entries.map(entry => entry.key)), names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.obj$/i.test(file.name)) continue;
+    const path = projectFilePath(file, paths), key = projectFileKey(file,path);
+    if (keys.has(key)) { duplicates++; continue; }
+    const base = file.name.replace(/\.obj$/i,''), id = projectUniqueId(base,names);
+    const entry = {id,key,file,bytes:file.size}; project.assign(entry,path);
+    // Keep names clear when separate folders contain the same model number.
+    if (id !== base) entry.treeName += ` [${id}]`;
+    entries.push(entry); keys.add(key); added++;
+  }
+  return {added,duplicates};
+}
+function appendWireFiles(entries, project, files, paths) {
+  const groups = new Map(entries.map(entry => [entry.sourceGroup,entry]));
+  const names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name)) continue;
+    const path = projectFilePath(file,paths), parts = path.split('/');
+    const sourceGroup = parts.slice(0,-1).join('/');
+    let entry = groups.get(sourceGroup);
+    if (!entry) {
+      const base = parts.length > 2 ? parts.slice(1,-1).join('/') : parts.length === 2 ? parts[0] : 'Files';
+      entry = {id:projectUniqueId(base,names),sourceGroup,wires:[],clouds:[],fileKeys:new Set()};
+      // A leaf is a building set; its parent folders remain independently manageable.
+      project.assign(entry,sourceGroup || 'Files');
+      entries.push(entry); groups.set(sourceGroup,entry);
+    }
+    const key = projectFileKey(file,path);
+    if (entry.fileKeys.has(key)) { duplicates++; continue; }
+    entry.fileKeys.add(key); entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file); added++;
+  }
+  // Keep file ordering stable while adding files: selected dropdown indices remain valid.
+  return {added,duplicates};
 }
 
 
@@ -4150,6 +4223,8 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
 
 
 
+
+
 initializeLocale();
 (() => {
   const $ = id => document.getElementById(id);
@@ -4160,7 +4235,7 @@ initializeLocale();
   const formatSize = value => value > 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${(value / 1024).toFixed(1)} KB`;
   const fieldLabel = name => /^column_\d+$/.test(name) ? t("第 {0} 列", [name.slice(7)]) : name;
   const compact = value => !Number.isFinite(value) ? '—' : Math.abs(value) > 10000 ? value.toPrecision(6) : Number(value.toPrecision(5)).toString();
-  let entries = [], active = null, page = 0, revision = 0, overlay = null;
+  let entries = [], active = null, revision = 0, overlay = null;
   let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
@@ -4168,7 +4243,7 @@ initializeLocale();
   let columnsControls = null, processingControls = null, displayedItems = [], resultSerial = 0;
   let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
-  const pointProject = new PointProject(); let projectControls = null;
+  const pointProject = new ViewerProject(); let projectControls = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
@@ -4221,7 +4296,7 @@ initializeLocale();
   }
   function matchingEntries() {
     const query = $('search').value.trim().toLowerCase();
-    return entries.filter(entry => isWire ? entry.id.toLowerCase().includes(query) : pointProject.matches(entry, query));
+    return entries.filter(entry => pointProject.matches(entry, query));
   }
   function list() {
     const filtered = matchingEntries();
@@ -4231,30 +4306,11 @@ initializeLocale();
       projectControls?.render(); updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
       processingControls?.refresh([...selectedCloudEntries], Boolean(loadController)); return;
     }
-    const pages = Math.ceil(filtered.length / 50);
-    page = Math.max(0, Math.min(page, Math.max(0, pages - 1)));
-    $('filter-count').textContent = `${pretty(filtered.length)} ${isWire ? t('个建筑 ID') : t("个文件 · 已选 {0}", [selectedCloudEntries.size])}`;
-    $('item-count').textContent = pretty(entries.length); $('page-info').textContent = pages ? `${page + 1} / ${pages}` : '0 / 0';
-    $('previous-page').disabled = page === 0; $('next-page').disabled = page >= pages - 1;
-    const fragment = document.createDocumentFragment();
-    for (const entry of filtered.slice(page * 50, (page + 1) * 50)) {
-      const button = document.createElement('button'); button.className = 'data-entry';
-      const selected = isWire ? active?.id === entry.id : selectedCloudEntries.has(entry);
-      button.setAttribute('aria-pressed', String(selected));
-      if (!isWire && cloudMode === 'multiple') { button.setAttribute('role', 'checkbox'); button.setAttribute('aria-checked', String(selected)); }
-      const title = document.createElement('strong'); title.textContent = isWire ? `# ${entry.id}` : entry.id;
-      const detail = document.createElement('small');
-      detail.textContent = isWire ? t("{0} 个线框 · {1} 个点云", [entry.wires.length, entry.clouds.length]) : entry.file.generatedCloud ? t("{0} 点 · 计算结果", [pretty(entry.file.generatedCloud.count)]) : formatSize(entry.file.size);
-      button.append(title, detail); button.title = entry.id;
-      button.onclick = () => isWire ? active?.id === entry.id ? clear() : choose(entry) : toggleCloud(entry); fragment.append(button);
-    }
-    if (!filtered.length) {
-      const empty = document.createElement('p'); empty.className = 'empty-list';
-      empty.textContent = entries.length ? t('没有匹配的数据') : t('先选择你的数据文件或文件夹'); fragment.append(empty);
-    }
-    $('data-list').replaceChildren(fragment);
-    updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
+    $('filter-count').textContent = t("{0} 个建筑 ID", [pretty(filtered.length)]);
+    $('item-count').textContent = pretty(entries.length);
+    projectControls?.render();
   }
+
   function fillWireSelect(select, files, index = null) {
     select.replaceChildren(); option(select, '', t('不加载线框'));
     files.forEach((file, fileIndex) => option(select, String(fileIndex), file.name));
@@ -4303,34 +4359,32 @@ initializeLocale();
     $('geometry-note').textContent = t('未选择数据时保持空白'); $('data-notes').textContent = ''; $('color-legend').hidden = true;
   }
   function receive(fileList, fromFolder, dropPaths = null) {
-    const files = [...fileList]; if (!files.length) return;
-    if (!isWire) { receiveCloudFiles(files, fromFolder); return; }
-    clear(); cached.clear(); entries = []; page = 0; $('search').value = ''; list();
-    $('source-note').textContent = t('正在检查所选文件夹'); let next = [];
-    if (isWire) {
-      const groups = new Map();
-      for (const file of files) {
-        if (!/\.obj$/i.test(file.name) && !pointExtension.test(file.name)) continue;
-        const parts = (dropPaths?.get(file) || file.webkitRelativePath || file.name).split('/');
-        const id = parts.length > 2 ? parts.slice(1, -1).join('/') : parts.length === 2 ? parts[0] : t('数据');
-        if (!groups.has(id)) groups.set(id, { id, wires: [], clouds: [] });
-        groups.get(id)[/\.obj$/i.test(file.name) ? 'wires' : 'clouds'].push(file);
-      }
-      next = [...groups.values()].filter(entry => entry.wires.length || entry.clouds.length);
-      for (const entry of next) {
-        entry.wires.sort((a, b) => natural(a.name, b.name)); entry.clouds.sort((a, b) => natural(a.name, b.name));
-      }
-    } else next = files.filter(file => pointExtension.test(file.name)).map(file => ({
-      id: fromFolder ? file.webkitRelativePath.split('/').slice(1).join('/') || file.name : file.name, file,
-    }));
-    if (!next.length) {
-      $('source-note').textContent = t('所选目录没有支持的数据');
-      error(isWire ? t('未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个建筑子目录。') : t('未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。'));
-      return;
+    const files = [...fileList];
+    if (!isWire) return receiveCloudFiles(files, fromFolder, dropPaths);
+    const result = appendWireFiles(entries, pointProject, files, dropPaths);
+    $('search').value = ''; list();
+    $('source-note').textContent = t('文件留在本机 · 分组仅保留在本次页面');
+    error(!result.added && !result.duplicates ? t('未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个建筑子目录。') : '');
+    // Refresh file choices on an active set without resetting its camera or selection.
+    if (active) {
+      const indices = ['wire-file','wire-file-2','wire-file-3'].map(id => $(id).value);
+      indices.forEach((value,index) => fillWireSelect($(['wire-file','wire-file-2','wire-file-3'][index]),active.wires,value === '' ? null : Number(value)));
+      const cloudValue = $('cloud-file').value;
+      $('cloud-file').replaceChildren(); option($('cloud-file'), '', t('不加载点云'));
+      active.clouds.forEach((file,index) => option($('cloud-file'),String(index),file.name));
+      $('cloud-file').value = cloudValue;
+      $('wire-file').disabled = !active.wires.length; $('cloud-file').disabled = !active.clouds.length;
+      $('compare-mode').disabled = active.wires.length < 2;
+      $('compare-count').querySelector('option[value="3"]').disabled = active.wires.length < 3;
+      setComparisonUI();
     }
-    next.sort((a, b) => natural(a.id, b.id)); entries = next; list();
-    const root = fromFolder ? (dropPaths?.get(files[0]) || files[0].webkitRelativePath || '').split('/')[0] || t('所选文件夹') : t('所选文件');
-    $('source-note').textContent = t("{0} · {1} {2} · 点击列表后读取", [root, pretty(next.length), isWire ? t('个建筑') : t('个点云')]);
+    return result;
+  }
+  function removeWireEntries(selection) {
+    const removed = new Set(selection), removingActive = removed.has(active);
+    if (removingActive) clear();
+    for (const entry of removed) for (const file of [...entry.wires,...entry.clouds]) cached.forget(file);
+    entries = entries.filter(entry => !removed.has(entry)); list();
   }
   function choose(entry) {
     active = entry; overlay = null; error('');
@@ -4375,7 +4429,7 @@ initializeLocale();
       entries.push(entry); existing.add(key); names.add(id); added++;
     }
     entries.sort((a, b) => natural(a.id, b.id));
-    page = 0; $('search').value = ''; list();
+    $('search').value = ''; list();
     $('source-note').textContent = t('文件留在本机 · 分组仅保留在本次页面');
     error(!added && !files.some(file => pointExtension.test(file.name)) ? t('未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。') : '');
     return { added, duplicates };
@@ -4696,11 +4750,12 @@ initializeLocale();
     }, 'image/png');
   }
 
-  if (!isWire) projectControls = mountPointProject({
+  if (!isWire) projectControls = mountProjectTree({
     project: pointProject, container: $('data-list'), root: $('project-root'), controls: $('project-controls'),
     getEntries: () => entries, getSelected: () => selectedCloudEntries, getMode: () => cloudMode,
     getQuery: () => $('search').value, onToggle: entry => cloudMode === 'single' && selectedCloudEntries.has(entry) ? removeCloud(entry) : toggleCloud(entry), onRemove: deleteProjectEntries, onChange: list,
-    detail: entry => formatSize(entry.file.size),
+    detail: entry => entry.file.generatedCloud ? t('结果') : formatSize(entry.file.size),
+    selectionHint: '勾选后用于显示、计算与合并',
     onVisibility: (members, checked) => {
       if (checked && cloudMode === 'single') {
         if (members.length !== 1) return;
@@ -4714,6 +4769,20 @@ initializeLocale();
       for (const entry of members) checked ? selectedCloudEntries.add(entry) : selectedCloudEntries.delete(entry);
       applyCloudSelection();
     },
+  });
+
+  if (isWire) projectControls = mountProjectTree({
+    project: pointProject, container: $('data-list'), root: $('project-root'), controls: $('project-controls'),
+    getEntries: () => entries, getSelected: () => new Set(active ? [active] : []), getMode: () => 'single',
+    getQuery: () => $('search').value, onToggle: entry => active === entry ? clear() : choose(entry),
+    onRemove: removeWireEntries, onChange: list,
+    detail: entry => `${entry.wires.length} OBJ · ${entry.clouds.length} PC`,
+    selectionHint: '每次预览一个建筑组；可多选管理',
+    onVisibility: (members, checked) => {
+      if (checked && members.length === 1) choose(members[0]);
+      else if (!checked && members.includes(active)) clear();
+    },
+    onGroupSelection: () => {},
   });
 
   if (!isWire) mountPointDrop({
@@ -4734,9 +4803,7 @@ initializeLocale();
     overlay = file; const select = $('cloud-file'); select.querySelector('option[value="overlay"]')?.remove();
     option(select, 'overlay', t("{0}（另选）", [file.name])); select.disabled = false; select.value = 'overlay'; load();
   };
-  $('search').oninput = () => { page = 0; list(); };
-  $('previous-page').onclick = () => { page--; list(); $('data-list').scrollTop = 0; };
-  $('next-page').onclick = () => { page++; list(); $('data-list').scrollTop = 0; };
+  $('search').oninput = () => { list(); };
   $('clear-selection').onclick = clear; $('dismiss-error').onclick = () => error('');
   if (!isWire) {
     for (const button of document.querySelectorAll('[data-cloud-mode]')) button.onclick = () => setCloudMode(button.dataset.cloudMode);
@@ -4797,7 +4864,7 @@ initializeLocale();
         }
         if (results.length > 1) cloudMode = 'multiple';
         $('source-note').textContent = t("已列出 {0} 个条目 · 计算结果请导出保存", [pretty(entries.length)]);
-        active = lastCloudEntry; page = Math.floor((entries.length - 1) / 50); $('search').value = ''; list();
+        active = lastCloudEntry; $('search').value = ''; list();
         await loadCloudSelection();
         const mapping=results[0]?.cloud.featureMapping||{};
         const field=mapping.slope||mapping.planarity||mapping.roughness||mapping.nz;
@@ -4817,8 +4884,7 @@ initializeLocale();
     });
     mountViewerLayout();
     if (isWire) mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.obj$/i.test(name) || pointExtension.test(name), onFiles: items => {
-      receive(items.map(item => item.file), true, new Map(items.map(item => [item.file,item.path])));
-      return {added: entries.length, duplicates: 0};
+      return receive(items.map(item => item.file), true, new Map(items.map(item => [item.file,item.path])));
     }});
     clear(); update();
   } catch (cause) { error(cause.message); }

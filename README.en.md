@@ -38,10 +38,10 @@ Organize wireframe data as `dataset / object-ID / wireframe.obj, points.txt`. Te
 
 ## Essentials
 
-Switch 中文 / English in the homepage header; the preference follows you into each tool. On phones, use file selection, one-finger orbit and two-finger zoom/pan. Folder picking and large datasets depend on browser support and device memory.
+Switch 中文 / English in the homepage header; the preference follows you into each tool and its loading screen, avoiding a flash of the other language on slow connections. On phones, use file selection, one-finger orbit and two-finger zoom/pan. Folder picking and large datasets depend on browser support and device memory.
 
 - **Local data**: files are processed in your browser, never uploaded. No model datasets are bundled.
-- **Project tree**: drop files or folders, collapse groups, create folders, Ctrl/Shift-select or box-select items, and use the context menu for batch moves/removal. The sidebar can be resized or collapsed. Checked clouds are used for display, processing, and merging. Groups exist for this session only; disk files stay unchanged.
+- **Shared project tree**: all three tools support appended imports. Drop files or folders, collapse groups, create folders, Ctrl/Shift-select or box-select items, and use the context menu for batch moves/removal. The sidebar can be resized or collapsed. Checked clouds are used for display, processing, and merging. Groups exist for this session only; disk files stay unchanged.
 - **Explicit selection**: select objects after opening a folder. Reloading requires selecting your data again; saved bookmarks remain.
 - **Large files**: all points are displayed by default, with optional per-file limits and cache reuse. Capacity depends on available RAM and GPU memory.
 - **Coordinates**: point cloud overlays preserve original coordinates and require a common coordinate system. LOD models use a rearranged display layout.

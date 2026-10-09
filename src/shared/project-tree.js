@@ -1,106 +1,11 @@
-import { t } from '../shared/i18n.js';
-// Project groups are virtual: source identity and disk paths never change on a move.
-export class PointProject {
-  constructor() { this.groups = new Map(); this.serial = 0; }
-  create(name, parent = '') {
-    name = name.trim();
-    if (!name || /[/\\\x00-\x1f]/.test(name)) throw Error(t('请输入文件夹名称，不含斜线或控制字符'));
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    if ([...this.groups.values()].some(group => group.parent === parent && group.name === name)) throw Error(t('此位置已有同名文件夹'));
-    const group = {id: `group:${++this.serial}`, name, parent, collapsed: false};
-    this.groups.set(group.id, group); return group.id;
-  }
-  assign(entry, path) {
-    const parts = path.split('/').filter(Boolean); entry.treeName = parts.pop() || entry.id;
-    let parent = '';
-    for (const name of parts) {
-      parent = [...this.groups.values()].find(group => group.parent === parent && group.name === name)?.id || this.create(name, parent);
-    }
-    entry.group = parent;
-  }
-  within(groupId, ancestor) {
-    if (!ancestor) return true;
-    for (let group = this.groups.get(groupId); group; group = this.groups.get(group.parent)) if (group.id === ancestor) return true;
-    return false;
-  }
-  path(id) {
-    const parts = [];
-    for (let group = this.groups.get(id); group; group = this.groups.get(group.parent)) parts.unshift(group.name);
-    return parts.join('/');
-  }
-  members(id, entries) { return entries.filter(entry => this.within(entry.group, id)); }
-  move(target, parent) {
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    if (typeof target === 'string') {
-      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
-      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
-      if ([...this.groups.values()].some(other => other.id !== target && other.parent === parent && other.name === group.name)) throw Error(t('目标位置已有同名文件夹'));
-      group.parent = parent;
-    } else target.group = parent;
-    if (parent) this.groups.get(parent).collapsed = false;
-  }
-  roots(targets) {
-    const unique = [...new Set(targets)], groups = unique.filter(target => typeof target === 'string');
-    return unique.filter(target => !groups.some(group => group !== target && this.within(
-      typeof target === 'string' ? this.groups.get(target)?.parent : target.group, group)));
-  }
-  files(targets, entries) {
-    const selected = new Set();
-    for (const target of this.roots(targets)) {
-      for (const entry of typeof target === 'string' ? this.members(target, entries) : [target]) if (entries.includes(entry)) selected.add(entry);
-    }
-    return [...selected];
-  }
-  moveMany(targets, parent) {
-    const roots = this.roots(targets);
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    const movingGroups = new Set(roots.filter(target => typeof target === 'string'));
-    const names = new Set([...this.groups.values()].filter(group => group.parent === parent && !movingGroups.has(group.id)).map(group => group.name));
-    // Validate the whole batch before moving anything, so a conflict cannot leave half a move.
-    for (const target of movingGroups) {
-      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
-      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
-      if (names.has(group.name)) throw Error(t('目标位置存在同名文件夹，本次移动未执行'));
-      names.add(group.name);
-    }
-    for (const target of roots) this.move(target, parent);
-    return roots;
-  }
-  removeGroup(id) {
-    const removed = [...this.groups.keys()].filter(key => this.within(key, id));
-    for (const key of removed) this.groups.delete(key);
-  }
-  matches(entry, query) {
-    return `${this.path(entry.group)}/${entry.treeName || entry.id} ${entry.id}`.toLowerCase().includes(query.toLowerCase().trim());
-  }
-}
+import { t } from './i18n.js';
+import { ProjectSelection, projectBoxIntersects } from './project-model.js';
 
-export class PointManagementSelection {
-  constructor() { this.items = new Set(); this.anchor = null; }
-  select(target, {toggle = false, range = false, ordered = []} = {}) {
-    const from = ordered.indexOf(this.anchor), to = ordered.indexOf(target);
-    if (range && from >= 0 && to >= 0) {
-      if (!toggle) this.items.clear();
-      ordered.slice(Math.min(from,to), Math.max(from,to)+1).forEach(item => this.items.add(item));
-    } else {
-      if (!toggle) this.items.clear();
-      if (toggle && this.items.has(target)) this.items.delete(target); else this.items.add(target);
-      this.anchor = target;
-    }
-  }
-  box(hits, base = []) { this.items = new Set([...base, ...hits]); }
-  clear() { this.items.clear(); this.anchor = null; }
-}
-
-export function pointBoxIntersects(a, b) {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-}
-
-export function mountPointProject({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
-  onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail}) {
+export function mountProjectTree({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
+  onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail = () => '', selectionHint = '勾选后显示数据'}) {
   const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
   const button = (text, label, fn) => { const node = make('button', text); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label); node.onclick = fn; return node; };
-  const dragType = 'application/x-buildingwebviewer-node', management = new PointManagementSelection();
+  const dragType = 'application/x-buildingwebviewer-node', management = new ProjectSelection();
   let focused = null, dragged = null, limit = 200, lastQuery = '', editorMode = null, editorTargets = [], rowTargets = new Map(), visible = [];
   const tools = make('div', null, 'project-tools');
   const createButton = button(t('+ 文件夹'), t('新建项目内文件夹'), () => openEditor('create'));
@@ -126,7 +31,7 @@ export function mountPointProject({project, container, root, controls, getEntrie
       row.querySelector('.project-name').setAttribute('aria-pressed', String(selected));
     }
     moveButton.disabled = deleteButton.disabled = !management.items.size;
-    focusNote.textContent = management.items.size ? t("已选 {0} 项管理 · {1} 个点云", [management.items.size, project.files(management.items, getEntries()).length]) : t('Ctrl 多选 · 空白处框选 · 右键管理');
+    focusNote.textContent = management.items.size ? t("已选 {0} 项管理 · {1} 个数据条目", [management.items.size, project.files(management.items, getEntries()).length]) : t('Ctrl 多选 · 空白处框选 · 右键管理');
     focusNote.title = [...management.items].map(label).join('\n') || focusNote.textContent;
   }
   function selectTarget(target, event = {}) {
@@ -154,7 +59,7 @@ export function mountPointProject({project, container, root, controls, getEntrie
     nameInput.hidden = mode !== 'create'; destinations.hidden = mode === 'remove';
     submit.textContent = mode === 'remove' ? t('确认移除') : mode === 'move' ? t('移动到此处') : t('创建');
     editorNote.textContent = mode === 'remove'
-      ? t("从页面移除 {0} 个点云{1}。磁盘文件不变；未导出的计算结果将丢失。", [project.files(editorTargets, getEntries()).length, editorTargets.some(target => typeof target === 'string') ? t('及所选文件夹') : ''])
+      ? t("从页面移除 {0} 个数据条目{1}。磁盘文件不变；未导出的计算结果将丢失。", [project.files(editorTargets, getEntries()).length, editorTargets.some(target => typeof target === 'string') ? t('及所选文件夹') : ''])
       : t('仅调整当前页面的分组，不修改磁盘文件。');
     fillDestinations(); (mode === 'create' ? nameInput : mode === 'move' ? destinations : submit).focus();
   }
@@ -214,10 +119,10 @@ export function mountPointProject({project, container, root, controls, getEntrie
       const item = button(text, text, () => { closeMenu(); action(); }); item.setAttribute('role','menuitem'); item.disabled = !enabled; item.className = cls; menu.append(item);
     };
     menu.replaceChildren();
-    const caption = make('div', hasItems ? t("已选 {0} 项 · {1} 个点云", [management.items.size, files.length]) : t('项目管理'), 'project-menu-caption'); menu.append(caption);
+    const caption = make('div', hasItems ? t("已选 {0} 项 · {1} 个数据条目", [management.items.size, files.length]) : t('项目管理'), 'project-menu-caption'); menu.append(caption);
     add(t('新建文件夹…'), () => openEditor('create'));
-    add(t('显示选中点云'), () => onVisibility(files, true), files.length > 0 && (getMode() !== 'single' || files.length === 1));
-    add(t('隐藏选中点云'), () => onVisibility(files, false), files.some(entry => getSelected().has(entry)));
+    add(t('显示选中数据'), () => onVisibility(files, true), files.length > 0 && (getMode() !== 'single' || files.length === 1));
+    add(t('隐藏选中数据'), () => onVisibility(files, false), files.some(entry => getSelected().has(entry)));
     add(t('移动到…'), () => openEditor('move'), hasItems);
     add(t('移到项目根目录'), () => { try { project.moveMany(management.items, ''); onChange(); } catch(error) { status.textContent = error.message; } }, hasItems);
     add(t('展开全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = false; render(); }, project.groups.size > 0);
@@ -263,7 +168,7 @@ export function mountPointProject({project, container, root, controls, getEntrie
     const area = {left:Math.max(bounds.left,selectionArea.left),right:Math.min(bounds.right,selectionArea.right),top:Math.max(bounds.top,selectionArea.top),bottom:Math.min(bounds.bottom,selectionArea.bottom)};
     Object.assign(marquee.style,{left:`${area.left}px`,top:`${area.top}px`,width:`${Math.max(0,area.right-area.left)}px`,height:`${Math.max(0,area.bottom-area.top)}px`});
     const hits = [];
-    for (const [row,target] of rowTargets) if (typeof target !== 'string' && pointBoxIntersects(selectionArea,row.getBoundingClientRect())) hits.push(target);
+    for (const [row,target] of rowTargets) if (typeof target !== 'string' && projectBoxIntersects(selectionArea,row.getBoundingClientRect())) hits.push(target);
     management.box(hits, band.additive ? band.before : []); focused = [...management.items].at(-1) || null; paintSelection();
   }
   function tickBand() { updateBand(); if (band?.active) animation = requestAnimationFrame(tickBand); }
@@ -331,7 +236,7 @@ export function mountPointProject({project, container, root, controls, getEntrie
       const check = make('input'); check.type = 'checkbox'; check.checked = members.length > 0 && count === members.length; check.indeterminate = count > 0 && count < members.length;
       check.disabled = !!item.group && (getMode() === 'single' || !members.length);
       check.setAttribute('aria-label', t("显示 {0}", [label(target)]));
-      const hit = make('label', null, 'project-check-hit'); hit.title = item.group && query ? t('仅选择当前搜索匹配的点云') : t('勾选后用于显示、计算与合并'); hit.append(check);
+      const hit = make('label', null, 'project-check-hit'); hit.title = item.group && query ? t('仅选择当前搜索匹配的数据') : t(selectionHint); hit.append(check);
       hit.onpointerdown = event => { closeMenu(); event.stopPropagation(); }; hit.onclick = event => event.stopPropagation(); hit.ondragstart = event => event.preventDefault();
       check.onchange = () => item.group ? onGroupSelection(members, check.checked) : onToggle(item.entry);
       if (item.group) {
@@ -340,11 +245,11 @@ export function mountPointProject({project, container, root, controls, getEntrie
       } else row.append(make('span', '', 'project-chevron'));
       const name = button((item.group ? '▱ ' : '') + (item.group?.name || item.entry.treeName || item.entry.id), t("管理 {0}", [label(target)]), event => selectTarget(target,event));
       name.className = 'project-name'; name.title = item.group ? project.path(target) : t("{0} / {1}\n来源：{2}", [project.path(item.entry.group) || t('项目根目录'), item.entry.treeName || item.entry.id, item.entry.id]);
-      const meta = make('span', item.group ? String(project.members(target, entries).length) : item.entry.file.generatedCloud ? t('结果') : detail(item.entry), 'project-meta');
+      const meta = make('span', item.group ? String(project.members(target, entries).length) : detail(item.entry), 'project-meta');
       row.append(hit, name, meta, gripFor(target)); wireDrop(row, item.group ? item.group.id : item.entry.group || ''); fragment.append(row);
     }
     if (flat.length > limit) fragment.append(button(t("显示更多（剩余 {0} 项）", [flat.length - limit]), t('显示更多项目条目'), () => { limit += 200; render(); }));
-    if (!flat.length) fragment.append(make('p', query ? t('没有匹配的点云') : t('拖入文件或文件夹\n开始整理你的点云'), 'empty-list'));
+    if (!flat.length) fragment.append(make('p', query ? t('没有匹配的数据') : t('拖入文件或文件夹\n开始整理你的项目'), 'empty-list'));
     const blank = make('div', null, 'project-selection-space'); blank.setAttribute('aria-hidden','true'); fragment.append(blank);
     const scroll = container.scrollTop; container.replaceChildren(fragment); container.scrollTop = scroll; paintSelection();
   }

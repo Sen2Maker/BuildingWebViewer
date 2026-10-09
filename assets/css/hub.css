@@ -13,3 +13,7 @@ main{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:cl
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
 @media(max-width:380px){header{gap:8px}.wordmark{font-size:12px;gap:6px}.brand{width:27px;height:27px}}
+
+.tool .art{object-fit:contain;height:clamp(90px,20vh,220px);width:100%;align-self:center;transition:transform .25s}.tool:hover .art{transform:translateY(-3px)}
+@media(max-width:700px){.tool .art{height:clamp(52px,14vh,110px)}}
+@media(prefers-reduced-motion:reduce){.tool .art{transition:none}}

@@ -776,7 +776,23 @@ const EN_MESSAGES = {
   "应用标签与列顺序": "Apply tags and column order",
   "恢复读取时的列设置": "Restore original column settings",
   "属性数值": "Attribute values",
-  "预览前 5 个当前显示点；统计也基于显示样本，不会为此重新读取大文件。": "Preview shows the first 5 displayed points. Statistics use the displayed sample and do not reread large files."
+  "预览前 5 个当前显示点；统计也基于显示样本，不会为此重新读取大文件。": "Preview shows the first 5 displayed points. Statistics use the displayed sample and do not reread large files.",
+  "已选 {0} 项管理 · {1} 个数据条目": "Managing {0} items · {1} datasets",
+  "已选 {0} 项 · {1} 个数据条目": "Selected {0} items · {1} datasets",
+  "显示选中数据": "Show selected data",
+  "隐藏选中数据": "Hide selected data",
+  "从页面移除 {0} 个数据条目{1}。磁盘文件不变；未导出的计算结果将丢失。": "Remove {0} datasets{1} from this page. Disk files stay unchanged; unsaved computed results will be lost.",
+  "仅选择当前搜索匹配的数据": "Select only data matching the current search",
+  "勾选后显示数据": "Check to display data",
+  "拖入文件或文件夹\n开始整理你的项目": "Drop files or folders\nStart organizing your project",
+  "每次预览一个建筑组；可多选管理": "Preview one building set at a time; select multiple items to manage",
+  "{0} 个建筑 ID": "{0} building sets",
+  "项目模型": "Project models",
+  "项目建筑": "Project buildings",
+  "按编号批量选择": "Select by model IDs",
+  "搜索项目模型": "Search project models",
+  "再勾选左侧的建筑条目。": "Then check a building in the project tree.",
+  "选择数据集文件夹，再勾选左侧的建筑条目。": "Open a dataset folder, then check a building in the project tree.",
 };
 
 
@@ -798,7 +814,7 @@ function setLanguage(language) {
 }
 /** Source-language keys keep messages readable; positional arguments are never translated. */
 function t(message, values = []) {
-  const format = currentLanguage === 'en' ? EN_MESSAGES[message] ?? message : message;
+  const format = currentLanguage === 'en' && Object.hasOwn(EN_MESSAGES,message) ? EN_MESSAGES[message] : message;
   return format.replace(/\{(\d+)\}/g, (token,index) => index < values.length ? String(values[index]) : token);
 }
 const sourceText = new WeakMap(), sourceAttributes = new WeakMap();
@@ -833,6 +849,7 @@ function localizeHTML(markup) {
 function initializeLocale(doc = document) {
   setLanguage(currentLanguage);
   translateTree(doc);
+  globalThis.BuildingViewerBoot?.ready();
   // URL propagation also works when browser storage is disabled, including file:// usage.
   for(const link of doc.querySelectorAll('a[href]')) {
     const href=link.getAttribute('href');
@@ -841,6 +858,417 @@ function initializeLocale(doc = document) {
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }
+}
+
+
+// Source: src/shared/project-model.js
+
+// Project groups are virtual: source identity and disk paths never change on a move.
+class ViewerProject {
+  constructor() { this.groups = new Map(); this.serial = 0; }
+  create(name, parent = '') {
+    name = name.trim();
+    if (!name || /[/\\\x00-\x1f]/.test(name)) throw Error(t('请输入文件夹名称，不含斜线或控制字符'));
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    if ([...this.groups.values()].some(group => group.parent === parent && group.name === name)) throw Error(t('此位置已有同名文件夹'));
+    const group = {id: `group:${++this.serial}`, name, parent, collapsed: false};
+    this.groups.set(group.id, group); return group.id;
+  }
+  assign(entry, path) {
+    const parts = path.split('/').filter(Boolean); entry.treeName = parts.pop() || entry.id;
+    let parent = '';
+    for (const name of parts) {
+      parent = [...this.groups.values()].find(group => group.parent === parent && group.name === name)?.id || this.create(name, parent);
+    }
+    entry.group = parent;
+  }
+  within(groupId, ancestor) {
+    if (!ancestor) return true;
+    for (let group = this.groups.get(groupId); group; group = this.groups.get(group.parent)) if (group.id === ancestor) return true;
+    return false;
+  }
+  path(id) {
+    const parts = [];
+    for (let group = this.groups.get(id); group; group = this.groups.get(group.parent)) parts.unshift(group.name);
+    return parts.join('/');
+  }
+  members(id, entries) { return entries.filter(entry => this.within(entry.group, id)); }
+  move(target, parent) {
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    if (typeof target === 'string') {
+      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
+      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
+      if ([...this.groups.values()].some(other => other.id !== target && other.parent === parent && other.name === group.name)) throw Error(t('目标位置已有同名文件夹'));
+      group.parent = parent;
+    } else target.group = parent;
+    if (parent) this.groups.get(parent).collapsed = false;
+  }
+  roots(targets) {
+    const unique = [...new Set(targets)], groups = unique.filter(target => typeof target === 'string');
+    return unique.filter(target => !groups.some(group => group !== target && this.within(
+      typeof target === 'string' ? this.groups.get(target)?.parent : target.group, group)));
+  }
+  files(targets, entries) {
+    const selected = new Set();
+    for (const target of this.roots(targets)) {
+      for (const entry of typeof target === 'string' ? this.members(target, entries) : [target]) if (entries.includes(entry)) selected.add(entry);
+    }
+    return [...selected];
+  }
+  moveMany(targets, parent) {
+    const roots = this.roots(targets);
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    const movingGroups = new Set(roots.filter(target => typeof target === 'string'));
+    const names = new Set([...this.groups.values()].filter(group => group.parent === parent && !movingGroups.has(group.id)).map(group => group.name));
+    // Validate the whole batch before moving anything, so a conflict cannot leave half a move.
+    for (const target of movingGroups) {
+      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
+      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
+      if (names.has(group.name)) throw Error(t('目标位置存在同名文件夹，本次移动未执行'));
+      names.add(group.name);
+    }
+    for (const target of roots) this.move(target, parent);
+    return roots;
+  }
+  removeGroup(id) {
+    const removed = [...this.groups.keys()].filter(key => this.within(key, id));
+    for (const key of removed) this.groups.delete(key);
+  }
+  matches(entry, query) {
+    return `${this.path(entry.group)}/${entry.treeName || entry.id} ${entry.id}`.toLowerCase().includes(query.toLowerCase().trim());
+  }
+}
+
+class ProjectSelection {
+  constructor() { this.items = new Set(); this.anchor = null; }
+  select(target, {toggle = false, range = false, ordered = []} = {}) {
+    const from = ordered.indexOf(this.anchor), to = ordered.indexOf(target);
+    if (range && from >= 0 && to >= 0) {
+      if (!toggle) this.items.clear();
+      ordered.slice(Math.min(from,to), Math.max(from,to)+1).forEach(item => this.items.add(item));
+    } else {
+      if (!toggle) this.items.clear();
+      if (toggle && this.items.has(target)) this.items.delete(target); else this.items.add(target);
+      this.anchor = target;
+    }
+  }
+  box(hits, base = []) { this.items = new Set([...base, ...hits]); }
+  clear() { this.items.clear(); this.anchor = null; }
+}
+
+function projectBoxIntersects(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+
+
+// Source: src/shared/project-tree.js
+
+
+function mountProjectTree({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
+  onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail = () => '', selectionHint = '勾选后显示数据'}) {
+  const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
+  const button = (text, label, fn) => { const node = make('button', text); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label); node.onclick = fn; return node; };
+  const dragType = 'application/x-buildingwebviewer-node', management = new ProjectSelection();
+  let focused = null, dragged = null, limit = 200, lastQuery = '', editorMode = null, editorTargets = [], rowTargets = new Map(), visible = [];
+  const tools = make('div', null, 'project-tools');
+  const createButton = button(t('+ 文件夹'), t('新建项目内文件夹'), () => openEditor('create'));
+  const moveButton = button(t('移动'), t('移动选中条目'), () => openEditor('move'));
+  const deleteButton = button(t('移除'), t('移除选中条目'), () => openEditor('remove'));
+  tools.append(createButton, moveButton, deleteButton);
+  const focusNote = make('p', '', 'project-focus');
+  const editor = make('form', null, 'project-editor'); editor.hidden = true;
+  const editorTitle = make('strong'), nameInput = make('input'); nameInput.placeholder = t('文件夹名称'); nameInput.setAttribute('aria-label', t('新文件夹名称'));
+  const destinations = make('select'); destinations.setAttribute('aria-label', t('目标文件夹'));
+  const editorNote = make('p'), actions = make('div', null, 'project-editor-actions');
+  const submit = make('button', t('确定')); submit.type = 'submit';
+  function closeEditor() { editorMode = null; editor.hidden = true; editorTargets = []; }
+  const cancel = button(t('取消'), t('取消管理操作'), closeEditor);
+  actions.append(submit, cancel); editor.append(editorTitle, nameInput, destinations, editorNote, actions);
+  controls.append(tools, focusNote, editor);
+  const status = make('p', null, 'project-status'); status.setAttribute('role', 'status'); controls.append(status);
+  function label(target) { return typeof target === 'string' ? project.path(target) : target?.treeName || target?.id || t('项目根目录'); }
+  function exists(target) { return typeof target === 'string' ? project.groups.has(target) : getEntries().includes(target); }
+  function paintSelection() {
+    for (const [row, target] of rowTargets) {
+      const selected = management.items.has(target); row.dataset.focused = String(selected);
+      row.querySelector('.project-name').setAttribute('aria-pressed', String(selected));
+    }
+    moveButton.disabled = deleteButton.disabled = !management.items.size;
+    focusNote.textContent = management.items.size ? t("已选 {0} 项管理 · {1} 个数据条目", [management.items.size, project.files(management.items, getEntries()).length]) : t('Ctrl 多选 · 空白处框选 · 右键管理');
+    focusNote.title = [...management.items].map(label).join('\n') || focusNote.textContent;
+  }
+  function selectTarget(target, event = {}) {
+    closeEditor(); closeMenu();
+    if (target === null) { focused = null; management.clear(); }
+    else { focused = target; management.select(target, {toggle: event.ctrlKey || event.metaKey, range: event.shiftKey, ordered: visible}); }
+    paintSelection();
+  }
+  function fillDestinations() {
+    destinations.replaceChildren();
+    const add = (value, text) => { const option = make('option', text); option.value = value; destinations.append(option); };
+    add('', t('项目根目录'));
+    for (const group of [...project.groups.values()].sort((a,b) => project.path(a.id).localeCompare(project.path(b.id), undefined, {numeric:true}))) {
+      if (editorMode === 'move' && editorTargets.some(target => typeof target === 'string' && project.within(group.id, target))) continue;
+      add(group.id, project.path(group.id));
+    }
+    const single = editorTargets.length === 1 ? editorTargets[0] : null;
+    destinations.value = typeof single === 'string' ? editorMode === 'create' ? single : project.groups.get(single)?.parent || '' : single?.group || '';
+  }
+  function openEditor(mode) {
+    if (mode !== 'create' && !management.items.size) return;
+    closeMenu(); editorTargets = project.roots(management.items); editorMode = mode; editor.hidden = false; status.textContent = ''; nameInput.value = '';
+    const title = editorTargets.length === 1 ? label(editorTargets[0]) : t("{0} 个条目", [editorTargets.length]);
+    editorTitle.textContent = {create:t('新建项目文件夹'),move:t("移动：{0}", [title]),remove:t("移除：{0}", [title])}[mode];
+    nameInput.hidden = mode !== 'create'; destinations.hidden = mode === 'remove';
+    submit.textContent = mode === 'remove' ? t('确认移除') : mode === 'move' ? t('移动到此处') : t('创建');
+    editorNote.textContent = mode === 'remove'
+      ? t("从页面移除 {0} 个数据条目{1}。磁盘文件不变；未导出的计算结果将丢失。", [project.files(editorTargets, getEntries()).length, editorTargets.some(target => typeof target === 'string') ? t('及所选文件夹') : ''])
+      : t('仅调整当前页面的分组，不修改磁盘文件。');
+    fillDestinations(); (mode === 'create' ? nameInput : mode === 'move' ? destinations : submit).focus();
+  }
+  editor.onsubmit = event => {
+    event.preventDefault();
+    try {
+      if (editorTargets.some(target => !exists(target))) throw Error(t('部分条目已不存在，请重新选择'));
+      if (editorMode === 'create') { focused = project.create(nameInput.value, destinations.value); management.select(focused); }
+      else if (editorMode === 'move') project.moveMany(editorTargets, destinations.value);
+      else if (editorMode === 'remove') {
+        const removed = project.files(editorTargets, getEntries());
+        for (const target of editorTargets) if (typeof target === 'string') project.removeGroup(target);
+        focused = null; management.clear(); closeEditor(); onRemove(removed);
+      }
+      closeEditor(); status.textContent = ''; onChange();
+    } catch (error) { status.textContent = error.message; }
+  };
+
+  // Move gestures start only on the small grip, never on a checkbox or filename.
+  function wireDrop(row, parent) {
+    row.ondragover = event => {
+      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
+      event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; row.classList.add('project-drop-target');
+    };
+    row.ondragleave = event => { if (!row.contains(event.relatedTarget)) row.classList.remove('project-drop-target'); };
+    row.ondrop = event => {
+      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
+      event.preventDefault(); event.stopPropagation(); row.classList.remove('project-drop-target');
+      try { project.moveMany(dragged, parent); status.textContent = t("已移动 {0} 项到 {1}", [dragged.length, project.path(parent) || t('项目根目录')]); }
+      catch (error) { status.textContent = error.message; }
+      dragged = null; container.classList.remove('project-dragging'); closeEditor(); onChange();
+    };
+  }
+  function gripFor(target) {
+    const grip = make('span', '⠿', 'project-drag-handle'); grip.draggable = true;
+    grip.title = t('拖动选中条目到文件夹或项目根目录'); grip.setAttribute('aria-hidden', 'true');
+    grip.ondragstart = event => {
+      if (!management.items.has(target)) { management.select(target); focused = target; paintSelection(); }
+      closeMenu(); closeEditor(); dragged = project.roots(management.items);
+      event.dataTransfer.setData(dragType, 'project-nodes'); event.dataTransfer.setData('text/plain', dragged.map(label).join('\n')); event.dataTransfer.effectAllowed = 'move';
+      container.classList.add('project-dragging'); event.stopPropagation();
+    };
+    grip.ondragend = () => { dragged = null; container.classList.remove('project-dragging'); container.querySelectorAll('.project-drop-target').forEach(node => node.classList.remove('project-drop-target')); root.classList.remove('project-drop-target'); };
+    return grip;
+  }
+  wireDrop(root, ''); root.onclick = () => selectTarget(null);
+
+  const menu = make('div', null, 'project-context-menu'); menu.hidden = true; menu.setAttribute('role','menu'); menu.setAttribute('aria-label',t('项目管理菜单')); document.body.append(menu);
+  let menuReturnFocus = null;
+  function closeMenu(restore = false) { menu.hidden = true; if (restore) menuReturnFocus?.focus(); }
+  function showMenu(event, target) {
+    event.preventDefault(); event.stopPropagation();
+    if (target === null || !management.items.has(target)) selectTarget(target);
+    closeEditor(); menuReturnFocus = event.target.closest('button') || root;
+    const files = project.files(management.items, getEntries()), hasItems = management.items.size > 0;
+    const add = (text, action, enabled = true, cls = '') => {
+      const item = button(text, text, () => { closeMenu(); action(); }); item.setAttribute('role','menuitem'); item.disabled = !enabled; item.className = cls; menu.append(item);
+    };
+    menu.replaceChildren();
+    const caption = make('div', hasItems ? t("已选 {0} 项 · {1} 个数据条目", [management.items.size, files.length]) : t('项目管理'), 'project-menu-caption'); menu.append(caption);
+    add(t('新建文件夹…'), () => openEditor('create'));
+    add(t('显示选中数据'), () => onVisibility(files, true), files.length > 0 && (getMode() !== 'single' || files.length === 1));
+    add(t('隐藏选中数据'), () => onVisibility(files, false), files.some(entry => getSelected().has(entry)));
+    add(t('移动到…'), () => openEditor('move'), hasItems);
+    add(t('移到项目根目录'), () => { try { project.moveMany(management.items, ''); onChange(); } catch(error) { status.textContent = error.message; } }, hasItems);
+    add(t('展开全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = false; render(); }, project.groups.size > 0);
+    add(t('收起全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = true; render(); }, project.groups.size > 0);
+    add(t('移除选中条目…'), () => openEditor('remove'), hasItems, 'project-menu-danger');
+    menu.hidden = false;
+    const rect = event.target.getBoundingClientRect(), x = event.clientX || rect.left, y = event.clientY || rect.bottom;
+    menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - menu.offsetWidth - 6))}px`;
+    menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - menu.offsetHeight - 6))}px`;
+    menu.querySelector('button:not(:disabled)')?.focus();
+  }
+  container.oncontextmenu = event => showMenu(event, rowTargets.get(event.target.closest('.project-row')) ?? null);
+  root.oncontextmenu = event => showMenu(event, null);
+  menu.onkeydown = event => {
+    const items = [...menu.querySelectorAll('button:not(:disabled)')], index = items.indexOf(document.activeElement);
+    const next = event.key === 'ArrowDown' ? (index+1)%items.length : event.key === 'ArrowUp' ? (index+items.length-1)%items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length-1 : -1;
+    if (next >= 0) { event.preventDefault(); items[next].focus(); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeMenu(true); }
+    if (event.key === 'Tab') closeMenu();
+  };
+  document.addEventListener('pointerdown', event => { if (!menu.contains(event.target)) closeMenu(); });
+  document.addEventListener('scroll', event => { if (!menu.contains(event.target)) closeMenu(); }, true);
+  window.addEventListener('resize', () => closeMenu());
+  container.tabIndex = 0;
+  container.addEventListener('keydown', event => {
+    if (event.target.closest('input')) return;
+    if (event.key === 'Delete' && management.items.size) { event.preventDefault(); openEditor('remove'); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (band) finishBand(true); else selectTarget(null); }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); management.box(visible); focused = visible.at(-1) || null; closeEditor(); paintSelection(); }
+    if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') showMenu(event, focused);
+  });
+
+  // Rubber-band selection changes management selection only, never rendering/processing selection.
+  const marquee = make('div', null, 'project-marquee'); marquee.hidden = true; document.body.append(marquee);
+  let band = null, animation = null, suppressClick = false;
+  function updateBand() {
+    if (!band?.active) return;
+    const bounds = container.getBoundingClientRect();
+    if (band.y < bounds.top + 22) container.scrollTop -= 10;
+    else if (band.y > bounds.bottom - 22) container.scrollTop += 10;
+    const startY = bounds.top + band.startY - container.scrollTop;
+    const selectionArea = {left:Math.min(band.startX,band.x),right:Math.max(band.startX,band.x),top:Math.min(startY,band.y),bottom:Math.max(startY,band.y)};
+    const area = {left:Math.max(bounds.left,selectionArea.left),right:Math.min(bounds.right,selectionArea.right),top:Math.max(bounds.top,selectionArea.top),bottom:Math.min(bounds.bottom,selectionArea.bottom)};
+    Object.assign(marquee.style,{left:`${area.left}px`,top:`${area.top}px`,width:`${Math.max(0,area.right-area.left)}px`,height:`${Math.max(0,area.bottom-area.top)}px`});
+    const hits = [];
+    for (const [row,target] of rowTargets) if (typeof target !== 'string' && projectBoxIntersects(selectionArea,row.getBoundingClientRect())) hits.push(target);
+    management.box(hits, band.additive ? band.before : []); focused = [...management.items].at(-1) || null; paintSelection();
+  }
+  function tickBand() { updateBand(); if (band?.active) animation = requestAnimationFrame(tickBand); }
+  function finishBand(cancelled = false) {
+    if (!band) return;
+    if (cancelled) { management.box(band.before); paintSelection(); }
+    suppressClick = band.active; band = null; marquee.hidden = true; cancelAnimationFrame(animation); animation = null;
+    setTimeout(() => { suppressClick = false; }, 0);
+  }
+  container.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || event.target.closest('button,input,label,.project-drag-handle')) return;
+    closeMenu(); closeEditor();
+    const rect = container.getBoundingClientRect();
+    band = {pointer:event.pointerId,startX:event.clientX,startY:event.clientY-rect.top+container.scrollTop,x:event.clientX,y:event.clientY,originY:event.clientY,before:[...management.items],additive:event.ctrlKey||event.metaKey,active:false};
+    container.setPointerCapture(event.pointerId); event.preventDefault();
+  });
+  container.addEventListener('pointermove', event => {
+    if (!band || band.pointer !== event.pointerId) return;
+    band.x = event.clientX; band.y = event.clientY;
+    if (!band.active && Math.hypot(band.x-band.startX,band.y-band.originY) >= 4) { band.active = true; marquee.hidden = false; tickBand(); }
+    else updateBand();
+  });
+  container.addEventListener('pointerup', event => {
+    if (!band || band.pointer !== event.pointerId) return;
+    if (!band.active && !band.additive) selectTarget(null);
+    finishBand(); if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+  });
+  container.addEventListener('pointercancel', () => finishBand(true));
+  container.addEventListener('lostpointercapture', () => finishBand(true));
+  container.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); } }, true);
+  function render() {
+    const entries = getEntries(), selected = getSelected(), query = getQuery().trim().toLowerCase();
+    for (const target of management.items) if (!exists(target)) management.items.delete(target);
+    if (focused && !exists(focused)) focused = null;
+    if (editorTargets.some(target => !exists(target))) closeEditor();
+    if (query !== lastQuery) { limit = 200; lastQuery = query; management.clear(); focused = null; closeEditor(); closeMenu(); }
+    const groupsByParent = new Map(), entriesByGroup = new Map(), membersByGroup = new Map();
+    const matching = entries.filter(entry => project.matches(entry, query));
+    const push = (map, key, value) => { if (!map.has(key)) map.set(key, []); map.get(key).push(value); };
+    for (const entry of matching) {
+      push(entriesByGroup, entry.group || '', entry);
+      for (let group = project.groups.get(entry.group); group; group = project.groups.get(group.parent)) push(membersByGroup, group.id, entry);
+    }
+    const visibleGroups = new Set(membersByGroup.keys());
+    for (const group of project.groups.values()) if (!query || project.path(group.id).toLowerCase().includes(query)) {
+      for (let current = group; current; current = project.groups.get(current.parent)) visibleGroups.add(current.id);
+    }
+    for (const group of project.groups.values()) if (visibleGroups.has(group.id)) push(groupsByParent, group.parent, group);
+    const sort = (a,b) => (a.name || a.treeName || a.id).localeCompare(b.name || b.treeName || b.id, undefined, {numeric:true});
+    for (const map of [groupsByParent, entriesByGroup]) for (const rows of map.values()) rows.sort(sort);
+    const flat = [], stack = [{id:'',depth:0}];
+    while (stack.length) {
+      const task = stack.pop();
+      if (task.entry || task.group) { flat.push(task); if (task.entry || task.group.collapsed && !query) continue; }
+      const parent = task.group?.id || task.id, depth = task.group ? task.depth + 1 : task.depth;
+      const rows = [...(groupsByParent.get(parent) || []).map(group => ({group,depth})), ...(entriesByGroup.get(parent) || []).map(entry => ({entry,depth}))];
+      stack.push(...rows.reverse());
+    }
+    const fragment = document.createDocumentFragment(); rowTargets = new Map(); visible = flat.slice(0,limit).map(item=>item.group?.id || item.entry);
+    for (const item of flat.slice(0, limit)) {
+      const target = item.group?.id || item.entry, row = make('div', null, 'project-row' + (item.group ? ' project-folder' : ''));
+      row.style.setProperty('--tree-depth', Math.min(item.depth, 8)); rowTargets.set(row,target);
+      const members = item.group ? membersByGroup.get(item.group.id) || [] : [item.entry];
+      const count = members.filter(entry => selected.has(entry)).length;
+      const check = make('input'); check.type = 'checkbox'; check.checked = members.length > 0 && count === members.length; check.indeterminate = count > 0 && count < members.length;
+      check.disabled = !!item.group && (getMode() === 'single' || !members.length);
+      check.setAttribute('aria-label', t("显示 {0}", [label(target)]));
+      const hit = make('label', null, 'project-check-hit'); hit.title = item.group && query ? t('仅选择当前搜索匹配的数据') : t(selectionHint); hit.append(check);
+      hit.onpointerdown = event => { closeMenu(); event.stopPropagation(); }; hit.onclick = event => event.stopPropagation(); hit.ondragstart = event => event.preventDefault();
+      check.onchange = () => item.group ? onGroupSelection(members, check.checked) : onToggle(item.entry);
+      if (item.group) {
+        const toggle = button(item.group.collapsed && !query ? '▸' : '▾', `${item.group.collapsed ? t('展开') : t('收起')} ${item.group.name}`, () => { item.group.collapsed = !item.group.collapsed; render(); });
+        toggle.className = 'project-chevron'; toggle.setAttribute('aria-expanded', String(!item.group.collapsed || !!query)); row.append(toggle);
+      } else row.append(make('span', '', 'project-chevron'));
+      const name = button((item.group ? '▱ ' : '') + (item.group?.name || item.entry.treeName || item.entry.id), t("管理 {0}", [label(target)]), event => selectTarget(target,event));
+      name.className = 'project-name'; name.title = item.group ? project.path(target) : t("{0} / {1}\n来源：{2}", [project.path(item.entry.group) || t('项目根目录'), item.entry.treeName || item.entry.id, item.entry.id]);
+      const meta = make('span', item.group ? String(project.members(target, entries).length) : detail(item.entry), 'project-meta');
+      row.append(hit, name, meta, gripFor(target)); wireDrop(row, item.group ? item.group.id : item.entry.group || ''); fragment.append(row);
+    }
+    if (flat.length > limit) fragment.append(button(t("显示更多（剩余 {0} 项）", [flat.length - limit]), t('显示更多项目条目'), () => { limit += 200; render(); }));
+    if (!flat.length) fragment.append(make('p', query ? t('没有匹配的数据') : t('拖入文件或文件夹\n开始整理你的项目'), 'empty-list'));
+    const blank = make('div', null, 'project-selection-space'); blank.setAttribute('aria-hidden','true'); fragment.append(blank);
+    const scroll = container.scrollTop; container.replaceChildren(fragment); container.scrollTop = scroll; paintSelection();
+  }
+  return {render};
+}
+
+
+// Source: src/shared/project-import.js
+/** Import adapters preserve entry/File identity so tree edits do not invalidate render caches. */
+function projectFilePath(file, paths) {
+  return (paths?.get(file) || file.webkitRelativePath || file.name).replaceAll('\\', '/');
+}
+function projectFileKey(file, path) { return `${path}\0${file.size}\0${file.lastModified}`; }
+function projectUniqueId(base, names) {
+  let id = base, suffix = 2;
+  while (names.has(id)) id = `${base}_${suffix++}`;
+  names.add(id); return id;
+}
+function appendLodFiles(entries, project, files, paths) {
+  const keys = new Set(entries.map(entry => entry.key)), names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.obj$/i.test(file.name)) continue;
+    const path = projectFilePath(file, paths), key = projectFileKey(file,path);
+    if (keys.has(key)) { duplicates++; continue; }
+    const base = file.name.replace(/\.obj$/i,''), id = projectUniqueId(base,names);
+    const entry = {id,key,file,bytes:file.size}; project.assign(entry,path);
+    // Keep names clear when separate folders contain the same model number.
+    if (id !== base) entry.treeName += ` [${id}]`;
+    entries.push(entry); keys.add(key); added++;
+  }
+  return {added,duplicates};
+}
+function appendWireFiles(entries, project, files, paths) {
+  const groups = new Map(entries.map(entry => [entry.sourceGroup,entry]));
+  const names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name)) continue;
+    const path = projectFilePath(file,paths), parts = path.split('/');
+    const sourceGroup = parts.slice(0,-1).join('/');
+    let entry = groups.get(sourceGroup);
+    if (!entry) {
+      const base = parts.length > 2 ? parts.slice(1,-1).join('/') : parts.length === 2 ? parts[0] : 'Files';
+      entry = {id:projectUniqueId(base,names),sourceGroup,wires:[],clouds:[],fileKeys:new Set()};
+      // A leaf is a building set; its parent folders remain independently manageable.
+      project.assign(entry,sourceGroup || 'Files');
+      entries.push(entry); groups.set(sourceGroup,entry);
+    }
+    const key = projectFileKey(file,path);
+    if (entry.fileKeys.has(key)) { duplicates++; continue; }
+    entry.fileKeys.add(key); entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file); added++;
+  }
+  // Keep file ordering stable while adding files: selected dropdown indices remain valid.
+  return {added,duplicates};
 }
 
 
@@ -2139,12 +2567,17 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
 
 
 
+
+
+
 initializeLocale();
 const $ = (id) => document.getElementById(id);
-const MAX_SELECTED = 24, PAGE_SIZE = 50;
+const MAX_SELECTED = 24;
 const number = (value) => Number(value).toLocaleString('zh-CN');
-let catalog = [], catalogById = new Map(), selected = new Set(), page = 0;
+let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
+const modelProject = new ViewerProject();
+let modelTree = null;
 let labelElements = new Map(), latestLabels = [];
 let localFiles = new Map(), cameraControls = null, paletteControls = null;
 let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
@@ -2155,7 +2588,7 @@ function showError(message, retry = false) {
   $('retry').hidden = !retry;
 }
 function clearError() { $('error').hidden = true; }
-function orderedIds() { return [...selected].sort((a, b) => Number(a) - Number(b)); }
+function orderedIds() { return [...selected].sort((a, b) => a.localeCompare(b, undefined, {numeric:true})); }
 function sizeText(model) {
   const dimensions = model.bounds[0].map((v, i) => model.bounds[1][i] - v);
   return dimensions.map(v => v < .1 ? v.toPrecision(3) : v.toFixed(1)).join(' × ') + t('（原坐标单位）');
@@ -2187,46 +2620,12 @@ function renderLabels(labels) {
 }
 
 function filteredModels() {
-  const query = $('search').value.trim().replace(/^#/, '').replace(/\.obj$/i, '');
-  if (!query) return catalog;
-  return catalog.filter(model => model.id.includes(query)).sort((a, b) => (b.id === query) - (a.id === query) || Number(a.id) - Number(b.id));
+  return catalog.filter(model => modelProject.matches(model, $('search').value.trim().replace(/^#/,'')));
 }
 function renderList() {
-  const filtered = filteredModels(), pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  page = Math.min(page, pageCount - 1);
-  $('filter-count').textContent = t("{0} 栋可选", [number(filtered.length)]);
+  $('filter-count').textContent = t("{0} 栋模型", [number(filteredModels().length)]);
   $('random-selection').disabled = !catalog.length;
-  $('page-info').textContent = t("{0} / {1} 页", [page + 1, pageCount]);
-  $('previous-page').disabled = page === 0;
-  $('next-page').disabled = page >= pageCount - 1;
-  const fragment = document.createDocumentFragment();
-  for (const model of filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
-    const row = document.createElement('label');
-    row.className = 'model-row' + (selected.has(model.id) ? ' selected' : '');
-    const check = document.createElement('input');
-    check.type = 'checkbox'; check.checked = selected.has(model.id);
-    check.setAttribute('aria-label', t("选择楼栋 {0}", [model.id]));
-    check.onchange = () => {
-      const next = new Set(selected);
-      if (check.checked) next.add(model.id); else next.delete(model.id);
-      if (!selectIds([...next])) check.checked = selected.has(model.id);
-    };
-    const text = document.createElement('span'); text.className = 'model-text';
-    const title = document.createElement('strong'); title.textContent = `# ${model.id}`;
-    const sub = document.createElement('small');
-    sub.textContent = model.triangles !== undefined ? t("{0} 面 · {1} KB", [number(model.triangles), (model.bytes / 1024).toFixed(1)]) : `${(model.bytes / 1024).toFixed(1)} KB`;
-    text.append(title, sub); row.append(check, text);
-    if (model.watertight === true) {
-      const mark = document.createElement('span'); mark.className = 'mesh-mark'; mark.textContent = t('闭合');
-      mark.title = t('已有提交清单记录为闭合；未在网页中重新检查'); row.append(mark);
-    }
-    row.title = model.fallback_original ? t('此栋为提交清单标注的原结果回退版本') : t("查看 {0}.obj", [model.id]);
-    fragment.append(row);
-  }
-  if (!filtered.length) {
-    const empty = document.createElement('p'); empty.className = 'empty-list'; empty.textContent = t('没有匹配的编号'); fragment.append(empty);
-  }
-  $('model-list').replaceChildren(fragment);
+  modelTree?.render();
 }
 function renderSelection(syncInput = true) {
   $('selection-count').textContent = `${selected.size} / ${MAX_SELECTED}`;
@@ -2252,7 +2651,7 @@ function selectIds(ids) {
   const unique = [...new Set(ids.map(String))];
   const invalid = unique.filter(id => !catalogById.has(id));
   if (invalid.length) { showError(t("找不到楼栋编号：{0}", [invalid.slice(0, 8).join('、')])); return false; }
-  if (unique.length > MAX_SELECTED) { showError(t("一次最多预览 {0} 栋，当前选择了 {1} 栋。请缩小编号范围。", [MAX_SELECTED, unique.length])); return false; }
+  if (unique.length > MAX_SELECTED) { renderList(); showError(t("一次最多预览 {0} 栋，当前选择了 {1} 栋。请缩小编号范围。", [MAX_SELECTED, unique.length])); return false; }
   selected = new Set(unique); clearError(); renderSelection(); renderList(); loadSelection(); return true;
 }
 function parseIds(value) {
@@ -2261,6 +2660,7 @@ function parseIds(value) {
   const tokens = normalized.split(/[\s,，;；、]+/).filter(Boolean);
   const result = new Set();
   for (const token of tokens) {
+    if (catalogById.has(token)) { result.add(token); continue; }
     const match = token.match(/^#?(\d+)(?:-(\d+))?$/);
     if (!match) throw Error(t("无法识别“{0}”。请使用编号或范围，例如 1, 3, 100-105。", [token]));
     const start = Number(match[1]), end = match[2] ? Number(match[2]) : start;
@@ -2395,9 +2795,7 @@ function screenshot() {
 $('replace-selection').onclick = () => applyBatch(false);
 $('add-selection').onclick = () => applyBatch(true);
 $('batch-ids').onkeydown = event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) applyBatch(false); };
-$('search').oninput = () => { page = 0; renderList(); };
-$('previous-page').onclick = () => { page--; renderList(); $('model-list').scrollTop = 0; };
-$('next-page').onclick = () => { page++; renderList(); $('model-list').scrollTop = 0; };
+$('search').oninput = () => { renderList(); };
 $('clear-selection').onclick = () => selectIds([]);
 $('random-selection').onclick = () => {
   const pool = catalog.map(m => m.id);
@@ -2429,34 +2827,32 @@ function ensureViewer() {
   options = {...options, ...paletteControls?.getOptions()};
   viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
-function folderReady(fileList) {
-  if (!fileList.length) return;
-  ++generation; controller?.abort(); cache.clear();
-  localFiles = new Map(); catalog = []; catalogById = new Map(); page = 0;
+function folderReady(fileList, paths = null) {
+  const result = appendLodFiles(catalog, modelProject, [...fileList], paths);
+  catalog.sort((a,b) => a.id.localeCompare(b.id,undefined,{numeric:true}));
+  catalogById = new Map(catalog.map(model => [model.id,model]));
+  localFiles = new Map(catalog.map(model => [model.id,model.file]));
   $('search').value = '';
-  $('total-count').textContent = t('0 栋模型');
-  $('source-path').textContent = t('尚未选择可用的 OBJ 目录');
-  $('folder-status').textContent = t('请选择包含 OBJ 文件的目录');
-  selectIds([]);
-  const files = [...fileList].filter(file => /\.obj$/i.test(file.name));
-  if (!files.length) { showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。')); return; }
-  const mapped = new Map();
-  for (const file of files) {
-    const id = file.name.replace(/\.obj$/i, '');
-    if (mapped.has(id)) { showError(t("文件夹包含同名模型 {0}，请直接选择只含一套结果的子文件夹。", [file.name])); return; }
-    mapped.set(id, file);
-  }
-  try { ensureViewer(); } catch (error) { showError(error.message); return; }
-  ++generation; controller?.abort(); cache.clear();
-  localFiles = mapped;
-  catalog = [...mapped].map(([id, file]) => ({id, bytes: file.size})).sort((a, b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
-  catalogById = new Map(catalog.map(model => [model.id, model]));
-  page = 0; $('search').value = '';
-  const name = (files[0].webkitRelativePath || '').split('/')[0] || t('本地文件夹');
-  $('source-path').textContent = name + t('（浏览器选择的本地文件夹）');
-  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(files.length)]);
-  $('total-count').textContent = t("{0} 栋模型", [number(files.length)]);
-  selectIds([]);
+  $('source-path').textContent = t('文件留在本机 · 分组仅保留在本次页面');
+  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
+  $('total-count').textContent = t("{0} 栋模型", [number(catalog.length)]);
+  if (!result.added && !result.duplicates) showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。'));
+  else clearError();
+  renderList(); return result;
+}
+function changeModelVisibility(members, checked) {
+  const next = new Set(selected);
+  for (const model of members) checked ? next.add(model.id) : next.delete(model.id);
+  selectIds([...next]);
+}
+function removeModelEntries(members) {
+  const removed = new Set(members);
+  ++generation; controller?.abort();
+  for (const model of members) { cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
+  catalog = catalog.filter(model => !removed.has(model));
+  $('total-count').textContent = t("{0} 栋模型", [number(catalog.length)]);
+  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
+  selectIds([...selected]);
 }
 $('choose-folder').onclick = () => $('folder-input').click();
 $('folder-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };
@@ -2465,8 +2861,16 @@ function init() {
   try {
     ensureViewer();
     mountViewerLayout();
+    if (!modelTree) modelTree = mountProjectTree({
+      project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
+      getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),
+      getMode: () => 'multiple', getQuery: () => $('search').value.trim().replace(/^#/,''),
+      onToggle: model => changeModelVisibility([model],!selected.has(model.id)),
+      onGroupSelection: changeModelVisibility, onVisibility: changeModelVisibility,
+      onRemove: removeModelEntries, onChange: renderList, detail: model => `${(model.bytes / 1024).toFixed(1)} KB`,
+    });
     mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.obj$/i.test(name), onFiles: items => {
-      folderReady(items.map(item => item.file)); return {added: catalog.length, duplicates: 0};
+      return folderReady(items.map(item => item.file), new Map(items.map(item => [item.file,item.path])));
     }});
     $('choose-file').onclick = () => $('file-input').click();
     $('file-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };

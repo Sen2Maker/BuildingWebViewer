@@ -2,6 +2,7 @@
 """Bundle source modules and package an offline-ready static site; no npm dependencies."""
 from pathlib import Path
 import argparse
+import hashlib
 import re
 import shutil
 import zipfile
@@ -43,6 +44,16 @@ def site_files():
     return [*PAGES, *ICONS, *[str(p.relative_to(HERE)) for p in sorted((HERE / 'assets').rglob('*')) if p.is_file()]]
 
 
+def boot_page(source):
+    """Generate critical startup UI from one shared source for all four entry pages."""
+    head = '<style>' + (HERE / 'src/shared/page-boot.css').read_text(encoding='utf-8') + '</style>\n<script>' + (HERE / 'src/shared/page-boot.js').read_text(encoding='utf-8') + '</script>'
+    body = (HERE / 'src/shared/page-boot.html').read_text(encoding='utf-8')
+    for name, content in [('head',head), ('body',body)]:
+        pattern = r'<!-- boot-' + name + r':start -->[\s\S]*?<!-- boot-' + name + r':end -->'
+        source = re.sub(pattern, lambda _: '<!-- boot-' + name + ':start -->\n' + content + '\n<!-- boot-' + name + ':end -->', source)
+    return source
+
+
 def main():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument('--site', action='store_true')
@@ -59,6 +70,18 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(output, encoding='utf-8')
         print(f'{"Checked" if args.check else "Built"} {target.relative_to(HERE)}')
+    for name in PAGES:
+        path = HERE / name
+        source = path.read_text(encoding='utf-8')
+        output = boot_page(source)
+        def asset_version(match):
+            name = match[2]
+            digest = hashlib.sha256((HERE / name).read_bytes()).hexdigest()[:12]
+            return match[1] + name + '?v=' + digest + match[3]
+        output = re.sub(r'(\b(?:src|href)=[\"\'])(assets/[^\"\'?]+)(?:\?[^\"\']*)?([\"\'])', asset_version, output)
+        if args.check:
+            if source != output: raise SystemExit(f'Stale startup shell: {name}; run python3 build.py')
+        else: path.write_text(output, encoding='utf-8')
     if args.site:
         target = HERE / '_site'
         if target.is_symlink():

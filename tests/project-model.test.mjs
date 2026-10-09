@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import {PointProject,PointManagementSelection,pointBoxIntersects} from '../src/pointcloud/point-project.js';
+import {ViewerProject,ProjectSelection,projectBoxIntersects} from '../src/shared/project-model.js';
 import {projectSidebarWidth} from '../src/shared/sidebar.js';
-const project = new PointProject(), entries = [{id:'data/a.txt',key:'a'}, {id:'data/sub/b.txt',key:'b'}, {id:'other/c.txt',key:'c'}];
+const project = new ViewerProject(), entries = [{id:'data/a.txt',key:'a'}, {id:'data/sub/b.txt',key:'b'}, {id:'other/c.txt',key:'c'}];
 entries.forEach(entry => project.assign(entry,entry.id));
 assert.equal(project.groups.size,3); assert.equal(project.path(entries[1].group),'data/sub');
 assert.equal(entries[1].treeName,'b.txt');
@@ -31,7 +31,7 @@ project.removeGroup(group); assert(!project.groups.has(group)); assert(!project.
 assert(project.groups.has(duplicate)); assert(project.groups.has(root));
 console.log('PASS recursive removal identifies only contained clouds and folders');
 
-const selection = new PointManagementSelection(), [a,b,c] = entries;
+const selection = new ProjectSelection(), [a,b,c] = entries;
 selection.select(a); selection.select(c,{toggle:true}); assert.deepEqual([...selection.items],[a,c]);
 selection.select(a,{toggle:true}); assert.deepEqual([...selection.items],[c]);
 selection.select(a); selection.select(c,{range:true,ordered:[a,b,c]}); assert.deepEqual([...selection.items],[a,b,c]);
@@ -39,10 +39,10 @@ selection.select(b); assert.deepEqual([...selection.items],[b]);
 console.log('PASS Ctrl toggles independent management selection; Shift selects a visible range');
 selection.box([a,c],[b]); assert.deepEqual([...selection.items],[b,a,c]);
 selection.box([a]); assert.deepEqual([...selection.items],[a]); selection.clear(); assert.equal(selection.anchor,null);
-assert(pointBoxIntersects({left:0,right:50,top:0,bottom:20},{left:10,right:30,top:10,bottom:30}));
-assert(!pointBoxIntersects({left:0,right:50,top:0,bottom:20},{left:10,right:30,top:20,bottom:30}));
+assert(projectBoxIntersects({left:0,right:50,top:0,bottom:20},{left:10,right:30,top:10,bottom:30}));
+assert(!projectBoxIntersects({left:0,right:50,top:0,bottom:20},{left:10,right:30,top:20,bottom:30}));
 console.log('PASS rectangle selection can replace or add without changing cloud visibility');
-const batch = new PointProject(), clouds = [{id:'folder/a.txt'},{id:'folder/sub/b.txt'},{id:'other/c.txt'}];
+const batch = new ViewerProject(), clouds = [{id:'folder/a.txt'},{id:'folder/sub/b.txt'},{id:'other/c.txt'}];
 clouds.forEach(entry=>batch.assign(entry,entry.id));
 const folder=clouds[0].group, nestedGroup=clouds[1].group, target=batch.create('Target');
 assert.deepEqual(batch.roots([folder,nestedGroup,clouds[0],clouds[1],clouds[2]]),[folder,clouds[2]]);

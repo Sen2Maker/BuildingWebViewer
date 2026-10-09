@@ -1,0 +1,17 @@
+/* Critical startup styles are inline: they cannot be delayed by another request. */
+html.boot-pending{background:#f5f8f6}
+html.boot-pending body>:not(#page-boot){visibility:hidden!important}
+#page-boot{display:none}
+.boot-pending #page-boot{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:#f5f8f6;color:#305b50;font:14px/1.6 system-ui,sans-serif;text-align:center;padding:24px}
+#page-boot .boot-mark{width:54px;height:54px;position:relative;display:grid;place-items:center}
+#page-boot .boot-mark svg{width:34px;height:34px;animation:boot-breathe 1.8s ease-in-out infinite}
+#page-boot .boot-mark:after{content:'';position:absolute;inset:0;border:2px solid #dbe8df;border-top-color:#48846b;border-radius:50%;animation:boot-spin 1.6s linear infinite}
+#page-boot p{margin:0}#page-boot .boot-caption{font-size:10px;letter-spacing:.18em;color:#8aa095;margin-top:7px}
+#page-boot .boot-en,#page-boot .boot-help,#page-boot .boot-error{display:none}
+html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en{display:block}
+.boot-slow #page-boot .boot-help,.boot-failed #page-boot .boot-help,.boot-failed #page-boot .boot-error{display:block}
+.boot-failed #page-boot .boot-progress{display:none}
+#page-boot .boot-help{font-size:12px;color:#7c9086;max-width:310px}
+#page-boot a{display:inline-block;margin-top:12px;color:#305b50;text-decoration:none;border:1px solid #bed1c5;border-radius:8px;padding:7px 20px}
+@keyframes boot-spin{to{transform:rotate(360deg)}}@keyframes boot-breathe{50%{opacity:.55;transform:translateY(-2px)}}
+@media(prefers-reduced-motion:reduce){#page-boot .boot-mark svg,#page-boot .boot-mark:after{animation:none}}

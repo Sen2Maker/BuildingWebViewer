@@ -3,31 +3,82 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LOD 模型查看器</title>
+  <title>LOD 模型查看器</title><!-- boot-head:start -->
+<style>/* Critical startup styles are inline: they cannot be delayed by another request. */
+html.boot-pending{background:#f5f8f6}
+html.boot-pending body>:not(#page-boot){visibility:hidden!important}
+#page-boot{display:none}
+.boot-pending #page-boot{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:#f5f8f6;color:#305b50;font:14px/1.6 system-ui,sans-serif;text-align:center;padding:24px}
+#page-boot .boot-mark{width:54px;height:54px;position:relative;display:grid;place-items:center}
+#page-boot .boot-mark svg{width:34px;height:34px;animation:boot-breathe 1.8s ease-in-out infinite}
+#page-boot .boot-mark:after{content:'';position:absolute;inset:0;border:2px solid #dbe8df;border-top-color:#48846b;border-radius:50%;animation:boot-spin 1.6s linear infinite}
+#page-boot p{margin:0}#page-boot .boot-caption{font-size:10px;letter-spacing:.18em;color:#8aa095;margin-top:7px}
+#page-boot .boot-en,#page-boot .boot-help,#page-boot .boot-error{display:none}
+html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en{display:block}
+.boot-slow #page-boot .boot-help,.boot-failed #page-boot .boot-help,.boot-failed #page-boot .boot-error{display:block}
+.boot-failed #page-boot .boot-progress{display:none}
+#page-boot .boot-help{font-size:12px;color:#7c9086;max-width:310px}
+#page-boot a{display:inline-block;margin-top:12px;color:#305b50;text-decoration:none;border:1px solid #bed1c5;border-radius:8px;padding:7px 20px}
+@keyframes boot-spin{to{transform:rotate(360deg)}}@keyframes boot-breathe{50%{opacity:.55;transform:translateY(-2px)}}
+@media(prefers-reduced-motion:reduce){#page-boot .boot-mark svg,#page-boot .boot-mark:after{animation:none}}
+</style>
+<script>/* Inlined by build.py before any stylesheet or page content can paint. */
+(() => {
+  const root = document.documentElement;
+  let saved = null;
+  try { saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
+  const query = new URLSearchParams(location.search).get('lang');
+  const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
+  root.lang = language === 'en' ? 'en' : 'zh-CN';
+  if (language === 'en') {
+    const titles = {'lod.html':'LOD Model Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer'};
+    document.title = (titles[location.pathname?.split('/').pop()] || 'BuildingWebViewer') + ' · 3D Data Workspace';
+  }
+  root.classList.add('boot-pending');
+  let ready = false;
+  const slow = setTimeout(() => { if (!ready) root.classList.add('boot-slow'); }, 12000);
+  window.BuildingViewerBoot = {
+    ready() { ready = true; clearTimeout(slow); root.classList.remove('boot-pending','boot-slow','boot-failed'); document.getElementById('page-boot')?.remove(); },
+    fail() { if (!ready) { clearTimeout(slow); root.classList.add('boot-failed'); } },
+  };
+  window.addEventListener('error', event => {
+    if (event.target?.tagName === 'SCRIPT' || event.error) window.BuildingViewerBoot.fail();
+  }, true);
+})();
+</script>
+<!-- boot-head:end -->
   <link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2">
-  <link rel="stylesheet" href="assets/css/styles.css">
-<link rel="stylesheet" href="assets/css/viewer-controls.css"><link rel="stylesheet" href="assets/css/camera-controls.css"><link rel="stylesheet" href="assets/css/viewer-layout.css"></head>
-<body data-tool="lod">
+  <link rel="stylesheet" href="assets/css/styles.css?v=0f47acdbe1b1">
+<link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=50ac4a406682"><link rel="stylesheet" href="assets/css/project-tree.css?v=783125685d9b"></head>
+<body data-tool="lod"><!-- boot-body:start -->
+<div id="page-boot" role="status" aria-live="polite" data-no-i18n>
+  <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
+  <div><p class="boot-progress"><span class="boot-zh">正在准备三维工作空间</span><span class="boot-en">Preparing your 3D workspace</span></p><p class="boot-error"><span class="boot-zh">页面资源未能加载</span><span class="boot-en">Page resources could not load</span></p><p class="boot-caption">BUILDING WEB VIEWER</p></div>
+  <div class="boot-help"><span class="boot-zh">网络较慢或连接中断，可以继续等待，或重新加载。</span><span class="boot-en">The connection is slow or interrupted. Keep waiting, or reload this page.</span><a href=""><span class="boot-zh">重新加载</span><span class="boot-en">Reload page</span></a></div>
+</div>
+
+<!-- boot-body:end -->
   <header class="app-header">
     <a class="back-home" href="index.html" aria-label="返回工具首页">←</a>
-    <div class="brand-icon" aria-hidden="true">▥</div>
+    <img class="brand-icon tool-icon" src="assets/icons/lod.svg?v=19c1c4d21c4b" alt="">
     <div><h1>LOD 模型查看器</h1><p>本地 OBJ 模型 · 手动选择数据</p></div>
     <div class="header-right"><span class="local-tag"><i></i> 本地预览</span><span id="total-count">尚未选择文件夹</span></div>
   </header>
   <div class="workspace">
-    <aside class="sidebar" aria-label="选择楼栋">
-      <div class="sidebar-heading"><h2>选择楼栋</h2><span id="selection-count">0 / 24</span></div>
-      <div class="folder-section"><button id="choose-folder">选择模型文件夹…</button><button id="choose-file">选择 OBJ 文件…</button><input id="file-input" type="file" accept=".obj" multiple hidden><p id="drop-status" role="status" hidden></p><input id="folder-input" type="file" webkitdirectory multiple hidden><p id="folder-status">选择含 OBJ 的目录 · 文件仅在本机读取</p></div>
-      <div class="batch-section">
+    <aside class="sidebar project-sidebar" aria-label="选择楼栋">
+      <div class="sidebar-heading"><h2>项目模型</h2><span id="selection-count">0 / 24</span></div>
+      <div class="folder-section project-import"><div class="project-import-buttons"><button id="choose-folder">＋ 文件夹</button><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept=".obj" multiple hidden></div><p id="drop-status" role="status" hidden></p><input id="folder-input" type="file" webkitdirectory multiple hidden><p id="folder-status">选择含 OBJ 的目录 · 文件仅在本机读取</p></div>
+      <details class="project-batch"><summary>按编号批量选择</summary><div class="batch-section">
         <label for="batch-ids">输入要查看的编号</label>
         <textarea id="batch-ids" rows="2" placeholder="输入编号，多个编号用逗号分隔；留空可清空画面"></textarea>
-        <div class="button-row"><button class="primary" id="replace-selection">查看这些楼栋</button><button id="add-selection">追加</button></div>
+        <div class="button-row"><button class="primary" id="replace-selection">查看这些楼栋</button><button id="add-selection">追加</button><button id="random-selection">随机看 6 栋</button></div>
       </div>
-      <div class="list-heading"><label for="search">全部楼栋</label><button class="text-button" id="random-selection">随机看 6 栋</button></div>
+      </details>
+      <label class="search-label" for="search">搜索项目模型</label>
       <input id="search" type="search" placeholder="搜索模型编号" autocomplete="off">
       <div class="list-meta"><span id="filter-count">加载中</span><button class="text-button" id="clear-selection">清空选择</button></div>
-      <div id="model-list" class="model-list" aria-label="楼栋列表"></div>
-      <div class="pagination"><button id="previous-page" aria-label="上一页">←</button><span id="page-info">—</span><button id="next-page" aria-label="下一页">→</button></div>
+      <button id="project-root" class="project-root" type="button">项目根目录 <span>拖到这里移出文件夹</span></button><div id="model-list" class="model-list project-tree" aria-label="楼栋列表"></div>
+      <div id="project-controls"></div>
       <details class="source-details"><summary>模型来源</summary><p id="source-path"></p><p>仅在手动选择文件夹后读取 OBJ，不会自动连接任何数据目录。</p></details>
     </aside>
     <main>
@@ -41,7 +92,7 @@
         <canvas id="scene" aria-label="所选楼栋的三维模型；拖动旋转、滚轮缩放、右键拖动平移"></canvas>
         <div class="scene-note"><strong id="layout-title">等比例陈列</strong><span id="layout-note">独立模型重新排列 · 非实际地理位置</span></div>
         <div id="model-labels" class="model-labels"></div>
-        <div id="empty-state" class="empty-state"><span>▥</span><h3>选择几栋，仔细看看</h3><p>先选择模型文件夹，再勾选左侧楼栋。</p></div>
+        <div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/lod.svg?v=19c1c4d21c4b" alt="" width="96" height="81"><h3>选择几栋，仔细看看</h3><p>先选择模型文件夹，再勾选左侧楼栋。</p></div>
         <div id="loading" class="loading" role="status" hidden><i></i><span>正在读取模型…</span></div>
         <div id="error" class="error-banner" role="alert" hidden><span></span><button id="retry">重新加载</button><button id="dismiss-error" aria-label="关闭提示">×</button></div>
         <div class="viewport-bottom"><div id="height-legend" class="scalar-legend" hidden><span>离地高度</span><i></i><span id="height-min"></span><span>—</span><span id="height-max"></span></div><div class="legend" id="legend"><span><i class="roof"></i>屋顶 / 坡面</span><span><i class="wall"></i>墙面</span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div>
@@ -63,6 +114,6 @@
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside>
   </div>
-  <script defer src="assets/js/lod.bundle.js"></script>
+  <script defer src="assets/js/lod.bundle.js?v=675b0b23e00f"></script>
 </body>
 </html>

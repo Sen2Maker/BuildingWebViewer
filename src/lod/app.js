@@ -1,3 +1,6 @@
+import { ViewerProject } from '../shared/project-model.js';
+import { mountProjectTree } from '../shared/project-tree.js';
+import { appendLodFiles } from '../shared/project-import.js';
 import { initializeLocale } from '../shared/i18n.js';
 import { t } from '../shared/i18n.js';
 import { mountPointDrop } from '../shared/point-drop.js';
@@ -9,10 +12,12 @@ import { mountPaletteControls, paletteGradient } from '../shared/palette-control
 
 initializeLocale();
 const $ = (id) => document.getElementById(id);
-const MAX_SELECTED = 24, PAGE_SIZE = 50;
+const MAX_SELECTED = 24;
 const number = (value) => Number(value).toLocaleString('zh-CN');
-let catalog = [], catalogById = new Map(), selected = new Set(), page = 0;
+let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
+const modelProject = new ViewerProject();
+let modelTree = null;
 let labelElements = new Map(), latestLabels = [];
 let localFiles = new Map(), cameraControls = null, paletteControls = null;
 let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
@@ -23,7 +28,7 @@ function showError(message, retry = false) {
   $('retry').hidden = !retry;
 }
 function clearError() { $('error').hidden = true; }
-function orderedIds() { return [...selected].sort((a, b) => Number(a) - Number(b)); }
+function orderedIds() { return [...selected].sort((a, b) => a.localeCompare(b, undefined, {numeric:true})); }
 function sizeText(model) {
   const dimensions = model.bounds[0].map((v, i) => model.bounds[1][i] - v);
   return dimensions.map(v => v < .1 ? v.toPrecision(3) : v.toFixed(1)).join(' × ') + t('（原坐标单位）');
@@ -55,46 +60,12 @@ function renderLabels(labels) {
 }
 
 function filteredModels() {
-  const query = $('search').value.trim().replace(/^#/, '').replace(/\.obj$/i, '');
-  if (!query) return catalog;
-  return catalog.filter(model => model.id.includes(query)).sort((a, b) => (b.id === query) - (a.id === query) || Number(a.id) - Number(b.id));
+  return catalog.filter(model => modelProject.matches(model, $('search').value.trim().replace(/^#/,'')));
 }
 function renderList() {
-  const filtered = filteredModels(), pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  page = Math.min(page, pageCount - 1);
-  $('filter-count').textContent = t("{0} 栋可选", [number(filtered.length)]);
+  $('filter-count').textContent = t("{0} 栋模型", [number(filteredModels().length)]);
   $('random-selection').disabled = !catalog.length;
-  $('page-info').textContent = t("{0} / {1} 页", [page + 1, pageCount]);
-  $('previous-page').disabled = page === 0;
-  $('next-page').disabled = page >= pageCount - 1;
-  const fragment = document.createDocumentFragment();
-  for (const model of filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
-    const row = document.createElement('label');
-    row.className = 'model-row' + (selected.has(model.id) ? ' selected' : '');
-    const check = document.createElement('input');
-    check.type = 'checkbox'; check.checked = selected.has(model.id);
-    check.setAttribute('aria-label', t("选择楼栋 {0}", [model.id]));
-    check.onchange = () => {
-      const next = new Set(selected);
-      if (check.checked) next.add(model.id); else next.delete(model.id);
-      if (!selectIds([...next])) check.checked = selected.has(model.id);
-    };
-    const text = document.createElement('span'); text.className = 'model-text';
-    const title = document.createElement('strong'); title.textContent = `# ${model.id}`;
-    const sub = document.createElement('small');
-    sub.textContent = model.triangles !== undefined ? t("{0} 面 · {1} KB", [number(model.triangles), (model.bytes / 1024).toFixed(1)]) : `${(model.bytes / 1024).toFixed(1)} KB`;
-    text.append(title, sub); row.append(check, text);
-    if (model.watertight === true) {
-      const mark = document.createElement('span'); mark.className = 'mesh-mark'; mark.textContent = t('闭合');
-      mark.title = t('已有提交清单记录为闭合；未在网页中重新检查'); row.append(mark);
-    }
-    row.title = model.fallback_original ? t('此栋为提交清单标注的原结果回退版本') : t("查看 {0}.obj", [model.id]);
-    fragment.append(row);
-  }
-  if (!filtered.length) {
-    const empty = document.createElement('p'); empty.className = 'empty-list'; empty.textContent = t('没有匹配的编号'); fragment.append(empty);
-  }
-  $('model-list').replaceChildren(fragment);
+  modelTree?.render();
 }
 function renderSelection(syncInput = true) {
   $('selection-count').textContent = `${selected.size} / ${MAX_SELECTED}`;
@@ -120,7 +91,7 @@ function selectIds(ids) {
   const unique = [...new Set(ids.map(String))];
   const invalid = unique.filter(id => !catalogById.has(id));
   if (invalid.length) { showError(t("找不到楼栋编号：{0}", [invalid.slice(0, 8).join('、')])); return false; }
-  if (unique.length > MAX_SELECTED) { showError(t("一次最多预览 {0} 栋，当前选择了 {1} 栋。请缩小编号范围。", [MAX_SELECTED, unique.length])); return false; }
+  if (unique.length > MAX_SELECTED) { renderList(); showError(t("一次最多预览 {0} 栋，当前选择了 {1} 栋。请缩小编号范围。", [MAX_SELECTED, unique.length])); return false; }
   selected = new Set(unique); clearError(); renderSelection(); renderList(); loadSelection(); return true;
 }
 function parseIds(value) {
@@ -129,6 +100,7 @@ function parseIds(value) {
   const tokens = normalized.split(/[\s,，;；、]+/).filter(Boolean);
   const result = new Set();
   for (const token of tokens) {
+    if (catalogById.has(token)) { result.add(token); continue; }
     const match = token.match(/^#?(\d+)(?:-(\d+))?$/);
     if (!match) throw Error(t("无法识别“{0}”。请使用编号或范围，例如 1, 3, 100-105。", [token]));
     const start = Number(match[1]), end = match[2] ? Number(match[2]) : start;
@@ -263,9 +235,7 @@ function screenshot() {
 $('replace-selection').onclick = () => applyBatch(false);
 $('add-selection').onclick = () => applyBatch(true);
 $('batch-ids').onkeydown = event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) applyBatch(false); };
-$('search').oninput = () => { page = 0; renderList(); };
-$('previous-page').onclick = () => { page--; renderList(); $('model-list').scrollTop = 0; };
-$('next-page').onclick = () => { page++; renderList(); $('model-list').scrollTop = 0; };
+$('search').oninput = () => { renderList(); };
 $('clear-selection').onclick = () => selectIds([]);
 $('random-selection').onclick = () => {
   const pool = catalog.map(m => m.id);
@@ -297,34 +267,32 @@ function ensureViewer() {
   options = {...options, ...paletteControls?.getOptions()};
   viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
-function folderReady(fileList) {
-  if (!fileList.length) return;
-  ++generation; controller?.abort(); cache.clear();
-  localFiles = new Map(); catalog = []; catalogById = new Map(); page = 0;
+function folderReady(fileList, paths = null) {
+  const result = appendLodFiles(catalog, modelProject, [...fileList], paths);
+  catalog.sort((a,b) => a.id.localeCompare(b.id,undefined,{numeric:true}));
+  catalogById = new Map(catalog.map(model => [model.id,model]));
+  localFiles = new Map(catalog.map(model => [model.id,model.file]));
   $('search').value = '';
-  $('total-count').textContent = t('0 栋模型');
-  $('source-path').textContent = t('尚未选择可用的 OBJ 目录');
-  $('folder-status').textContent = t('请选择包含 OBJ 文件的目录');
-  selectIds([]);
-  const files = [...fileList].filter(file => /\.obj$/i.test(file.name));
-  if (!files.length) { showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。')); return; }
-  const mapped = new Map();
-  for (const file of files) {
-    const id = file.name.replace(/\.obj$/i, '');
-    if (mapped.has(id)) { showError(t("文件夹包含同名模型 {0}，请直接选择只含一套结果的子文件夹。", [file.name])); return; }
-    mapped.set(id, file);
-  }
-  try { ensureViewer(); } catch (error) { showError(error.message); return; }
-  ++generation; controller?.abort(); cache.clear();
-  localFiles = mapped;
-  catalog = [...mapped].map(([id, file]) => ({id, bytes: file.size})).sort((a, b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
-  catalogById = new Map(catalog.map(model => [model.id, model]));
-  page = 0; $('search').value = '';
-  const name = (files[0].webkitRelativePath || '').split('/')[0] || t('本地文件夹');
-  $('source-path').textContent = name + t('（浏览器选择的本地文件夹）');
-  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(files.length)]);
-  $('total-count').textContent = t("{0} 栋模型", [number(files.length)]);
-  selectIds([]);
+  $('source-path').textContent = t('文件留在本机 · 分组仅保留在本次页面');
+  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
+  $('total-count').textContent = t("{0} 栋模型", [number(catalog.length)]);
+  if (!result.added && !result.duplicates) showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。'));
+  else clearError();
+  renderList(); return result;
+}
+function changeModelVisibility(members, checked) {
+  const next = new Set(selected);
+  for (const model of members) checked ? next.add(model.id) : next.delete(model.id);
+  selectIds([...next]);
+}
+function removeModelEntries(members) {
+  const removed = new Set(members);
+  ++generation; controller?.abort();
+  for (const model of members) { cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
+  catalog = catalog.filter(model => !removed.has(model));
+  $('total-count').textContent = t("{0} 栋模型", [number(catalog.length)]);
+  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
+  selectIds([...selected]);
 }
 $('choose-folder').onclick = () => $('folder-input').click();
 $('folder-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };
@@ -333,8 +301,16 @@ function init() {
   try {
     ensureViewer();
     mountViewerLayout();
+    if (!modelTree) modelTree = mountProjectTree({
+      project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
+      getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),
+      getMode: () => 'multiple', getQuery: () => $('search').value.trim().replace(/^#/,''),
+      onToggle: model => changeModelVisibility([model],!selected.has(model.id)),
+      onGroupSelection: changeModelVisibility, onVisibility: changeModelVisibility,
+      onRemove: removeModelEntries, onChange: renderList, detail: model => `${(model.bytes / 1024).toFixed(1)} KB`,
+    });
     mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.obj$/i.test(name), onFiles: items => {
-      folderReady(items.map(item => item.file)); return {added: catalog.length, duplicates: 0};
+      return folderReady(items.map(item => item.file), new Map(items.map(item => [item.file,item.path])));
     }});
     $('choose-file').onclick = () => $('file-input').click();
     $('file-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };

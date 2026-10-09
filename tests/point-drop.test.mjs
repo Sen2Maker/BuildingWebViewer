@@ -90,8 +90,8 @@ const app = await readFile(new URL('../src/cloud/cloud-app.js', import.meta.url)
 const receiveSource = app.slice(app.indexOf('  function receiveCloudFiles('), app.indexOf('  function applyCloudSelection('));
 const selected = {id: 'selected.txt', key: 'selected.txt\0' + '42\0' + '123', file: file('selected.txt')};
 const existingEntries = [selected], selection = new Set([selected]), nodes = {};
-const {PointProject} = await import('../src/pointcloud/point-project.js');
-const context = {t, pointProject: new PointProject(), entries: existingEntries, selectedCloudEntries: selection, pointExtension: /\.(xyz|txt|csv|pts|ply|pcd)$/i,
+const {ViewerProject} = await import('../src/shared/project-model.js');
+const context = {t, pointProject: new ViewerProject(), entries: existingEntries, selectedCloudEntries: selection, pointExtension: /\.(xyz|txt|csv|pts|ply|pcd)$/i,
   natural: (a, b) => a.localeCompare(b), pretty: String, page: 2,
   $: id => nodes[id] ||= {}, list() {}, error() {}};
 runInNewContext(receiveSource + '\nthis.receiveCloudFiles = receiveCloudFiles;', context);

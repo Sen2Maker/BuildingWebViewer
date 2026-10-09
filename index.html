@@ -1,24 +1,74 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BuildingWebViewer · 三维数据工具箱</title><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/hub.css"></head>
-<body>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BuildingWebViewer · 三维数据工具箱</title><!-- boot-head:start -->
+<style>/* Critical startup styles are inline: they cannot be delayed by another request. */
+html.boot-pending{background:#f5f8f6}
+html.boot-pending body>:not(#page-boot){visibility:hidden!important}
+#page-boot{display:none}
+.boot-pending #page-boot{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:#f5f8f6;color:#305b50;font:14px/1.6 system-ui,sans-serif;text-align:center;padding:24px}
+#page-boot .boot-mark{width:54px;height:54px;position:relative;display:grid;place-items:center}
+#page-boot .boot-mark svg{width:34px;height:34px;animation:boot-breathe 1.8s ease-in-out infinite}
+#page-boot .boot-mark:after{content:'';position:absolute;inset:0;border:2px solid #dbe8df;border-top-color:#48846b;border-radius:50%;animation:boot-spin 1.6s linear infinite}
+#page-boot p{margin:0}#page-boot .boot-caption{font-size:10px;letter-spacing:.18em;color:#8aa095;margin-top:7px}
+#page-boot .boot-en,#page-boot .boot-help,#page-boot .boot-error{display:none}
+html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en{display:block}
+.boot-slow #page-boot .boot-help,.boot-failed #page-boot .boot-help,.boot-failed #page-boot .boot-error{display:block}
+.boot-failed #page-boot .boot-progress{display:none}
+#page-boot .boot-help{font-size:12px;color:#7c9086;max-width:310px}
+#page-boot a{display:inline-block;margin-top:12px;color:#305b50;text-decoration:none;border:1px solid #bed1c5;border-radius:8px;padding:7px 20px}
+@keyframes boot-spin{to{transform:rotate(360deg)}}@keyframes boot-breathe{50%{opacity:.55;transform:translateY(-2px)}}
+@media(prefers-reduced-motion:reduce){#page-boot .boot-mark svg,#page-boot .boot-mark:after{animation:none}}
+</style>
+<script>/* Inlined by build.py before any stylesheet or page content can paint. */
+(() => {
+  const root = document.documentElement;
+  let saved = null;
+  try { saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
+  const query = new URLSearchParams(location.search).get('lang');
+  const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
+  root.lang = language === 'en' ? 'en' : 'zh-CN';
+  if (language === 'en') {
+    const titles = {'lod.html':'LOD Model Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer'};
+    document.title = (titles[location.pathname?.split('/').pop()] || 'BuildingWebViewer') + ' · 3D Data Workspace';
+  }
+  root.classList.add('boot-pending');
+  let ready = false;
+  const slow = setTimeout(() => { if (!ready) root.classList.add('boot-slow'); }, 12000);
+  window.BuildingViewerBoot = {
+    ready() { ready = true; clearTimeout(slow); root.classList.remove('boot-pending','boot-slow','boot-failed'); document.getElementById('page-boot')?.remove(); },
+    fail() { if (!ready) { clearTimeout(slow); root.classList.add('boot-failed'); } },
+  };
+  window.addEventListener('error', event => {
+    if (event.target?.tagName === 'SCRIPT' || event.error) window.BuildingViewerBoot.fail();
+  }, true);
+})();
+</script>
+<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/hub.css?v=9b0731e72172"></head>
+<body><!-- boot-body:start -->
+<div id="page-boot" role="status" aria-live="polite" data-no-i18n>
+  <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
+  <div><p class="boot-progress"><span class="boot-zh">正在准备三维工作空间</span><span class="boot-en">Preparing your 3D workspace</span></p><p class="boot-error"><span class="boot-zh">页面资源未能加载</span><span class="boot-en">Page resources could not load</span></p><p class="boot-caption">BUILDING WEB VIEWER</p></div>
+  <div class="boot-help"><span class="boot-zh">网络较慢或连接中断，可以继续等待，或重新加载。</span><span class="boot-en">The connection is slow or interrupted. Keep waiting, or reload this page.</span><a href=""><span class="boot-zh">重新加载</span><span class="boot-en">Reload page</span></a></div>
+</div>
+
+<!-- boot-body:end -->
 <header><a class="wordmark" href="index.html"><img class="brand" src="favicon.svg" width="34" height="34" alt=""> 三维数据工具箱</a><div class="header-actions"><span class="local"><i></i> 完全本地运行</span><button id="language-toggle" class="language-switch" type="button" role="switch" aria-checked="false" aria-label="Switch to English"><span lang="zh-CN">中文</span><span lang="en">EN</span></button></div></header>
 <main>
   <div class="intro"><div><div class="eyebrow">3D DATA WORKSPACE</div><h1>为每一种三维数据，<br>找到合适的视角。</h1></div><p>选择一个工具，打开自己的数据。<br class="mobile-break"> 模型与点云始终留在你的设备上。</p></div>
   <div class="tools" aria-label="查看工具">
     <a class="tool lod" href="lod.html">
       <div class="card-top"><span class="number">01 / MESH</span><span class="arrow" aria-hidden="true">↗</span></div>
-      <svg class="art" viewBox="0 0 210 110" aria-hidden="true"><path d="M31 55 71 33 111 53 71 77Z" fill="#84a99c"/><path d="M31 55v31l40 22V77Z" fill="#c4d9cd"/><path d="M71 77v31l40-23V53Z" fill="#e0ece4"/><path d="m111 35 33-20 33 20-33 19Z" fill="#77978b"/><path d="M111 35v50l33 18V54Z" fill="#b0caba"/><path d="M144 54v49l33-20V35Z" fill="#d1e2d5"/><path d="m111 35 15-24 18 4 33 20" fill="#557c6c"/></svg>
+      <img class="art" src="assets/icons/lod.svg?v=19c1c4d21c4b" alt="" width="200" height="168">
       <div class="card-copy"><h2>LOD 模型查看器</h2><p>逐栋选择建筑模型，检查屋面、墙体与整体形态。</p><div class="tags"><span>OBJ 面模型</span><span>多栋比较</span></div></div>
     </a>
     <a class="tool wire" href="wireframe.html">
       <div class="card-top"><span class="number">02 / WIREFRAME</span><span class="arrow" aria-hidden="true">↗</span></div>
-      <svg class="art" viewBox="0 0 210 110" aria-hidden="true"><g fill="none" stroke="#5989a6" stroke-width="1.6" stroke-linejoin="round"><path d="m36 59 59-34 75 37-59 34Z M36 59v-9L95 8l75 44v10 M95 8v17 M36 50l75 36 59-34 M111 86v10"/><path d="M36 59v34l75 15 59-32V62 M111 96v12 M95 25v52l75-1" opacity=".4"/></g><g fill="#8bacc2" opacity=".65"><circle cx="66" cy="65" r="1.5"/><circle cx="81" cy="71" r="1.5"/><circle cx="112" cy="72" r="1.5"/><circle cx="126" cy="63" r="1.5"/><circle cx="145" cy="71" r="1.5"/><circle cx="62" cy="80" r="1.5"/><circle cx="93" cy="89" r="1.5"/><circle cx="114" cy="38" r="1.5"/><circle cx="103" cy="54" r="1.5"/><circle cx="87" cy="40" r="1.5"/></g></svg>
+      <img class="art" src="assets/icons/wireframe.svg?v=cb01e4afa4bd" alt="" width="200" height="168">
       <div class="card-copy"><h2>建筑线框查看器</h2><p>按建筑分组浏览多个 OBJ，可叠加点云并排检查。</p><div class="tags"><span>多线框对比</span><span>线框 + 点云</span></div></div>
     </a>
     <a class="tool cloud" href="pointcloud.html">
       <div class="card-top"><span class="number">03 / POINT CLOUD</span><span class="arrow" aria-hidden="true">↗</span></div>
-      <svg class="art" viewBox="0 0 210 110" aria-hidden="true"><defs><pattern id="dots" width="9" height="8" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.4" fill="#a989bc"/></pattern></defs><path d="m35 54 55-38 81 39v27l-66 28-70-28Z" fill="url(#dots)"/><path d="M90 16v48l81 18M35 54l70 34 66-33M105 88v22" fill="none" stroke="#baa3ca" stroke-width="2" stroke-dasharray="1 6" stroke-linecap="round"/><g fill="#8963a6"><circle cx="91" cy="17" r="3"/><circle cx="106" cy="87" r="3"/><circle cx="35" cy="54" r="3"/><circle cx="171" cy="54" r="3"/></g></svg>
+      <img class="art" src="assets/icons/pointcloud.svg?v=1ab5d0c165b5" alt="" width="200" height="168">
       <div class="card-copy"><h2>点云查看器</h2><p>叠加多个点云，按文件、强度、RGB 或数值字段着色。</p><div class="tags"><span>XYZ / PLY / PCD</span><span>属性着色</span></div></div>
     </a>
     <button class="tool upcoming" type="button" disabled aria-label="其他功能待开发">
@@ -30,4 +80,4 @@
   <div class="how"><span class="how-title">开始使用</span><span><b>1</b> 选择查看工具</span><span class="step-arrow">→</span><span><b>2</b> 手动打开数据文件夹</span><span class="step-arrow">→</span><span><b>3</b> 选择需要预览的数据</span></div>
 </main>
 <footer><span>不上传文件 · 不预设目录 · 无需安装依赖</span><span>BuildingWebViewer <b> / </b> 1.0</span></footer>
-<script defer src="assets/js/hub.bundle.js"></script></body></html>
+<script defer src="assets/js/hub.bundle.js?v=854364c898ea"></script></body></html>

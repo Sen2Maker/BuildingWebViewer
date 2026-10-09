@@ -16,7 +16,7 @@ export function setLanguage(language) {
 }
 /** Source-language keys keep messages readable; positional arguments are never translated. */
 export function t(message, values = []) {
-  const format = currentLanguage === 'en' ? EN_MESSAGES[message] ?? message : message;
+  const format = currentLanguage === 'en' && Object.hasOwn(EN_MESSAGES,message) ? EN_MESSAGES[message] : message;
   return format.replace(/\{(\d+)\}/g, (token,index) => index < values.length ? String(values[index]) : token);
 }
 const sourceText = new WeakMap(), sourceAttributes = new WeakMap();
@@ -51,6 +51,7 @@ export function localizeHTML(markup) {
 export function initializeLocale(doc = document) {
   setLanguage(currentLanguage);
   translateTree(doc);
+  globalThis.BuildingViewerBoot?.ready();
   // URL propagation also works when browser storage is disabled, including file:// usage.
   for(const link of doc.querySelectorAll('a[href]')) {
     const href=link.getAttribute('href');
