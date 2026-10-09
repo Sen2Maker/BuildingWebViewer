@@ -1199,7 +1199,6 @@ function mountPointProject({project, container, root, controls, getEntries, getS
 }
 
 
-
 // Source: src/shared/point-drop.js
 
 // Capture drag handles synchronously: browsers protect the data store after drop returns.

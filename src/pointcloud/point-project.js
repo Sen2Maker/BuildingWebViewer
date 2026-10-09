@@ -350,4 +350,3 @@ export function mountPointProject({project, container, root, controls, getEntrie
   }
   return {render};
 }
-
