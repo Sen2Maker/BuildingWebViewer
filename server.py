@@ -19,7 +19,10 @@ JS_FILES = ('viewer.js', 'renderer.js', 'obj-parser.js', 'app.js',
 STATIC_FILES = {'/': ('index.html', 'text/html; charset=utf-8')}
 for names, content_type in ((HTML_FILES, 'text/html; charset=utf-8'),
                             (CSS_FILES, 'text/css; charset=utf-8'),
-                            (JS_FILES, 'text/javascript; charset=utf-8')):
+                            (JS_FILES, 'text/javascript; charset=utf-8'),
+                            (('favicon.svg',), 'image/svg+xml'),
+                            (('favicon.ico',), 'image/vnd.microsoft.icon'),
+                            (('favicon-32.png', 'apple-touch-icon.png'), 'image/png')):
     STATIC_FILES.update({'/' + name: (name, content_type) for name in names})
 
 

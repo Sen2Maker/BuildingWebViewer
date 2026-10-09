@@ -8,6 +8,7 @@ import zipfile
 
 HERE = Path(__file__).resolve().parent
 SITE_FILES = [
+    'favicon.svg', 'favicon.ico', 'favicon-32.png', 'apple-touch-icon.png',
     'index.html', 'hub.css', 'lod.html', 'wireframe.html', 'pointcloud.html',
     'styles.css', 'cloud.css', 'viewer-controls.css', 'camera-controls.css', 'viewer-layout.css', 'viewer.js', 'cloud-app.bundle.js',
 ]

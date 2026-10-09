@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="三维视窗"><title>BuildingWebViewer · 三维视窗</title><rect width="96" height="96" rx="22" fill="#193b4b"/>
+<path d="M17 31V18H30 M66 18H79V31 M79 66V79H66 M30 79H17V66" fill="none" stroke="#74b8b3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M48 27 68 39 48 51 28 39Z" fill="#94d3c4"/>
+<path d="M28 39 48 51V74L28 62Z" fill="#365d68"/>
+<path d="M48 51 68 39V62L48 74Z" fill="#224753"/>
+<path d="M48 27 68 39V62L48 74 28 62V39Z M28 39 48 51 68 39 M48 51V74" fill="none" stroke="#e3f4e9" stroke-width="3.2" stroke-linejoin="round"/>
+</svg>
