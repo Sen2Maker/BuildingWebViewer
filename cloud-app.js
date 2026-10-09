@@ -1,5 +1,7 @@
 import { mountViewerLayout } from './viewer-layout.js';
 import { CloudViewer } from './cloud-renderer.js';
+import { readPointCloud, samplePointCloud } from './point-io.js';
+import { mountPointProcessing } from './point-processing.js';
 import { CloudFileCache } from './cloud-cache.js';
 import { describePointClouds } from './cloud-combine.js';
 import { mountPaletteControls, paletteGradient } from './palette-controls.js';
@@ -18,7 +20,8 @@ import { mountCameraControls } from './camera-controls.js';
   let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
-  const cached = new CloudFileCache(), selectedCloudEntries = new Set();
+  const cached = new CloudFileCache({readCloud: (file, options) => file.generatedCloud ? samplePointCloud(file.generatedCloud, options.maxPoints) : readPointCloud(file, options)}), selectedCloudEntries = new Set();
+  let processingControls = null, displayedItems = [], resultSerial = 0;
   let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
@@ -80,7 +83,7 @@ import { mountCameraControls } from './camera-controls.js';
       if (!isWire && cloudMode === 'multiple') { button.setAttribute('role', 'checkbox'); button.setAttribute('aria-checked', String(selected)); }
       const title = document.createElement('strong'); title.textContent = isWire ? `# ${entry.id}` : entry.id;
       const detail = document.createElement('small');
-      detail.textContent = isWire ? `${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云` : formatSize(entry.file.size);
+      detail.textContent = isWire ? `${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云` : entry.file.generatedCloud ? `${pretty(entry.file.generatedCloud.count)} 点 · 计算结果` : formatSize(entry.file.size);
       button.append(title, detail); button.title = entry.id;
       button.onclick = () => isWire ? active?.id === entry.id ? clear() : choose(entry) : toggleCloud(entry); fragment.append(button);
     }
@@ -127,6 +130,7 @@ import { mountCameraControls } from './camera-controls.js';
     }
   }
   function clear() {
+    processingControls?.cancel(); displayedItems = [];
     loadController?.abort(); loadController = null;
     selectedCloudEntries.clear(); lastCloudEntry = null; cached.setActive([]);
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
@@ -283,6 +287,7 @@ import { mountCameraControls } from './camera-controls.js';
   }
   async function loadCloudSelection({preserveCamera = cameraControls?.preserveView ?? true} = {}) {
     if (!selectedCloudEntries.size) { clear(); return; }
+    processingControls?.cancel();
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
     const version = ++revision, selection = [...selectedCloudEntries];
@@ -317,6 +322,7 @@ import { mountCameraControls } from './camera-controls.js';
       snapshot = preserveCamera ? captureView() : null;
       initViewers();
       viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color})), {preserveView: false});
+      displayedItems = items;
       loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
       currentPointName = items.map(item => item.name).join(' + ');
@@ -552,6 +558,43 @@ import { mountCameraControls } from './camera-controls.js';
     paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: update});
     cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewers.slice(0, activeViewerCount()),
       space: 'raw-world', getScene: () => ({ids: isWire ? [active?.id].filter(Boolean) : [...selectedCloudEntries].map(entry => entry.id)}), pauseSync});
+    if (!isWire) processingControls = mountPointProcessing({container: $('processing-controls'),
+      getSelection: () => {
+        if (loadController) throw Error('请等待点云加载完成后再处理');
+        const selection = [...selectedCloudEntries];
+        if (selection.some(entry => !displayedItems.some(item => item.key === entry.file))) throw Error('有文件加载失败，请取消勾选失败的文件后重试');
+        return selection;
+      },
+      readCloud: async (entry, scope, signal, onProgress) => {
+        signal.throwIfAborted();
+        if (scope === 'display') return displayedItems.find(item => item.key === entry.file)?.cloud;
+        if (entry.file.generatedCloud) return entry.file.generatedCloud;
+        const record = cached.records.get(entry.file);
+        if (record && record.value.count === record.value.totalCount) return record.value;
+        return readPointCloud(entry.file, {maxPoints: 0, signal, onProgress});
+      },
+      addResults: async results => {
+        selectedCloudEntries.clear();
+        for (const result of results) {
+          const serial = ++resultSerial, file = {name: result.name, size: cached.bytes(result.cloud), generatedCloud: result.cloud};
+          const entry = {id: `${result.name} #${serial}`, key: `generated:${serial}`, file};
+          entries.push(entry); selectedCloudEntries.add(entry); lastCloudEntry = entry;
+        }
+        if (results.length > 1) cloudMode = 'multiple';
+        $('source-note').textContent = `已列出 ${pretty(entries.length)} 个条目 · 计算结果请导出保存`;
+        active = lastCloudEntry; page = Math.floor((entries.length - 1) / 50); $('search').value = ''; list();
+        await loadCloudSelection();
+        const field = results[0]?.cloud.featureMapping.slope;
+        if (field) { $('color-mode').value = `field:${field}`; update(); }
+      },
+      removeResults: selection => {
+        const removed = new Set(selection.filter(entry => entry.file.generatedCloud));
+        for (const entry of removed) { selectedCloudEntries.delete(entry); cached.records.delete(entry.file); }
+        entries = entries.filter(entry => !removed.has(entry));
+        if (removed.size) applyCloudSelection();
+        return removed.size;
+      },
+    });
     mountViewerLayout();
     clear(); update();
   } catch (cause) { error(cause.message); }

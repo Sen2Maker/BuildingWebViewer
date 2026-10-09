@@ -121,7 +121,7 @@ function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
   let totalCount = 0, count = 0, maxRGB = 0, invalidRGB = false;
   const capacity = Math.min(POINT_STORAGE_CHUNK_POINTS, maxPoints || Infinity, expectedCount || Infinity);
   function newChunk() {
-    const chunk = {positions: new Float64Array(capacity * 3), fields: names.map(() => new Float32Array(capacity))};
+    const chunk = {positions: new Float64Array(capacity * 3), fields: names.map(() => new Float64Array(capacity))};
     if (maxPoints) chunk.indices = new Float64Array(capacity);
     if (hasRGB) chunk.rgb = new Float32Array(capacity * 3);
     chunks.push(chunk);
@@ -180,7 +180,7 @@ function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
         if (rgb) rgb = chunks[0].rgb.subarray(0, count * 3);
       } else {
         positions = new Float64Array(count * 3);
-        for (const name of names) fields[name] = new Float32Array(count);
+        for (const name of names) fields[name] = new Float64Array(count);
         if (sampled) {
           const order = new Uint32Array(count);
           for (let i = 0; i < count; i++) order[i] = i;
@@ -229,7 +229,7 @@ export function samplePointCloud(cloud, maxPoints = 0) {
   const sampleIndices = new Float64Array(count);
   for (const [name, values] of Object.entries(cloud.fields || {})) {
     if (!values || values.length !== cloud.count) pointError(`属性 ${name} 长度与点数不一致`);
-    fields[name] = new Float32Array(count);
+    fields[name] = new Float64Array(count);
   }
   if (cloud.rgb && cloud.rgb.length !== cloud.count * 3) pointError('RGB 数组长度与点数不一致');
   for (let target = 0; target < count; target++) {
@@ -310,7 +310,10 @@ function pointTextParser(filename, maxPoints) {
         values = new Float64Array(header.length);
       }
       if (parts.length !== header.length) pointError(`第 ${record.line} 行：字段数量不一致（需要 ${header.length} 列，读取 ${parts.length} 列）`);
-      for (let i = 0; i < parts.length; i++) values[i] = numericPoint(parts[i], `第 ${record.line} 行`);
+      for (let i = 0; i < parts.length; i++) {
+        // Explicit missing scalar values round-trip from merged/derived exports; XYZ stays strict.
+        values[i] = !['x', 'y', 'z'].includes(header[i]) && /^nan$/i.test(parts[i]) ? NaN : numericPoint(parts[i], `第 ${record.line} 行`);
+      }
       collector.add(values); totalCount++;
     },
     finish() {

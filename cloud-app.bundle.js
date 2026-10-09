@@ -1354,7 +1354,7 @@ function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
   let totalCount = 0, count = 0, maxRGB = 0, invalidRGB = false;
   const capacity = Math.min(POINT_STORAGE_CHUNK_POINTS, maxPoints || Infinity, expectedCount || Infinity);
   function newChunk() {
-    const chunk = {positions: new Float64Array(capacity * 3), fields: names.map(() => new Float32Array(capacity))};
+    const chunk = {positions: new Float64Array(capacity * 3), fields: names.map(() => new Float64Array(capacity))};
     if (maxPoints) chunk.indices = new Float64Array(capacity);
     if (hasRGB) chunk.rgb = new Float32Array(capacity * 3);
     chunks.push(chunk);
@@ -1413,7 +1413,7 @@ function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
         if (rgb) rgb = chunks[0].rgb.subarray(0, count * 3);
       } else {
         positions = new Float64Array(count * 3);
-        for (const name of names) fields[name] = new Float32Array(count);
+        for (const name of names) fields[name] = new Float64Array(count);
         if (sampled) {
           const order = new Uint32Array(count);
           for (let i = 0; i < count; i++) order[i] = i;
@@ -1462,7 +1462,7 @@ function samplePointCloud(cloud, maxPoints = 0) {
   const sampleIndices = new Float64Array(count);
   for (const [name, values] of Object.entries(cloud.fields || {})) {
     if (!values || values.length !== cloud.count) pointError(`属性 ${name} 长度与点数不一致`);
-    fields[name] = new Float32Array(count);
+    fields[name] = new Float64Array(count);
   }
   if (cloud.rgb && cloud.rgb.length !== cloud.count * 3) pointError('RGB 数组长度与点数不一致');
   for (let target = 0; target < count; target++) {
@@ -1543,7 +1543,10 @@ function pointTextParser(filename, maxPoints) {
         values = new Float64Array(header.length);
       }
       if (parts.length !== header.length) pointError(`第 ${record.line} 行：字段数量不一致（需要 ${header.length} 列，读取 ${parts.length} 列）`);
-      for (let i = 0; i < parts.length; i++) values[i] = numericPoint(parts[i], `第 ${record.line} 行`);
+      for (let i = 0; i < parts.length; i++) {
+        // Explicit missing scalar values round-trip from merged/derived exports; XYZ stays strict.
+        values[i] = !['x', 'y', 'z'].includes(header[i]) && /^nan$/i.test(parts[i]) ? NaN : numericPoint(parts[i], `第 ${record.line} 行`);
+      }
       collector.add(values); totalCount++;
     },
     finish() {
@@ -2053,7 +2056,374 @@ class CloudFileCache {
 }
 
 
+// Source: point-operations.js
+/** Self-contained kernel: also serialized into a local Blob Worker for offline use. */
+function computePointFeatures(positions, {k = 32, radius = 0, orientation = '+z'} = {}, progress = () => {}) {
+  const count = positions.length / 3;
+  if (!Number.isSafeInteger(count) || count < 3) throw Error('至少需要 3 个点');
+  if (!Number.isInteger(k) || k < 3 || k > 256) throw Error('邻域点数必须是 3–256 的整数');
+  if (!Number.isFinite(radius) || radius < 0) throw Error('邻域半径必须为非负数');
+  if (!['+x', '-x', '+y', '-y', '+z', '-z'].includes(orientation)) throw Error('法向量方向无效');
+  const ids = new Uint32Array(count);
+  for (let i = 0; i < count; i++) {
+    ids[i] = i;
+    if (![positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]].every(Number.isFinite)) throw Error('XYZ 包含无效数值');
+  }
+  const coord = (i, axis) => positions[ids[i] * 3 + axis];
+  function select(lo, hi, mid, axis) {
+    while (lo < hi) {
+      const pivot = coord((lo + hi) >>> 1, axis);
+      let i = lo, j = hi;
+      while (i <= j) {
+        while (coord(i, axis) < pivot) i++;
+        while (coord(j, axis) > pivot) j--;
+        if (i <= j) { const a = ids[i]; ids[i++] = ids[j]; ids[j--] = a; }
+      }
+      if (mid <= j) hi = j; else if (mid >= i) lo = i; else break;
+    }
+  }
+  let built = 0, nextBuild = 0;
+  function build(lo, hi, depth) {
+    if (lo >= hi) return;
+    if (hi - lo <= 16) { built += hi - lo; }
+    else {
+      const mid = (lo + hi) >>> 1; select(lo, hi - 1, mid, depth % 3); built++;
+      build(lo, mid, depth + 1); build(mid + 1, hi, depth + 1);
+    }
+    if (built >= nextBuild) { progress({phase: 'index', done: built, total: count}); nextBuild = built + 16384; }
+  }
+  progress({phase: 'index', done: 0, total: count}); build(0, count, 0);
+  const cap = Math.min(k, count), near = new Uint32Array(cap), distances = new Float64Array(cap);
+  let used = 0;
+  const r2 = radius > 0 ? radius * radius : Infinity;
+  function insert(id, distance) {
+    if (distance > r2 || (used === cap && distance >= distances[0])) return;
+    let pos;
+    if (used < cap) {
+      pos = used++;
+      while (pos > 0) {
+        const parent = (pos - 1) >>> 1;
+        if (distances[parent] >= distance) break;
+        distances[pos] = distances[parent]; near[pos] = near[parent]; pos = parent;
+      }
+    } else {
+      pos = 0;
+      while (pos * 2 + 1 < used) {
+        let child = pos * 2 + 1;
+        if (child + 1 < used && distances[child + 1] > distances[child]) child++;
+        if (distances[child] <= distance) break;
+        distances[pos] = distances[child]; near[pos] = near[child]; pos = child;
+      }
+    }
+    distances[pos] = distance; near[pos] = id;
+  }
+  function query(lo, hi, depth, x, y, z) {
+    if (lo >= hi) return;
+    const visit = i => {
+      const id = ids[i], p = id * 3;
+      insert(id, (positions[p] - x) ** 2 + (positions[p + 1] - y) ** 2 + (positions[p + 2] - z) ** 2);
+    };
+    if (hi - lo <= 16) { for (let i = lo; i < hi; i++) visit(i); return; }
+    const mid = (lo + hi) >>> 1, axis = depth % 3;
+    const delta = (axis === 0 ? x : axis === 1 ? y : z) - coord(mid, axis);
+    visit(mid);
+    if (delta <= 0) query(lo, mid, depth + 1, x, y, z); else query(mid + 1, hi, depth + 1, x, y, z);
+    if (delta * delta <= Math.min(r2, used === cap ? distances[0] : Infinity)) {
+      if (delta <= 0) query(mid + 1, hi, depth + 1, x, y, z); else query(lo, mid, depth + 1, x, y, z);
+    }
+  }
+  const fields = Object.create(null);
+  for (const name of ['nx', 'ny', 'nz', 'slope', 'planarity', 'roughness']) fields[name] = new Float64Array(count).fill(NaN);
+  fields.normal_valid = new Uint8Array(count);
+  let valid = 0;
+  const directionAxis = 'xyz'.indexOf(orientation[1]), sign = orientation[0] === '-' ? -1 : 1;
+  for (let index = 0; index < count; index++) {
+    const p = index * 3, x = positions[p], y = positions[p + 1], z = positions[p + 2];
+    used = 0; query(0, count, 0, x, y, z);
+    if (used >= 3) {
+      // Relative coordinates avoid subtracting two large world-coordinate sums.
+      let mx = 0, my = 0, mz = 0;
+      for (let j = 0; j < used; j++) { const q = near[j] * 3; mx += positions[q] - x; my += positions[q + 1] - y; mz += positions[q + 2] - z; }
+      mx /= used; my /= used; mz /= used;
+      const a = new Float64Array(9), vectors = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+      for (let j = 0; j < used; j++) {
+        const q = near[j] * 3, dx = positions[q] - x - mx, dy = positions[q + 1] - y - my, dz = positions[q + 2] - z - mz;
+        a[0] += dx * dx; a[1] += dx * dy; a[2] += dx * dz; a[4] += dy * dy; a[5] += dy * dz; a[8] += dz * dz;
+      }
+      a[3] = a[1]; a[6] = a[2]; a[7] = a[5];
+      for (let sweep = 0; sweep < 24; sweep++) {
+        let u = 0, v = 1;
+        if (Math.abs(a[2]) > Math.abs(a[1])) v = 2;
+        if (Math.abs(a[5]) > Math.abs(a[u * 3 + v])) { u = 1; v = 2; }
+        const uv = a[u * 3 + v];
+        if (Math.abs(uv) <= 1e-14 * (Math.abs(a[0]) + Math.abs(a[4]) + Math.abs(a[8]))) break;
+        const angle = 0.5 * Math.atan2(2 * uv, a[v * 3 + v] - a[u * 3 + u]);
+        const c = Math.cos(angle), s = Math.sin(angle), uu = a[u * 3 + u], vv = a[v * 3 + v];
+        a[u * 3 + u] = c * c * uu - 2 * s * c * uv + s * s * vv;
+        a[v * 3 + v] = s * s * uu + 2 * s * c * uv + c * c * vv;
+        a[u * 3 + v] = a[v * 3 + u] = 0;
+        for (let w = 0; w < 3; w++) {
+          if (w !== u && w !== v) {
+            const wu = a[w * 3 + u], wv = a[w * 3 + v];
+            a[w * 3 + u] = a[u * 3 + w] = c * wu - s * wv;
+            a[w * 3 + v] = a[v * 3 + w] = s * wu + c * wv;
+          }
+          const wu = vectors[w * 3 + u], wv = vectors[w * 3 + v];
+          vectors[w * 3 + u] = c * wu - s * wv; vectors[w * 3 + v] = s * wu + c * wv;
+        }
+      }
+      const order = [0, 1, 2].sort((u, v) => a[u * 3 + u] - a[v * 3 + v]);
+      const low = Math.max(0, a[order[0] * 3 + order[0]]), mid = Math.max(0, a[order[1] * 3 + order[1]]), high = a[order[2] * 3 + order[2]];
+      if (high > 0 && mid > high * 1e-10) {
+        const n = [vectors[order[0]], vectors[3 + order[0]], vectors[6 + order[0]]];
+        let orient = n[directionAxis];
+        if (Math.abs(orient) < 1e-12) orient = n.find(value => Math.abs(value) >= 1e-12) || 1;
+        if (orient * sign < 0) for (let axis = 0; axis < 3; axis++) n[axis] *= -1;
+        fields.nx[index] = n[0]; fields.ny[index] = n[1]; fields.nz[index] = n[2];
+        fields.slope[index] = Math.acos(Math.min(1, Math.abs(n[2]))) * 180 / Math.PI;
+        fields.planarity[index] = Math.max(0, Math.min(1, (mid - low) / high));
+        fields.roughness[index] = Math.abs(mx * n[0] + my * n[1] + mz * n[2]);
+        fields.normal_valid[index] = 1; valid++;
+      }
+    }
+    if (index % 2048 === 0 || index === count - 1) progress({phase: 'features', done: index + 1, total: count});
+  }
+  return {fields, valid, count};
+}
+
+function runPointFeatures(positions, options, {signal, onProgress = () => {}} = {}) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException('已取消', 'AbortError')); return; }
+    const source = `const compute = ${computePointFeatures.toString()}; onmessage = event => { try { const result = compute(event.data.positions, event.data.options, progress => postMessage({progress})); postMessage({result}, Object.values(result.fields).map(a => a.buffer)); } catch (error) { postMessage({error: error.message}); } };`;
+    const url = URL.createObjectURL(new Blob([source], {type: 'text/javascript'}));
+    let worker;
+    const cleanup = () => { worker?.terminate(); URL.revokeObjectURL(url); signal?.removeEventListener('abort', abort); };
+    const abort = () => { cleanup(); reject(new DOMException('已取消', 'AbortError')); };
+    try {
+      worker = new Worker(url);
+      signal?.addEventListener('abort', abort, {once: true});
+      worker.onmessage = ({data}) => {
+        if (data.progress) { onProgress(data.progress); return; }
+        cleanup(); if (data.error) reject(Error(data.error)); else resolve(data.result);
+      };
+      worker.onerror = event => { cleanup(); reject(Error(event.message || '后台计算失败')); };
+      // Transfer an owned copy; never detach the viewer/cache's coordinate buffer.
+      const copy = positions.slice(); worker.postMessage({positions: copy, options}, [copy.buffer]);
+    } catch (error) { cleanup(); reject(error); }
+  });
+}
+
+function derivedPointCloud(cloud, result, parameters, scope) {
+  const fields = Object.assign(Object.create(null), cloud.fields), mapping = {};
+  for (const [name, values] of Object.entries(result.fields)) {
+    let key = name, suffix = 2;
+    while (Object.hasOwn(fields, key)) key = `${name}_${suffix++}`;
+    fields[key] = values; mapping[name] = key;
+  }
+  return {...cloud, fields, count: cloud.count, totalCount: cloud.count, featureMapping: mapping,
+    notes: [...(cloud.notes || []), `计算结果（${scope}）：${result.valid} / ${cloud.count} 个有效法向量；k=${parameters.k}，半径=${parameters.radius || '不限'}，方向=${parameters.orientation}。`],
+    processing: {parameters, scope, originalTotal: cloud.totalCount, fields: mapping, valid: result.valid}};
+}
+
+
+// Source: point-export.js
+/** Streaming serializers. Coordinates are always taken from the original Float64 positions. */
+function pointExportSchema(items, {sourceIds = true} = {}) {
+  if (!items.length) throw Error('没有可导出的点云');
+  let count = 0;
+  const keys = new Set();
+  for (const {cloud} of items) {
+    if (!cloud || !Number.isSafeInteger(cloud.count) || cloud.count < 1 || cloud.positions.length !== cloud.count * 3) throw Error('点云数据不完整');
+    count += cloud.count;
+    for (const [key, values] of Object.entries(cloud.fields || {})) {
+      if (values.length !== cloud.count) throw Error(`属性 ${key} 长度不匹配`);
+      if (!['x', 'y', 'z'].includes(key.toLowerCase())) keys.add(key);
+    }
+  }
+  if (!Number.isSafeInteger(count) || count > 4294967295) throw Error('导出点数超过支持范围');
+  const properties = ['x', 'y', 'z'].map((name, axis) => ({name, axis})), used = new Set(['x', 'y', 'z']);
+  function unique(raw) {
+    const base = raw.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'attribute';
+    let name = base, suffix = 2;
+    while (used.has(name)) name = `${base}_${suffix++}`;
+    used.add(name); return name;
+  }
+  const hasRGB = items.some(({cloud}) => cloud.rgb);
+  // Canonical colors remain usable even when only some sources have RGB.
+  if (hasRGB) {
+    for (const [channel, name] of ['red', 'green', 'blue'].entries()) properties.push({name: unique(name), channel});
+    properties.push({name: unique('rgb_valid'), rgbValid: true});
+  }
+  const colorKeys = new Set(['r', 'g', 'b', 'red', 'green', 'blue', 'diffuse_red', 'diffuse_green', 'diffuse_blue', 'rgb', 'rgba', 'rgb_valid']);
+  for (const key of keys) properties.push({name: unique(hasRGB && colorKeys.has(key.toLowerCase()) ? `original_${key}` : key), key});
+  if (sourceIds) properties.push({name: unique('source_id'), source: true});
+  return {count, properties};
+}
+
+async function writePointExport(items, {format = 'ply', sourceIds = true, signal, onProgress = () => {}, write, chunkPoints = 4096} = {}) {
+  if (!['ply', 'txt'].includes(format) || typeof write !== 'function') throw Error('导出格式或写入目标无效');
+  if (!Number.isInteger(chunkPoints) || chunkPoints < 1 || chunkPoints > 65536) throw Error('写出块大小无效');
+  const {count, properties} = pointExportSchema(items, {sourceIds});
+  const encoder = new TextEncoder();
+  const check = () => { if (signal?.aborted) throw new DOMException('已取消', 'AbortError'); };
+  const comments = ['BuildingWebViewer: original coordinates; concatenation without registration or deduplication.'];
+  items.forEach(({name, cloud}, id) => {
+    comments.push(`source ${id} ${JSON.stringify({name, count: cloud.count, originalTotal: cloud.totalCount, processing: cloud.processing || null})}`);
+  });
+  for (const property of properties) if (property.key && property.name !== property.key) comments.push(`property_map ${property.name} ${JSON.stringify(property.key)}`);
+  // ASCII-safe metadata keeps the PLY header compatible with byte-oriented readers.
+  const safe = text => text.replace(/[^\x20-\x7e]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  const header = format === 'ply'
+    ? ['ply', 'format binary_little_endian 1.0', ...comments.map(text => `comment ${safe(text)}`), `element vertex ${count}`, ...properties.map(p => `property double ${p.name}`), 'end_header', ''].join('\n')
+    : [...comments.map(text => `# ${safe(text)}`), properties.map(p => p.name).join(' '), ''].join('\n');
+  check(); await write(encoder.encode(header));
+  let done = 0;
+  for (const [source, {cloud}] of items.entries()) {
+    const value = (property, i) => {
+      if (property.axis !== undefined) return cloud.positions[i * 3 + property.axis];
+      if (property.channel !== undefined) return cloud.rgb?.[i * 3 + property.channel] ?? 0;
+      if (property.rgbValid) return cloud.rgb && cloud.fields.rgb_valid?.[i] !== 0 ? 1 : 0;
+      if (property.source) return source;
+      return cloud.fields[property.key]?.[i] ?? NaN;
+    };
+    for (let start = 0; start < cloud.count; start += chunkPoints) {
+      check(); const end = Math.min(start + chunkPoints, cloud.count);
+      let bytes;
+      if (format === 'ply') {
+        bytes = new Uint8Array((end - start) * properties.length * 8); const view = new DataView(bytes.buffer);
+        let offset = 0;
+        for (let i = start; i < end; i++) for (const property of properties) { view.setFloat64(offset, value(property, i), true); offset += 8; }
+      } else {
+        const lines = [];
+        for (let i = start; i < end; i++) lines.push(properties.map(property => String(value(property, i))).join(' '));
+        bytes = encoder.encode(lines.join('\n') + '\n');
+      }
+      await write(bytes); done += end - start; onProgress({done, total: count});
+      // Yield for cancellation and canvas interaction, including Blob fallback writes.
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+  check(); return {count, properties};
+}
+
+
+// Source: point-processing.js
+
+
+function mountPointProcessing({container, getSelection, readCloud, addResults, removeResults}) {
+  if (!container) return null;
+  container.innerHTML = `
+    <section class="inspector-section"><h3>处理范围</h3><p class="processing-help">对左侧勾选的点云操作。计算逐文件进行，原始文件保持不变。</p>
+    <fieldset class="processing-inputs"><label>数据范围<select id="process-scope"><option value="full">全部点</option><option value="display">当前显示点</option></select></label>
+    <p class="processing-help">全部点会按需重新读取原文件；显示上限不影响全量处理。计算结果仅保留在本次页面中，请及时导出。</p></fieldset></section>
+    <section class="inspector-section"><h3>法向量与几何特征</h3><fieldset class="processing-inputs">
+    <label>邻域点数 k<input id="process-k" type="number" min="3" max="256" step="1" value="32"></label>
+    <label>最大半径<input id="process-radius" type="number" min="0" step="any" value="0"></label>
+    <p class="processing-help">k 包含点自身。半径单位与坐标相同；0 不限，非零时最多取半径内 k 个近邻。</p>
+    <label>法向量朝向<select id="process-direction"><option value="+z">+Z（向上）</option><option value="-z">−Z（向下）</option><option value="+x">+X</option><option value="-x">−X</option><option value="+y">+Y</option><option value="-y">−Y</option></select></label>
+    <button id="process-compute" class="processing-primary">计算并显示结果</button>
+    <p class="processing-help">生成 nx / ny / nz、坡度 slope、平面度 planarity、粗糙度 roughness。完成后可在“显示 → 着色依据”选择这些属性。无效点以 NaN 和 normal_valid=0 标记。</p></fieldset></section>
+    <section class="inspector-section"><h3>保存点云</h3><fieldset class="processing-inputs">
+    <label>文件格式<select id="process-format"><option value="ply">二进制 PLY（推荐）</option><option value="txt">TXT（带属性表头）</option></select></label>
+    <label>保存方式<select id="process-save-method"><option value="direct">直接保存（支持时）</option><option value="download">浏览器下载（≤256 MB）</option></select></label>
+    <label class="processing-check"><input id="process-source" type="checkbox" checked>附加来源编号 source_id</label>
+    <button id="process-export" class="processing-primary">导出所选 / 合并为一个文件</button>
+    <p class="processing-help">保留 XYZ 和数值属性；多选时合并为一个文件，缺失属性填 NaN。按原坐标拼接，不配准、不去重。</p>
+    <button id="process-remove">移除所选计算结果</button></fieldset></section>
+    <section class="processing-feedback" aria-label="处理进度"><progress id="process-progress" max="1" value="0" hidden></progress><p id="process-status" role="status" aria-live="polite">选择点云后即可计算或导出。</p><button id="process-cancel" hidden>取消当前操作</button></section>`;
+  const el = id => container.querySelector(`#${id}`);
+  let controller = null;
+  function busy(value) {
+    for (const fieldset of container.querySelectorAll('fieldset')) fieldset.disabled = value;
+    el('process-cancel').hidden = !value; el('process-progress').hidden = !value;
+  }
+  function status(text, fraction = 0) { el('process-status').textContent = text; el('process-progress').value = fraction; }
+  function cancel() {
+    if (controller) { controller.abort(); controller = null; busy(false); status('操作已取消，未添加计算结果。'); }
+  }
+  async function collect(selection, scope, signal) {
+    const items = [];
+    for (const [index, entry] of selection.entries()) {
+      signal.throwIfAborted();
+      status(`读取 ${index + 1} / ${selection.length}：${entry.id}`);
+      const cloud = await readCloud(entry, scope, signal, ({loaded, total}) => status(`读取 ${entry.id} · ${Math.floor(100 * loaded / Math.max(1, total))}%`, loaded / Math.max(1, total)));
+      signal.throwIfAborted();
+      if (!cloud?.count) throw Error(`${entry.id} 没有可用的点`);
+      items.push({name: entry.id, cloud});
+    }
+    return items;
+  }
+  async function perform(kind) {
+    if (controller) return;
+    let selected;
+    try { selected = getSelection(); if (!selected.length) throw Error('请先勾选点云'); }
+    catch (error) { status(error.message); return; }
+    const scope = el('process-scope').value, scopeLabel = scope === 'full' ? '全部点' : '当前显示点';
+    const parameters = {k: Number(el('process-k').value), radius: Number(el('process-radius').value), orientation: el('process-direction').value};
+    if (kind === 'compute' && (!Number.isInteger(parameters.k) || parameters.k < 3 || parameters.k > 256 || !Number.isFinite(parameters.radius) || parameters.radius < 0)) {
+      status('邻域点数需为 3–256 的整数，半径需为非负数。'); return;
+    }
+    const format = el('process-format').value, sourceIds = el('process-source').checked;
+    const job = new AbortController(); controller = job; busy(true); status('准备处理…');
+    let stream = null;
+    try {
+      // The picker must be invoked during the original button gesture, before any reads.
+      let handle = null;
+      const stem = selected.length > 1 ? `merged_${selected.length}_clouds` : selected[0].id.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}_.-]/gu, '_');
+      const filename = `${stem}_${scope === 'full' ? 'all' : 'display'}.${format}`;
+      if (kind === 'export' && el('process-save-method').value === 'direct' && typeof window.showSaveFilePicker === 'function') {
+        handle = await window.showSaveFilePicker({suggestedName: filename, types: [{description: format.toUpperCase(), accept: {[format === 'ply' ? 'application/octet-stream' : 'text/plain']: [`.${format}`]}}]});
+        job.signal.throwIfAborted();
+      }
+      const items = await collect(selected, scope, job.signal);
+      if (kind === 'compute') {
+        const results = [];
+        for (const [index, item] of items.entries()) {
+          const result = await runPointFeatures(item.cloud.positions, parameters, {signal: job.signal, onProgress: ({phase, done, total}) => status(
+            `${index + 1} / ${items.length} · ${item.name} · ${phase === 'index' ? '建立邻域索引' : '计算几何特征'} ${Math.floor(done / total * 100)}%`, (index + done / total) / items.length)});
+          job.signal.throwIfAborted();
+          results.push({name: `${item.name} · 特征（${scopeLabel}）`, cloud: derivedPointCloud(item.cloud, result, parameters, scopeLabel)});
+        }
+        controller = null; busy(false);
+        await addResults(results);
+        status(`完成：${results.length} 个独立结果，${results.reduce((n, r) => n + r.cloud.processing.valid, 0).toLocaleString()} 个有效法向量。已选中新结果，可调整着色并导出。`);
+      } else {
+        const schema = pointExportSchema(items, {sourceIds}), limit = 256 * 1024 * 1024;
+        // A Blob download needs all output bytes in memory. Bound it before allocating.
+        const estimate = schema.count * schema.properties.length * (format === 'ply' ? 8 : 25);
+        if (!handle && estimate > limit) throw Error('预计导出文件较大。请在支持直接保存文件的 Chrome / Edge HTTPS 或 localhost 页面中导出，或选择“当前显示点”减小数据量。');
+        if (handle) stream = await handle.createWritable();
+        job.signal.throwIfAborted();
+        const chunks = []; let bytes = 0;
+        await writePointExport(items, {format, sourceIds, signal: job.signal, write: async chunk => {
+          if (stream) await stream.write(chunk);
+          else { bytes += chunk.byteLength; if (bytes > limit) throw Error('下载缓冲超过 256 MB，请使用支持直接保存文件的浏览器。'); chunks.push(chunk); }
+        }, onProgress: ({done, total}) => status(`写出 ${done.toLocaleString()} / ${total.toLocaleString()} 点 · ${scopeLabel}`, done / total)});
+        job.signal.throwIfAborted();
+        if (stream) { await stream.close(); stream = null; }
+        else {
+          const url = URL.createObjectURL(new Blob(chunks, {type: format === 'ply' ? 'application/octet-stream' : 'text/plain'}));
+          const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        }
+        status(`${handle ? '已保存' : '已发起下载'}：${filename} · ${schema.count.toLocaleString()} 点 · ${items.length} 个来源。`);
+      }
+    } catch (error) {
+      if (stream) { try { await stream.abort(); } catch {} }
+      if (controller === job) status(error.name === 'AbortError' ? '操作已取消。' : `操作失败：${error.message}`);
+    } finally { if (controller === job) { controller = null; busy(false); } }
+  }
+  el('process-compute').onclick = () => perform('compute');
+  el('process-export').onclick = () => perform('export');
+  el('process-cancel').onclick = cancel;
+  el('process-remove').onclick = () => { try { const count = removeResults(getSelection()); status(count ? `已移除 ${count} 个计算结果。` : '所选点云中没有计算结果。'); } catch (error) { status(error.message); } };
+  return {cancel};
+}
+
+
 // Source: cloud-app.js
+
+
 
 
 
@@ -2073,7 +2443,8 @@ class CloudFileCache {
   let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
-  const cached = new CloudFileCache(), selectedCloudEntries = new Set();
+  const cached = new CloudFileCache({readCloud: (file, options) => file.generatedCloud ? samplePointCloud(file.generatedCloud, options.maxPoints) : readPointCloud(file, options)}), selectedCloudEntries = new Set();
+  let processingControls = null, displayedItems = [], resultSerial = 0;
   let cameraControls = null, paletteControls = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
@@ -2135,7 +2506,7 @@ class CloudFileCache {
       if (!isWire && cloudMode === 'multiple') { button.setAttribute('role', 'checkbox'); button.setAttribute('aria-checked', String(selected)); }
       const title = document.createElement('strong'); title.textContent = isWire ? `# ${entry.id}` : entry.id;
       const detail = document.createElement('small');
-      detail.textContent = isWire ? `${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云` : formatSize(entry.file.size);
+      detail.textContent = isWire ? `${entry.wires.length} 个线框 · ${entry.clouds.length} 个点云` : entry.file.generatedCloud ? `${pretty(entry.file.generatedCloud.count)} 点 · 计算结果` : formatSize(entry.file.size);
       button.append(title, detail); button.title = entry.id;
       button.onclick = () => isWire ? active?.id === entry.id ? clear() : choose(entry) : toggleCloud(entry); fragment.append(button);
     }
@@ -2182,6 +2553,7 @@ class CloudFileCache {
     }
   }
   function clear() {
+    processingControls?.cancel(); displayedItems = [];
     loadController?.abort(); loadController = null;
     selectedCloudEntries.clear(); lastCloudEntry = null; cached.setActive([]);
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
@@ -2338,6 +2710,7 @@ class CloudFileCache {
   }
   async function loadCloudSelection({preserveCamera = cameraControls?.preserveView ?? true} = {}) {
     if (!selectedCloudEntries.size) { clear(); return; }
+    processingControls?.cancel();
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
     const version = ++revision, selection = [...selectedCloudEntries];
@@ -2372,6 +2745,7 @@ class CloudFileCache {
       snapshot = preserveCamera ? captureView() : null;
       initViewers();
       viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color})), {preserveView: false});
+      displayedItems = items;
       loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
       currentPointName = items.map(item => item.name).join(' + ');
@@ -2607,6 +2981,43 @@ class CloudFileCache {
     paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: update});
     cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewers.slice(0, activeViewerCount()),
       space: 'raw-world', getScene: () => ({ids: isWire ? [active?.id].filter(Boolean) : [...selectedCloudEntries].map(entry => entry.id)}), pauseSync});
+    if (!isWire) processingControls = mountPointProcessing({container: $('processing-controls'),
+      getSelection: () => {
+        if (loadController) throw Error('请等待点云加载完成后再处理');
+        const selection = [...selectedCloudEntries];
+        if (selection.some(entry => !displayedItems.some(item => item.key === entry.file))) throw Error('有文件加载失败，请取消勾选失败的文件后重试');
+        return selection;
+      },
+      readCloud: async (entry, scope, signal, onProgress) => {
+        signal.throwIfAborted();
+        if (scope === 'display') return displayedItems.find(item => item.key === entry.file)?.cloud;
+        if (entry.file.generatedCloud) return entry.file.generatedCloud;
+        const record = cached.records.get(entry.file);
+        if (record && record.value.count === record.value.totalCount) return record.value;
+        return readPointCloud(entry.file, {maxPoints: 0, signal, onProgress});
+      },
+      addResults: async results => {
+        selectedCloudEntries.clear();
+        for (const result of results) {
+          const serial = ++resultSerial, file = {name: result.name, size: cached.bytes(result.cloud), generatedCloud: result.cloud};
+          const entry = {id: `${result.name} #${serial}`, key: `generated:${serial}`, file};
+          entries.push(entry); selectedCloudEntries.add(entry); lastCloudEntry = entry;
+        }
+        if (results.length > 1) cloudMode = 'multiple';
+        $('source-note').textContent = `已列出 ${pretty(entries.length)} 个条目 · 计算结果请导出保存`;
+        active = lastCloudEntry; page = Math.floor((entries.length - 1) / 50); $('search').value = ''; list();
+        await loadCloudSelection();
+        const field = results[0]?.cloud.featureMapping.slope;
+        if (field) { $('color-mode').value = `field:${field}`; update(); }
+      },
+      removeResults: selection => {
+        const removed = new Set(selection.filter(entry => entry.file.generatedCloud));
+        for (const entry of removed) { selectedCloudEntries.delete(entry); cached.records.delete(entry.file); }
+        entries = entries.filter(entry => !removed.has(entry));
+        if (removed.size) applyCloudSelection();
+        return removed.size;
+      },
+    });
     mountViewerLayout();
     clear(); update();
   } catch (cause) { error(cause.message); }

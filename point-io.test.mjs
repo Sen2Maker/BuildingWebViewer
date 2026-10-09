@@ -29,7 +29,7 @@ check('Double precision and unknown columns remain independent attributes', () =
   assert(value.positions instanceof Float64Array);
   assert.equal(value.positions[0], 832129.50060046);
   assert.equal(value.count, 2); assert.equal(value.totalCount, 2);
-  assert(value.fields.column_4 instanceof Float32Array); assert.equal(value.rgb, null);
+  assert(value.fields.column_4 instanceof Float64Array); assert.equal(value.rgb, null);
   const six = cloud('1 2 3 255 0 0'); assert.equal(six.rgb, null); assert.equal(six.fields.column_6[0], 0);
 });
 check('CSV header / comments / reordered XYZ / named colors', () => {

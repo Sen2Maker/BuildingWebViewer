@@ -28,11 +28,13 @@ Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)**. Press `Ctrl+C` to stop;
 | --- | --- | --- |
 | **LOD models** | Triangulated OBJ meshes | Multiple buildings, solid / wireframe display, height above each model’s lowest point |
 | **Building wireframes** | OBJ wireframes + optional point clouds | Folders grouped by object ID, up to three comparison panes, synchronized cameras |
-| **Point clouds** | TXT · XYZ · CSV · PTS · PLY · PCD | Single or multiple files, coloring by RGB or scalar attributes such as intensity |
+| **Point clouds** | TXT · XYZ · CSV · PTS · PLY · PCD | Multi-file overlays, attribute coloring, geometric features and merged export |
 
 Organize wireframe data as `dataset / object-ID / wireframe.obj, points.txt`. Text point clouds support XYZ and additional attributes, such as `x y z intensity`. LAS / LAZ and compressed PCD are not supported.
 
 **Display · Camera · Bookmarks**: use the side panel to change palettes and value ranges, adjust camera sliders or enter precise values, and save views. Bookmarks stay in the current browser and site, with JSON import and export. The viewer interface is currently in Chinese.
+
+**Processing and export**: Compute normals, slope, planarity and roughness; save or merge clouds as PLY / TXT using all points or the displayed sample. [Processing guide](PROCESSING.md)
 
 ## Essentials
 
