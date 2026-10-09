@@ -46,6 +46,8 @@ Switch 中文 / English in the homepage header; the preference follows you into 
 - **Large files**: all points are displayed by default, with optional per-file limits and cache reuse. Capacity depends on available RAM and GPU memory.
 - **Coordinates**: point cloud overlays preserve original coordinates and require a common coordinate system. LOD models use a rearranged display layout.
 
+**Display and import**: sampling slider, per-cloud colors and advanced camera capture; all viewers accept ordinary ZIP archives. An Android APK is not available yet; see the [mobile roadmap](docs/MOBILE.md).
+
 ## Develop and package
 
 Plain HTML / CSS / JavaScript + WebGL, with no npm dependencies. Source lives in `src/`, styles in `assets/css/`; do not edit generated `assets/js/` bundles. [Development conventions](docs/DEVELOPMENT.md)

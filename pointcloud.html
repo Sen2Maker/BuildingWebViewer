@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>点云查看器 · 三维数据工具箱</title><!-- site-meta:start -->
 <meta name="description" content="本地点云查看与处理：TXT、XYZ、CSV、PTS、PLY、PCD，多文件叠加、RGB/HSV、属性映射、法向量计算与合并导出。Local point cloud viewing and processing: multi-file overlays, RGB/HSV, attribute mapping, normals and merged export.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.0.0">
+<meta name="application-version" content="1.1.0">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/pointcloud.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="点云查看器 / Point Cloud Viewer · BuildingWebViewer">
@@ -52,7 +52,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   }, true);
 })();
 </script>
-<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/styles.css?v=0f47acdbe1b1"><link rel="stylesheet" href="assets/css/cloud.css?v=4e636ab53689"><link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=50ac4a406682"><link rel="stylesheet" href="assets/css/project-tree.css?v=783125685d9b"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"></head>
+<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/styles.css?v=0f47acdbe1b1"><link rel="stylesheet" href="assets/css/cloud.css?v=c9998ca39751"><link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=171f2b950db5"><link rel="stylesheet" href="assets/css/project-tree.css?v=9fe2a270f63d"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"></head>
 <body data-tool="pointcloud"><!-- boot-body:start -->
 <div id="page-boot" role="status" aria-live="polite" data-no-i18n>
   <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
@@ -61,24 +61,27 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 </div>
 
 <!-- boot-body:end -->
-<header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页">←</a><img class="brand-icon tool-icon" src="assets/icons/pointcloud.svg?v=1ab5d0c165b5" alt=""><div><h1>点云查看器</h1><p>单点云 / 多点云 · 颜色与数值属性</p></div><div class="header-right"><button id="toggle-project" aria-controls="point-drop-zone" aria-expanded="true">▤ 收起项目</button><span class="local-tag"><i></i> 本地读取</span></div></header>
+<header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页" title="返回工具首页"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>首页</span></a><img class="brand-icon tool-icon" src="assets/icons/pointcloud.svg?v=1ab5d0c165b5" alt=""><div><h1>点云查看器</h1><p>单点云 / 多点云 · 颜色与数值属性</p></div><div class="header-right"><span class="local-tag"><i></i> 本地读取</span></div></header>
 <div class="workspace">
-<aside class="sidebar project-sidebar point-drop-zone" id="point-drop-zone" aria-label="数据选择" aria-describedby="drop-hint">
-  <div class="sidebar-heading"><h2>项目文件</h2><span id="item-count">0</span><button id="collapse-project" aria-label="收起项目栏" title="收起项目栏">‹</button></div>
+<!-- project-sidebar:start -->
+<aside class="sidebar project-sidebar point-drop-zone" id="point-drop-zone" aria-label="项目文件" aria-describedby="drop-hint">
+  <div class="sidebar-heading"><h2>项目文件</h2><span id="item-count">共 0 项</span><button id="collapse-project" type="button" aria-label="收起项目栏" title="收起项目栏">‹</button></div>
   <div class="folder-section project-import">
-    <div class="project-import-buttons"><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept=".xyz,.txt,.csv,.pts,.ply,.pcd" multiple hidden><button id="choose-folder">＋ 文件夹</button><input id="folder-input" type="file" webkitdirectory multiple hidden></div>
-    <p id="drop-hint" class="point-drop-hint">拖入点云文件或文件夹</p>
+    <div class="project-import-buttons"><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept=".xyz,.txt,.csv,.pts,.ply,.pcd,.zip" multiple hidden><button id="choose-folder">＋ 文件夹</button><input id="folder-input" type="file" webkitdirectory multiple hidden></div>
+    <p id="drop-hint" class="point-drop-hint">拖入文件或文件夹</p>
     <p id="drop-status" class="point-drop-status" role="status" hidden></p>
   </div>
-  <span id="cloud-mode-note" hidden></span>
-  <input id="search" type="search" aria-label="搜索点云或文件夹" placeholder="搜索点云或文件夹…" autocomplete="off">
-  <div class="list-meta"><span id="filter-count">尚未读取数据</span><div class="cloud-batch-actions" aria-label="点云批量选择"><button id="select-all-clouds" disabled>全选</button><button id="invert-cloud-selection" disabled>反选</button><button id="clear-selection">取消</button></div></div><p id="cloud-batch-scope" hidden></p>
+  <input id="search" type="search" aria-label="搜索文件或文件夹" placeholder="搜索文件或文件夹…" autocomplete="off">
+  <div class="list-meta"><span id="filter-count">尚未读取数据</span><div class="cloud-batch-actions" aria-label="显示选择"><button id="select-all-clouds" disabled>全选</button><button id="invert-cloud-selection" disabled>反选</button><button id="clear-selection">取消</button></div></div>
   <button id="project-root" class="project-root" title="拖到这里移出文件夹">▱ 项目根目录 <span>拖到此处移出分组</span></button>
   <div id="data-list" class="model-list project-tree" aria-label="项目文件列表"></div>
   <div id="project-controls"></div>
-  <div class="pagination" hidden><button id="previous-page" disabled></button><span id="page-info"></span><button id="next-page" disabled></button></div>
-  <details class="format-help"><summary>格式与管理说明</summary><p>勾选显示点云，右侧计算与合并使用相同勾选项。点击名称管理，Ctrl / ⌘ 多选、Shift 连选、空白处拖动框选。右键可批量显示、隐藏、移动或移除；行末手柄用于拖动。新建文件夹和移动仅影响本次页面，不修改磁盘；刷新需重新添加文件。</p><p>支持 XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">文件留在本机 · 分组仅保留在本次页面</p></details>
+  <span id="cloud-mode-note" hidden></span><p id="cloud-batch-scope" hidden></p>
+<div class="pagination" hidden><button id="previous-page" disabled></button><span id="page-info"></span><button id="next-page" disabled></button></div>
+<details class="format-help"><summary>格式与管理说明</summary><p>勾选显示点云，右侧计算与合并使用相同勾选项。点击名称管理，Ctrl / ⌘ 多选、Shift 连选、空白处拖动框选。右键可批量显示、隐藏、移动或移除；行末手柄用于拖动。新建文件夹和移动仅影响本次页面，不修改磁盘；刷新需重新添加文件。</p><p>支持 XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">文件留在本机 · 分组仅保留在本次页面</p></details>
+
 </aside>
+<!-- project-sidebar:end -->
 <div id="project-resizer" class="project-resizer" role="separator" aria-label="调整项目栏宽度" aria-orientation="vertical" aria-valuemin="240" aria-valuemax="500" aria-valuenow="300" tabindex="0" title="拖动调整宽度 · 双击恢复默认"></div>
 <main><div class="main-heading"><div><h2 id="current-title">未选择数据</h2><p id="scene-stats" aria-live="polite">从左侧选择要查看的数据</p></div><div class="point-main-actions"><select id="cloud-mode-select" aria-label="点云显示模式"><option value="single">单点云</option><option value="multiple" selected>多点云叠加</option></select><button id="screenshot" disabled>保存截图 ↓</button></div></div>
 
@@ -88,7 +91,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 
 <div class="viewport" id="viewport"><canvas id="scene" aria-label="点云查看器三维预览"></canvas><div class="scene-note"><strong id="view-note">点云原始坐标 · 按属性着色</strong><span id="geometry-note">未选择数据时保持空白</span></div><div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/pointcloud.svg?v=1ab5d0c165b5" alt="" width="96" height="81"><h3>打开数据，从这里开始</h3><p>添加点云文件或文件夹，再勾选左侧一个或多个文件。</p></div><div id="loading" class="loading" role="status" hidden><i></i><span>正在读取文件…</span></div><div id="error" class="error-banner" role="alert" hidden><span></span><button id="dismiss-error" aria-label="关闭提示">×</button></div><div class="viewport-bottom"><div id="color-legend" class="scalar-legend" hidden><span id="color-name"></span><i></i><span id="color-min"></span><span>—</span><span id="color-max"></span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div></div>
 <div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">文件不会上传</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">个人主页 ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.0.0</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.1.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.1.0</a></nav>
 
 <!-- site-footer:end --></footer></main>
 <aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
@@ -97,10 +100,10 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <div class="inspector-content">
     <section role="tabpanel" id="settings-panel-data" data-settings-panel="data" aria-labelledby="settings-tab-data" hidden><div id="column-controls"></div></section>
     <section role="tabpanel" id="settings-panel-processing" data-settings-panel="processing" aria-labelledby="settings-tab-processing" hidden><div id="processing-controls"></div></section>
-    <section role="tabpanel" id="settings-panel-display" data-settings-panel="display" aria-labelledby="settings-tab-display"><section class="inspector-section"><h3>图层与辅助线</h3><div class="inspector-visibility"><label class="check-label" hidden><input type="checkbox" id="show-wire" checked>线框</label><label class="check-label"><input type="checkbox" id="show-points" checked>点云</label><label class="check-label"><input type="checkbox" id="show-grid" checked>网格</label><label hidden>线框色<input id="wire-color" type="color" value="#e49b44" aria-label="线框颜色"></label></div></section><section class="inspector-section"><h3>点云显示</h3><div class="render-controls"><label>着色依据<select id="color-mode"><option value="height">高度 Z</option><option value="solid">单色</option></select></label><label>点大小 <input id="point-size" type="range" min="1" max="8" step="0.5" value="2"><output id="point-size-value">2</output></label><label>透明度 <input id="point-opacity" type="range" min="0.1" max="1" step="0.05" value="1"><output id="point-opacity-value">100%</output></label><label>每文件显示上限<select id="point-limit"><option value="0" selected>全部点（不限）</option><option value="100000">10 万点</option><option value="500000">50 万点</option><option value="1000000">100 万点</option></select></label></div>
+    <section role="tabpanel" id="settings-panel-display" data-settings-panel="display" aria-labelledby="settings-tab-display"><section class="inspector-section"><h3>图层与辅助线</h3><div class="inspector-visibility"><label class="check-label" hidden><input type="checkbox" id="show-wire" checked>线框</label><label class="check-label"><input type="checkbox" id="show-points" checked>点云</label><label class="check-label"><input type="checkbox" id="show-grid" checked>网格</label><label hidden>线框色<input id="wire-color" type="color" value="#e49b44" aria-label="线框颜色"></label></div></section><section class="inspector-section"><h3>点云显示</h3><div class="render-controls"><label>着色依据<select id="color-mode"><option value="height">高度 Z</option><option value="solid">单色</option></select></label><label>单色颜色<input id="point-color" type="color" value="#547d99" aria-label="单色颜色"></label><label>点大小 <input id="point-size" type="range" min="1" max="32" step="0.5" value="2"><output id="point-size-value">2</output></label><label>透明度 <input id="point-opacity" type="range" min="0.1" max="1" step="0.05" value="1"><output id="point-opacity-value">100%</output></label><label>每文件读取上限<select id="point-limit"><option value="0" selected>全部点（不限）</option><option value="100000">10 万点</option><option value="500000">50 万点</option><option value="1000000">100 万点</option></select></label></div>
 <div class="rgb-fields" id="rgb-fields" hidden><span>指定 RGB 列</span><label>R<select id="rgb-r"></select></label><label>G<select id="rgb-g"></select></label><label>B<select id="rgb-b"></select></label><span>支持 0–1、0–255 或 0–65535</span></div></section><section class="inspector-section"><h3>色带与数值范围</h3><div id="palette-controls"></div></section><div class="file-controls" id="wire-controls" hidden><label>线框版本<select id="wire-file" disabled><option>未选择</option></select></label><label>叠加点云<select id="cloud-file" disabled><option>未选择</option></select></label><button id="attach-cloud" disabled>另选点云…</button><input id="overlay-input" type="file" accept=".xyz,.txt,.csv,.pts,.ply,.pcd" hidden></div></section>
     <section role="tabpanel" id="settings-panel-camera" data-settings-panel="camera" aria-labelledby="settings-tab-camera" hidden><div id="camera-controls"></div></section>
     <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
   </div><p class="inspector-footer">显示即时生效 · 数据修改需应用 · Esc 收起</p>
 </aside></div>
-<script defer src="assets/js/cloud.bundle.js?v=24b9a622e1ee"></script></body></html>
+<script defer src="assets/js/cloud.bundle.js?v=1a3c5b56597e"></script></body></html>

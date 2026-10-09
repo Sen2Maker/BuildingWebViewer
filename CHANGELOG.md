@@ -6,6 +6,58 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.1.0] - 2026-10-10
+
+网页正式更新 / Stable web release. Android App remains in development.
+
+### 中文
+
+- 显示点比例提供滑块与数字联动，按动画帧合并更新；明确区分显示比例与文件读取上限。
+- 高级截图可选纯净画面或已开启的辅助信息；方向、标尺、图例、点数分别开关。快速 PNG 只保存所有可见视窗的渲染像素。
+- 点云可逐文件指定显示颜色与恢复全局规则，不重新解析数据、不改变源 RGB/HSV；点云/线框提供全局单色拾色器，立体线可选择渐变终点颜色并禁用不适用选项。
+- 三个工具共用 ZIP 导入，保留目录、校验 CRC 与路径，防止部分失败导入；普通 Store/Deflate，解压合计不超过 512 MiB，暂不支持加密/分卷/ZIP64。
+- 补充右侧设置核对表与 Android v1.2.0 迁移/持久项目/分享导入计划；本版不包含 APK，网页项目仍为会话状态。
+
+- 相机面板集成快速 PNG 截图和高级 PNG/JPEG/WebP 导出：自定义像素、透明背景、压缩质量、2× 超采样及可见视窗拼接。高级模式使用独立帧缓冲重绘并恢复当前显示。
+- 线框与 LOD 可导出真正的 SVG 线框投影；不包含点云、实体面、遮挡或立体线材质，界面明确标注范围。
+- 共享 XYZ 朝向与坐标比例尺，保留网格开关；比例尺不假定米制，归一化 LOD 显示布局单位。
+- 点云新增圆点、方点、拟球光照及 1–100% 可逆显示抽样，明确实际显示点数；原始属性、计算和数据导出不受影响。
+- 线框与 LOD 边线新增实例化圆柱/方柱、线宽与端点渐变；LOD 面新增无光照、柔和及高光显示。
+
+- 三个查看器新增按需运行状态面板：近似 JS 堆内存、几何缓冲数据量、界面刷新率与场景数据规模；不声称测量整机 CPU/GPU 或总显存。
+- 三个查看器使用同一个项目栏模板：文件/文件夹导入、拖放提示、搜索、数量、项目树与管理入口位置一致。
+- LOD 编号批选与来源信息默认折叠；增加按当前筛选全选/反选，取消固定的 24 栋预览上限。
+- 编号范围按已导入模型匹配，避免误输入极大范围时生成海量不存在的编号。
+- 顶部数量明确为项目总条目；LOD 不再显示容易误解的 `0 / 24`。
+- 三个查看器的“项目”按钮统一放在“立体”左侧，可直接展开或收起项目栏，不再占用额外侧边栏；左上角明确为“首页”，收起侧栏时保留可用的键盘焦点。
+- 页脚作者链接显示账号 Sen2Maker，保持中英文和手机布局一致。
+- 移除线框和点云查看器顶部图标的矩形底色，与 LOD 查看器统一为透明背景。
+
+### English
+
+- Synchronized display-percentage slider/number controls with frame-coalesced updates; distinguish sampling from per-file read limits.
+- Advanced raster export selects clean render or enabled overlays. Axes, ruler, legend and count have independent toggles; quick PNG copies only all visible rendered views.
+- Per-cloud display color overrides/reset preserve source RGB/HSV and geometry caches. Add global solid-color and gradient-end pickers; disable inapplicable line controls.
+- Shared folder-preserving ZIP import with CRC/path validation and atomic batch insertion. Store/Deflate only, up to 512 MiB expanded; encrypted, split and ZIP64 archives are unsupported.
+- Document inspector audit and v1.2.0 Android sharing/project-storage roadmap. No APK is included; web projects remain session-based.
+
+- Shared camera capture: quick PNG and advanced PNG/JPEG/WebP, exact pixel sizes, transparency, quality, 2× supersampling and joined visible views. Offscreen rendering preserves the live view.
+- Genuine SVG wireframe projection for wireframe/LOD viewers, with explicit limits: no point clouds, surfaces, occlusion or 3D line materials.
+- Shared XYZ orientation and coordinate ruler alongside the existing grid toggle; never assumes meters, uses layout units for normalized LOD.
+- Disc, square and sphere-shaded point sprites with reversible 1–100% display sampling and visible counts; source attributes, calculations and data exports stay unchanged.
+- Instanced cylindrical/square-prism edges, width and endpoint gradients in wireframe/LOD; unlit, soft and glossy LOD surface shading.
+
+- Add shared on-demand runtime diagnostics: approximate JS heap, geometry buffer bytes, sampled UI refresh and scene data counts; no claims of system CPU/GPU or total VRAM measurement.
+- One shared project-sidebar template aligns import, drop hint, search, counts, tree and management controls across all viewers.
+- Collapse LOD-specific ID selection and source details. Add filtered select/invert actions without the previous fixed 24-model preview limit.
+- Resolve ranges against imported model IDs without allocating huge numeric intervals.
+- Label total project items clearly; replace the ambiguous LOD `0 / 24` counter.
+- Place the shared Project toggle before the 3D view controls in all three viewers, without an extra side rail; keep Home at the upper left and preserve usable keyboard focus when collapsing the sidebar.
+- Display Sen2Maker as the author link in both languages and responsive layouts.
+- Remove the rectangular backgrounds behind wireframe and point-cloud header icons to match the transparent LOD icon.
+
+Validation: regression suites and generated-asset/package checks passed; desktop/mobile Chinese/English UI, 25-model display, filtered selection, removal, wireframe/point imports and runtime counts verified. Wireframe still previews one building group; multiselect manages entries rather than overlaying buildings.
+
 ## [1.0.0] - 2026-10-09
 
 首次正式版本 / First stable release.

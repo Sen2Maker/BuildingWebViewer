@@ -5,6 +5,149 @@
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+"压缩包包含不安全的文件路径。":"Archive contains an unsafe path.",
+"无法读取 ZIP 目录，文件可能损坏。":"Cannot read ZIP directory; the file may be damaged.",
+"暂不支持分卷或 ZIP64 压缩包。":"Split and ZIP64 archives are not supported yet.",
+"压缩包目录过大或无效。":"Archive directory is too large or invalid.",
+"压缩包目录无效。":"Invalid archive directory.",
+"压缩包包含重复路径。":"Archive contains duplicate paths.",
+"压缩包解压后超过 512 MB，请先解压后选择所需文件。":"Expanded archives exceed 512 MB. Extract with your file manager and select the files you need.",
+"暂不支持加密压缩包，请先解压。":"Encrypted archives are not supported. Please extract them first.",
+"仅支持 ZIP 的 Store / Deflate 压缩方式。":"Only ZIP Store / Deflate compression is supported.",
+"压缩包文件头无效。":"Invalid archive file header.",
+"压缩包文件范围无效。":"Invalid archive file bounds.",
+"当前浏览器不支持 ZIP 解压，请先在系统中解压。":"This browser cannot decompress ZIP files. Extract with your file manager first.",
+"解压大小与目录不符。":"Expanded size differs from archive metadata.",
+"压缩包校验失败，文件可能损坏。":"Archive checksum failed; the file may be damaged.",
+"正在读取压缩包…":"Reading archive\u2026",
+"正在解压 {0}":"Extracting {0}",
+"导入完成":"Import complete",
+
+  "颜色图例": "Color legend",
+  "显示点数": "Point count",
+  "拖动调整显示点比例": "Drag to adjust displayed points",
+  "渐变终点颜色": "Gradient end color",
+  "逐点云指定颜色": "Per-cloud colors",
+  "指定颜色优先于全局着色；恢复后使用全局规则。只改变显示，不修改原始 RGB / HSV。": "Overrides take precedence over global coloring. Reset to restore global rules. Source RGB / HSV values stay unchanged.",
+  "全部恢复全局着色": "Reset all to global coloring",
+  "勾选并加载点云后，可逐个指定颜色。": "Select and load clouds to assign individual colors.",
+  "指定 {0} 的颜色": "Set color for {0}",
+  "恢复 {0} 的全局着色": "Restore global coloring for {0}",
+  "单色颜色": "Solid color",
+  "每文件读取上限": "Read limit per file",
+  "截图内容": "Capture content",
+  "纯净画面": "Clean render",
+  "包含已开启的辅助信息": "Include enabled overlays",
+  "纯净画面只含渲染内容；辅助信息包含已开启的方向、标尺、图例与点数。网格随显示设置，页面按钮与编号标签不导出。多视窗横向拼接，宽度为总宽度。": "Clean captures contain only the render. Overlays include enabled axes, ruler, legend and point count. Grid visibility follows display settings; page controls and model labels are excluded. Views are joined horizontally; width is the total.",
+
+  "全量读取 · 不设置读取点数上限。": "All source points loaded · no read limit.",
+  "抗锯齿": "Antialiasing",
+  "标准": "Standard",
+  "2× 超采样": "2× supersampling",
+  "显示 {0} / {1} 点": "Displaying {0} / {1} points",
+  "坐标单位": "coordinate units",
+  "布局单位": "layout units",
+  "截图与导出": "Capture & export",
+  "快速截图 PNG": "Quick capture PNG",
+  "快速截图使用当前渲染像素；高级导出按指定像素重新渲染。": "Quick capture uses the current rendered pixels; advanced export re-renders at the requested size.",
+  "高级导出": "Advanced export",
+  "格式": "Format",
+  "PNG · 无损": "PNG · lossless",
+  "JPEG · 较小文件": "JPEG · smaller file",
+  "SVG · 线框矢量": "SVG · vector wireframe",
+  "导出视窗": "Export view",
+  "所有可见视窗": "All visible views",
+  "视窗 1": "View 1",
+  "视窗 2": "View 2",
+  "视窗 3": "View 3",
+  "分辨率": "Resolution",
+  "当前渲染尺寸": "Current render size",
+  "自定义像素": "Custom pixels",
+  "宽度（px）": "Width (px)",
+  "高度（px）": "Height (px)",
+  "压缩质量（%）": "Compression quality (%)",
+  "透明背景": "Transparent background",
+  "包含方向与标尺": "Include axes and ruler",
+  "改变宽高比会改变水平取景范围；不包含页面按钮和文字标签。多视窗横向拼接，宽度为总宽度。": "Changing aspect ratio changes horizontal framing. Page controls and text labels are excluded. Multiple views are joined horizontally; width is the total.",
+  "SVG 仅导出线框投影：不含点云、实体面、遮挡、网格、方向标尺或立体线材质。": "SVG exports projected linework only: no points, faces, occlusion, grid, guides or 3D line materials.",
+  "导出图片": "Export image",
+  "正在导出…": "Exporting…",
+  "图片已导出。": "Image exported.",
+  "不支持的图片格式": "Unsupported image format",
+  "图片尺寸需为 16–{0} 的整数，总像素不超过 3200 万。": "Image dimensions must be integers from 16 to {0}, with at most 32 megapixels.",
+  "渲染器暂不可用，请重新加载数据。": "Renderer unavailable. Please reload the data.",
+  "无法分配导出画布，请降低分辨率。": "Cannot allocate export buffer. Reduce the resolution.",
+  "导出读取失败，请降低分辨率。": "Export readback failed. Reduce the resolution.",
+  "当前没有可导出的线框。": "No wireframe is available for export.",
+  "SVG 超过 20 万条线，请减少选择或使用位图导出。": "SVG exceeds 200,000 lines. Reduce the selection or use raster export.",
+  "浏览器不支持此格式或图片尺寸，请改用 PNG 或减小尺寸。": "The browser cannot encode this format or size. Use PNG or smaller dimensions.",
+  "没有可导出的视窗。": "No view is available to export.",
+  "请先加载数据。": "Load data first.",
+  "每个视窗宽度至少为 16 像素。": "Each view must be at least 16 pixels wide.",
+  "SVG 请指定单个视窗。": "Select a single view for SVG export.",
+  "压缩质量需在 1–100 之间。": "Compression quality must be between 1 and 100.",
+  "渲染样式": "Render styles",
+  "XYZ 朝向": "XYZ orientation",
+  "坐标比例尺": "Coordinate ruler",
+  "点的样式": "Point style",
+  "圆点": "Discs",
+  "方点": "Squares",
+  "球形光照": "Shaded spheres",
+  "显示点比例（%）": "Displayed points (%)",
+  "球形光照为拟球着色，不生成球体网格。比例抽样作用于当前勾选显示的点云，100% 恢复全部已加载点。": "Sphere shading uses point sprites, not sphere meshes. Sampling applies to visible checked clouds; 100% restores all loaded points.",
+  "线的样式": "Line style",
+  "细线": "Thin lines",
+  "圆柱": "Cylinders",
+  "方柱": "Square prisms",
+  "线宽（屏幕 px）": "Line width (screen px)",
+  "端点渐变（立体线）": "Endpoint gradient (3D lines)",
+  "立体线使用实例化绘制；渐变沿文件中的边方向变化。细线宽度由浏览器决定。": "3D lines use instancing. Gradients follow the file’s edge direction. Thin-line width is browser-controlled.",
+  "面的光照": "Surface lighting",
+  "柔和光照": "Soft lighting",
+  "无光照": "Unlit",
+  "高光材质": "Glossy",
+  "请输入范围内的数值。": "Enter a value within the allowed range.",
+  "仅抽样当前显示点；原始数据与计算、文件导出不变。": "Samples only displayed points; source data, calculations and data exports are unchanged.",
+  "此浏览器不支持大点云的比例显示抽样。": "This browser does not support proportional sampling of large point clouds.",
+  "抽样缓冲区分配失败。": "Could not allocate the sampling buffer.",
+  "无效的点显示参数。": "Invalid point display settings.",
+  "此浏览器不支持立体线，请使用细线。": "This browser does not support 3D lines. Use thin lines.",
+
+  "运行状态": "Runtime",
+  "页面运行状态": "Page runtime",
+  "关闭运行状态": "Close runtime panel",
+  "JS 堆内存（近似）": "JS heap (approx.)",
+  "几何缓冲": "Geometry buffers",
+  "界面刷新率（采样）": "UI refresh (sampled)",
+  "已加载模型 / 三角面": "Loaded models / triangles",
+  "已加载点 / 线段": "Loaded points / segments",
+  "电脑 CPU / GPU 占用": "Computer CPU / GPU usage",
+  "不可用": "Unavailable",
+  "浏览器未提供": "Not exposed by browser",
+  "上下文已丢失": "Context lost",
+  "查看当前页面的数据规模与运行状态": "Inspect this page\u2019s data size and runtime",
+  "JS 堆内存不是页面总内存；几何缓冲仅统计已上传的数据（含缓存），不含驱动、纹理和帧缓冲，也不是显存总占用。数据规模按各视窗合计。": "JS heap is not total page memory. Geometry buffers include uploaded data and caches, excluding drivers, textures and framebuffers; they are not total VRAM usage. Data counts sum all viewer panes.",
+  "刷新率用于观察界面响应，不等于模型渲染帧率。仅展开时采样；后台暂停。系统占用请使用任务管理器。": "Refresh rate indicates UI responsiveness, not model rendering FPS. Sampling runs only while expanded and pauses in the background. Use Task Manager for system utilization.",
+
+  "编号范围 {0} 包含未导入的模型，请检查编号。": "Range {0} includes models that have not been imported. Check the IDs.",
+  "点击编号可单独查看": "Click an ID to view it alone",
+  "支持 OBJ 模型，不限制预览栋数。按编号批选与随机预览在“模型选择选项”中。": "OBJ models, without a fixed model-count limit. Use Model selection options for IDs and random selection.",
+  "请先在项目栏添加文件或文件夹": "Add files or a folder in the project panel",
+  "项目": "Project",
+  "首页": "Home",
+  "拖入文件或文件夹": "Drop files or folders here",
+  "搜索文件或文件夹": "Search files or folders",
+  "搜索文件或文件夹…": "Search files or folders\u2026",
+  "共 0 项": "Items: 0",
+  "共 {0} 项": "Items: {0}",
+  "显示选择": "Display selection",
+  "匹配 {0} 项 · 已勾选 {1}": "{0} matches \u00b7 {1} checked",
+  "已勾选 0 栋": "0 models checked",
+  "已勾选 {0} 栋": "{0} models checked",
+  "模型选择选项": "Model selection options",
+  "新建文件夹和移动仅影响本次页面，不修改磁盘文件。": "Folders and moves apply only to this session; disk files remain unchanged.",
+  "每次预览一个建筑组；Ctrl / Shift 多选用于移动或移除项目条目。": "Preview one building group at a time. Ctrl / Shift selection manages items for moving or removal.",
+
   "请选择有效的计算项目": "Choose valid features to compute",
   "至少需要 3 个点": "At least 3 points are required",
   "邻域点数必须是 3–256 的整数": "Neighborhood size must be an integer from 3\u2013256",
@@ -658,7 +801,6 @@ const EN_MESSAGES = {
   "滚轮缩放": "Scroll to zoom",
   "右键 / Shift 拖动平移": "Right / Shift drag to pan",
   "F 适应窗口": "F to fit",
-  "点击编号可单独查看 · 最多 24 栋": "Click an ID to isolate · Up to 24 buildings",
   "模型显示": "Model display",
   "实体": "Solid",
   "实体 + 三角网": "Solid + edges",
@@ -866,6 +1008,87 @@ function initializeLocale(doc = document) {
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }
+}
+
+
+// Source: src/shared/zip-import.js
+
+/** Bounded local ZIP reader. File slices avoid retaining a second complete archive buffer. */
+function safeArchivePath(name) {
+  const path=String(name).replaceAll('\\','/');
+  if(!path || path.startsWith('/') || /^[a-z]:/i.test(path) || path.split('/').some(part=>part==='..'||part==='.') || /[\x00-\x1f]/.test(path))throw Error(t('压缩包包含不安全的文件路径。'));
+  return path;
+}
+function zipCRC32(bytes,previous=0) {
+  let crc=(previous^0xffffffff)>>>0;
+  for(const byte of bytes){crc^=byte;for(let b=0;b<8;b++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+  return (crc^0xffffffff)>>>0;
+}
+async function readZipDirectory(file,{maxEntries=10000,maxBytes=512*1024*1024}={}) {
+  const tailStart=Math.max(0,file.size-65557),tail=new Uint8Array(await file.slice(tailStart).arrayBuffer()),dv=new DataView(tail.buffer);
+  let end=-1;
+  for(let i=tail.length-22;i>=0;i--)if(dv.getUint32(i,true)===0x06054b50 && i+22+dv.getUint16(i+20,true)===tail.length){end=i;break;}
+  if(end<0)throw Error(t('无法读取 ZIP 目录，文件可能损坏。'));
+  const count=dv.getUint16(end+10,true),size=dv.getUint32(end+12,true),offset=dv.getUint32(end+16,true);
+  if(dv.getUint16(end+4,true)||dv.getUint16(end+6,true)||count!==dv.getUint16(end+8,true)||count===65535||size===0xffffffff||offset===0xffffffff)throw Error(t('暂不支持分卷或 ZIP64 压缩包。'));
+  if(count>maxEntries || size>8*1024*1024 || offset+size>tailStart+end)throw Error(t('压缩包目录过大或无效。'));
+  const bytes=new Uint8Array(await file.slice(offset,offset+size).arrayBuffer()),view=new DataView(bytes.buffer),entries=[],seen=new Set();let at=0,total=0;
+  for(let i=0;i<count;i++){
+    if(at+46>size||view.getUint32(at,true)!==0x02014b50)throw Error(t('压缩包目录无效。'));
+    const flags=view.getUint16(at+8,true),method=view.getUint16(at+10,true),crc=view.getUint32(at+16,true),compressed=view.getUint32(at+20,true),length=view.getUint32(at+24,true);
+    const nameSize=view.getUint16(at+28,true),extra=view.getUint16(at+30,true),comment=view.getUint16(at+32,true),local=view.getUint32(at+42,true);
+    if(at+46+nameSize+extra+comment>size || local+30>offset || view.getUint16(at+34,true))throw Error(t('压缩包目录无效。'));
+    const rawName=bytes.subarray(at+46,at+46+nameSize);
+    // UTF-8 names are standard. Older non-UTF ZIPs remain best effort via GB18030.
+    let name;try{name=new TextDecoder('utf-8',{fatal:true}).decode(rawName);}catch{ name=new TextDecoder('gb18030').decode(rawName); }
+    const path=safeArchivePath(name);
+    if(seen.has(path))throw Error(t('压缩包包含重复路径。'));seen.add(path);
+    if(length===0xffffffff||compressed===0xffffffff||(total+=length)>maxBytes)throw Error(t('压缩包解压后超过 512 MB，请先解压后选择所需文件。'));
+    entries.push({path,flags,method,crc,compressed,length,local,directory:offset});at+=46+nameSize+extra+comment;
+  }
+  return entries;
+}
+async function extractZipEntry(archive,entry) {
+  if(entry.flags&1)throw Error(t('暂不支持加密压缩包，请先解压。'));
+  if(![0,8].includes(entry.method))throw Error(t('仅支持 ZIP 的 Store / Deflate 压缩方式。'));
+  const header=new DataView(await archive.slice(entry.local,entry.local+30).arrayBuffer());
+  if(header.getUint32(0,true)!==0x04034b50 || header.getUint16(8,true)!==entry.method || header.getUint16(6,true)!==entry.flags)throw Error(t('压缩包文件头无效。'));
+  const start=entry.local+30+header.getUint16(26,true)+header.getUint16(28,true);
+  if(start+entry.compressed>entry.directory)throw Error(t('压缩包文件范围无效。'));
+  let stream=archive.slice(start,start+entry.compressed).stream();
+  if(entry.method===8){
+    let decoder;try{decoder=new DecompressionStream('deflate-raw');}catch{throw Error(t('当前浏览器不支持 ZIP 解压，请先在系统中解压。'));}
+    stream=stream.pipeThrough(decoder);
+  }
+  const reader=stream.getReader(),chunks=[];let size=0,crc=0;
+  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>entry.length)throw Error(t('解压大小与目录不符。'));crc=zipCRC32(value,crc);chunks.push(value);}}
+  finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  if(size!==entry.length||crc!==entry.crc)throw Error(t('压缩包校验失败，文件可能损坏。'));
+  return new File(chunks,entry.path.split('/').at(-1),{lastModified:archive.lastModified||0});
+}
+async function expandProjectArchives(records,accepts,onProgress=()=>{}) {
+  const result=[];let total=0;
+  for(const record of records){
+    if(!/\.zip$/i.test(record.file.name)){result.push(record);continue;}
+    onProgress(t('正在读取压缩包…'));
+    const entries=await readZipDirectory(record.file),base=safeArchivePath(record.path||record.file.name).replace(/\.zip$/i,'');
+    for(const entry of entries){
+      if(entry.path.endsWith('/')||!accepts(entry.path)||entry.path.startsWith('__MACOSX/'))continue;
+      if((total+=entry.length)>512*1024*1024)throw Error(t('压缩包解压后超过 512 MB，请先解压后选择所需文件。'));
+      onProgress(t('正在解压 {0}',[entry.path]));
+      result.push({file:await extractZipEntry(record.file,entry),path:base+'/'+entry.path});
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+  }
+  return result;
+}
+/** Serializes import batches; failures never insert a partially extracted archive. */
+function archiveImportQueue({accepts,receive,onProgress=()=>{},onError=()=>{}}) {
+  let pending=Promise.resolve();
+  return records=>{
+    const job=pending.then(async()=>{const expanded=await expandProjectArchives(records,accepts,onProgress);const result=await receive(expanded);onProgress(t('导入完成'));return result;});
+    pending=job.catch(()=>{});return job.catch(error=>{onError(error.message);throw error;});
+  };
 }
 
 
@@ -1388,6 +1611,318 @@ function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
 }
 
 
+// Source: src/shared/palettes.js
+
+/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
+const PALETTE_DEFINITIONS = Object.freeze({
+  current: {label: t('当前色带'), stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
+  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
+  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
+  grayscale: {label: t('灰度'), stops: [[.08,.08,.08],[.95,.95,.95]]},
+  'blue-white-red': {label: t('蓝—白—红'), stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
+});
+
+function samplePalette(t, palette = 'current', reverse = false) {
+  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
+  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
+  if (reverse) value = 1 - value;
+  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
+  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
+}
+
+function paletteUniforms(palette = 'current', reverse = false) {
+  const values = new Float32Array(27);
+  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
+  return values;
+}
+
+function validatePaletteOptions(options) {
+  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
+  if (options.range !== null && options.range !== undefined) {
+    const {min, max} = options.range;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error(t('手动色域需要有限数值，且最小值必须小于最大值。'));
+  }
+}
+
+const PALETTE_GLSL = `
+uniform vec3 colorStops[9];
+vec3 paletteColor(float value) {
+  float t = clamp(value, 0.0, 1.0) * 8.0;
+  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
+  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
+  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
+  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
+  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
+  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
+  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
+  return mix(colorStops[7], colorStops[8], t - 7.0);
+}`;
+
+
+// Source: src/shared/render-style.js
+/** Shared display-only options. Geometry and exported point attributes stay unchanged. */
+const PRESENTATION_DEFAULTS = {pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true};
+let presentationPreferences = {...PRESENTATION_DEFAULTS};
+function currentPresentation() { return {...presentationPreferences}; }
+function rememberPresentation(options) { presentationPreferences = {...presentationPreferences, ...options}; }
+function displaySampleIndices(total, ratio) {
+  if (!Number.isSafeInteger(total) || total < 0 || total > 0xffffffff || !Number.isFinite(ratio) || ratio < 1 || ratio > 100) throw Error('Invalid display sampling size or percentage');
+  const count = Math.floor(total * ratio / 100);
+  const indices = total > 65535 ? new Uint32Array(count) : new Uint16Array(count);
+  // One deterministic jittered sample per index stratum avoids scan-row aliasing.
+  for (let i = 0; i < count; i++) {
+    const low=Math.floor(i*total/count),high=Math.floor((i+1)*total/count);
+    let hash=(i+0x9e3779b9)>>>0;hash=Math.imul(hash^(hash>>>16),0x21f0aaad);hash=Math.imul(hash^(hash>>>15),0x735a2d97);hash=(hash^(hash>>>15))>>>0;
+    indices[i]=low+Math.floor(hash/4294967296*(high-low));
+  }
+  return indices;
+}
+function niceScale(unitsPerPixel, pixels = 90) {
+  if (!(unitsPerPixel > 0) || !Number.isFinite(unitsPerPixel)) return null;
+  const raw = unitsPerPixel * pixels, power = 10 ** Math.floor(Math.log10(raw)), n = raw / power;
+  const length = (n >= 5 ? 5 : n >= 2 ? 2 : 1) * power;
+  return {length, pixels:length / unitsPerPixel};
+}
+function rgbHex(hex) { return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255); }
+
+
+// Source: src/shared/scene-guides.js
+
+
+
+/** The ruler measures screen-plane distance, never assumes meters. */
+function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
+  const options = viewer.options;
+  if (!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount)) return;
+  ctx.save(); ctx.scale(scale,scale);
+  const h = height/scale, [right,up,depth] = viewer.basis(), x=44, y=h-112;
+  ctx.lineCap='round'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+  if(options.axes) {
+    const colors=['#bd4b50','#37875f','#427ebe'];
+    [0,1,2].sort((a,b)=>depth[a]-depth[b]).forEach(i=>{
+      const dx=right[i]*27,dy=-up[i]*27;
+      ctx.strokeStyle=colors[i];ctx.fillStyle=colors[i];ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dx,y+dy);ctx.stroke();
+      ctx.beginPath();ctx.arc(x+dx,y+dy,2.8,0,Math.PI*2);ctx.fill();
+      ctx.fillText('XYZ'[i],x+right[i]*38,y-up[i]*38+4);
+    });
+  }
+  if(options.ruler) {
+    const ruler=niceScale(viewer.baseHeight/viewer.camera.zoom/(height/scale));
+    if(ruler) {
+      ctx.strokeStyle='#526d66';ctx.fillStyle='#526d66';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(16,h-70);ctx.lineTo(16+ruler.pixels,h-70);
+      for(const px of [16,16+ruler.pixels]){ctx.moveTo(px,h-74);ctx.lineTo(px,h-66);}ctx.stroke();
+      ctx.font='10px sans-serif';ctx.textAlign='left';
+      ctx.fillText(`${Number(ruler.length.toPrecision(3))} ${t(viewer.options.scale==='normalized'?'布局单位':'坐标单位')}`,16,h-52);
+    }
+  }
+  const available=Math.max(80,width/scale-32);
+  if(options.pointCountLabel && viewer.pointCount){
+    const count=options.showPoints?(viewer.activeClouds||[]).reduce((sum,e)=>sum+Math.floor(e.count*(options.pointRatio??100)/100),0):0;
+    ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillStyle='#526d66';
+    ctx.fillText(t('显示 {0} / {1} 点',[count.toLocaleString(),viewer.pointCount.toLocaleString()]),Math.min(150,available/2),h-48,available/2);
+  }
+  if(options.legend){
+    const scalar=viewer.activeClouds ? options.showPoints && viewer.activeClouds.some(e=>!e.item?.displayColor) : options.colors==='height' && options.mode!=='wire';
+    const range=scalar?(viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
+    ctx.textAlign='left';ctx.font='10px sans-serif';ctx.fillStyle='#526d66';
+    if(range && Number.isFinite(range.min) && Number.isFinite(range.max)){
+      const label=options.colors==='height'?t('离地高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
+      const barWidth=Math.min(90,available*.26),barX=16,barY=h-24,gradient=ctx.createLinearGradient(barX,0,barX+barWidth,0);
+      for(let i=0;i<=8;i++)gradient.addColorStop(i/8,`rgb(${samplePalette(i/8,options.palette,options.reverse).map(v=>Math.round(v*255)).join(',')})`);
+      ctx.fillStyle=gradient;ctx.fillRect(barX,barY,barWidth,8);ctx.fillStyle='#526d66';
+      ctx.fillText(`${label} · ${Number(range.min.toPrecision(5))} — ${Number(range.max.toPrecision(5))}`,barX+barWidth+8,h-17,Math.max(10,available-barWidth-8));
+    } else if(options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
+      ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('屋顶 / 坡面'),31,h-17);
+      ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('墙面'),147,h-17);
+    }
+  }
+  ctx.restore();
+}
+function updateSceneGuides(viewer) {
+  if(viewer.exportTarget || !viewer.canvas.ownerDocument) return;
+  const doc=viewer.canvas.ownerDocument, parent=viewer.canvas.parentElement;
+  if(!parent) return;
+  if(!viewer.guideCanvas){viewer.guideCanvas=doc.createElement('canvas');viewer.guideCanvas.className='scene-guides';viewer.guideCanvas.setAttribute('aria-hidden','true');parent.append(viewer.guideCanvas);}
+  viewer.guideCanvas.hidden=!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount);
+  parent.classList.add('shared-scene-overlays');
+  const canvas=viewer.guideCanvas, rect=viewer.canvas.getBoundingClientRect(), dpr=Math.min(globalThis.devicePixelRatio||1,2);
+  const w=Math.round(Math.min(420,rect.width)*dpr),h=Math.round(160*dpr);canvas.style.width=`${w/dpr}px`;
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(0,h-rect.height*dpr);
+  drawSceneGuides(ctx,viewer,w,rect.height*dpr,dpr);ctx.restore();
+}
+
+
+// Source: src/shared/image-export.js
+
+
+function validateImageSize(width,height,maxSide=8192) {
+  if(!Number.isInteger(width)||!Number.isInteger(height)||width<16||height<16||width>maxSide||height>maxSide||width*height>32*1024*1024)throw Error(t('图片尺寸需为 16–{0} 的整数，总像素不超过 3200 万。',[maxSide]));
+  return {width,height};
+}
+/** Re-render using an RGBA/depth framebuffer, without resizing the visible canvas. */
+function renderImagePixels(viewer,width,height,{transparent=false}={}) {
+  const gl=viewer.gl;
+  if(viewer.disposed||viewer.contextLost||gl.isContextLost())throw Error(t('渲染器暂不可用，请重新加载数据。'));
+  validateImageSize(width,height,Math.min(8192,gl.getParameter(gl.MAX_TEXTURE_SIZE),gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)));
+  const previous=gl.getParameter(gl.FRAMEBUFFER_BINDING), framebuffer=gl.createFramebuffer(), texture=gl.createTexture(), depth=gl.createRenderbuffer();
+  try {
+    gl.bindTexture(gl.TEXTURE_2D,texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    gl.bindRenderbuffer(gl.RENDERBUFFER,depth);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,width,height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depth);
+    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw Error(t('无法分配导出画布，请降低分辨率。'));
+    viewer.exportTarget={width,height,transparent,scale:height/Math.max(1,viewer.canvas.clientHeight)};
+    viewer.render();
+    const raw=new Uint8Array(width*height*4);gl.readPixels(0,0,width,height,gl.RGBA,gl.UNSIGNED_BYTE,raw);
+    if(gl.getError()!==gl.NO_ERROR)throw Error(t('导出读取失败，请降低分辨率。'));
+    const pixels=new Uint8ClampedArray(raw.length),stride=width*4;
+    for(let y=0;y<height;y++)pixels.set(raw.subarray((height-y-1)*stride,(height-y)*stride),y*stride);
+    // WebGL's alpha blending leaves premultiplied RGB; ImageData expects straight RGB.
+    if(transparent)for(let i=0;i<pixels.length;i+=4){const a=pixels[i+3];if(a&&a<255)for(let c=0;c<3;c++)pixels[i+c]=Math.min(255,Math.round(pixels[i+c]*255/a));}
+    return pixels;
+  } finally {
+    viewer.exportTarget=null;gl.bindFramebuffer(gl.FRAMEBUFFER,previous);gl.bindTexture(gl.TEXTURE_2D,null);gl.bindRenderbuffer(gl.RENDERBUFFER,null);
+    gl.deleteFramebuffer(framebuffer);gl.deleteTexture(texture);gl.deleteRenderbuffer(depth);viewer.render();
+  }
+}
+function projectImagePoint(point, viewer, width, height) {
+  const [r,u]=viewer.basis(),h=viewer.baseHeight/viewer.camera.zoom,w=h*width/height;
+  const p=point.map((v,i)=>v-viewer.target[i]);
+  const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
+  return [(dot(p,r)-viewer.camera.pan[0])/w*width+width/2,height/2-(dot(p,u)-viewer.camera.pan[1])/h*height];
+}
+/** Genuine vector linework. Intentionally no raster embedding or hidden-surface promise. */
+function wireframeSVG(viewer,width,height,{transparent=false}={}) {
+  validateImageSize(width,height);
+  const count=viewer.edgeCount ?? ((viewer.options.mode==='wire'||viewer.options.mode==='solid-wire'?viewer.buffers?.allEdges?.count:viewer.buffers?.featureEdges?.count)||0)/2;
+  if(count>200000)throw Error(t('SVG 超过 20 万条线，请减少选择或使用位图导出。'));
+  const segments=viewer.vectorSegments?.();
+  if(!segments?.length)throw Error(t('当前没有可导出的线框。'));
+  if(segments.length>200000)throw Error(t('SVG 超过 20 万条线，请减少选择或使用位图导出。'));
+  const parts=[`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`, '<title>BuildingWebViewer vector wireframe projection</title>'];
+  if(!transparent)parts.push(`<rect width="100%" height="100%" fill="#f3f5f6"/>`);
+  const stroke=/^#[a-f0-9]{6}$/i.test(viewer.options.wireColor||'')?viewer.options.wireColor:'#496577';
+  parts.push(`<g fill="none" stroke="${stroke}" stroke-width="${Number(viewer.options.lineWidth)||1}" stroke-linecap="round">`);
+  for(const [a,b] of segments){const p=projectImagePoint(a,viewer,width,height),q=projectImagePoint(b,viewer,width,height);if([...p,...q].every(Number.isFinite))parts.push(`<path d="M${p.map(n=>n.toFixed(3)).join(' ')}L${q.map(n=>n.toFixed(3)).join(' ')}"/>`);}
+  parts.push('</g></svg>');return parts.join('\n');
+}
+function downloadImageBlob(blob,filename,doc=document) {
+  const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function canvasImageBlob(canvas,format,quality=.92) {
+  const mime={png:'image/png',jpeg:'image/jpeg',webp:'image/webp'}[format];
+  if(!mime)throw Error(t('不支持的图片格式'));
+  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?.type===mime?resolve(blob):reject(Error(t('浏览器不支持此格式或图片尺寸，请改用 PNG 或减小尺寸。'))),mime,quality));
+}
+function mountImageExport({root=document,getViewers,pauseSync=callback=>callback()}) {
+  const container=root.querySelector('#settings-panel-camera');if(!container)return;
+  const doc=container.ownerDocument,section=doc.createElement('section');section.className='inspector-section image-export';
+  const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
+  section.append(el('h3','截图与导出'));const quick=root.getElementById('screenshot');if(quick){quick.textContent=t('快速截图 PNG');section.append(quick);}
+  const help=el('p','快速截图使用当前渲染像素；高级导出按指定像素重新渲染。');help.className='presentation-help';section.append(help);
+  const details=el('details');details.append(el('summary','高级导出'));section.append(details);
+  function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
+  const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
+  const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'?[]:[['svg','SVG · 线框矢量']])]));
+  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
+  const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
+  const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));
+  const number=(value)=>{const node=el('input');node.type='number';node.min='16';node.max='8192';node.step='1';node.value=value;return node;};
+  const width=field('宽度（px）',number('1920')),height=field('高度（px）',number('1080'));
+  const quality=number('92');quality.min='1';quality.max='100';field('压缩质量（%）',quality);
+  const transparency=el('input');transparency.type='checkbox';field('透明背景',transparency);
+  const guides=field('截图内容',select([['clean','纯净画面'],['overlays','包含已开启的辅助信息']]));
+  const note=el('p','纯净画面只含渲染内容；辅助信息包含已开启的方向、标尺、图例与点数。网格随显示设置，页面按钮与编号标签不导出。多视窗横向拼接，宽度为总宽度。');note.className='presentation-help';details.append(note);
+  const svgNote=el('p','SVG 仅导出线框投影：不含点云、实体面、遮挡、网格、方向标尺或立体线材质。');svgNote.className='presentation-help';svgNote.hidden=true;details.append(svgNote);
+  const submit=el('button','导出图片'),status=el('p');status.setAttribute('role','status');status.className='presentation-help';details.append(submit,status);container.append(section);
+  const visible=()=>getViewers().filter(v=>!v.disposed&&v.canvas.getBoundingClientRect().width>0&&v.canvas.getBoundingClientRect().height>0);
+  const chosen=()=>{const list=visible();return scope.value==='all'?list:list[Number(scope.value)]?[list[Number(scope.value)]]:[];};
+  preset.onchange=()=>{if(preset.value==='current'){const list=chosen();width.value=list.reduce((sum,v)=>sum+v.canvas.width,0)||1920;height.value=list[0]?.canvas.height||1080;}else if(preset.value!=='custom'){[width.value,height.value]=preset.value.split('x');}};
+  width.oninput=height.oninput=()=>{preset.value='custom';};
+  format.onchange=()=>{const svg=format.value==='svg';svgNote.hidden=!svg;guides.disabled=svg;antialias.disabled=svg;quality.disabled=['png','svg'].includes(format.value);transparency.disabled=format.value==='jpeg';};format.onchange();
+  async function save(quickMode=false){
+    const list=quickMode?visible():chosen();if(!list.length)throw Error(t('没有可导出的视窗。'));
+    if(!list.some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0))throw Error(t('请先加载数据。'));
+    const fmt=quickMode?'png':format.value;
+    let w=Number(width.value),h=Number(height.value);
+    if(quickMode){pauseSync(()=>list.forEach(v=>v.render()));w=list.reduce((sum,v)=>sum+v.canvas.width,0);h=Math.max(...list.map(v=>v.canvas.height));}
+    validateImageSize(w,h);if(Math.floor(w/list.length)<16)throw Error(t('每个视窗宽度至少为 16 像素。'));
+    if(fmt==='svg'){if(list.length!==1)throw Error(t('SVG 请指定单个视窗。'));downloadImageBlob(new Blob([wireframeSVG(list[0],w,h,{transparent:transparency.checked})],{type:'image/svg+xml'}),'BuildingWebViewer.svg',doc);return;}
+    const q=Number(quality.value);if(!quickMode&&fmt!=='png'&&(!Number.isFinite(q)||q<1||q>100))throw Error(t('压缩质量需在 1–100 之间。'));
+    const output=doc.createElement('canvas');output.width=w;output.height=h;const ctx=output.getContext('2d');
+    const transparent=!quickMode&&transparency.checked&&fmt!=='jpeg';if(!transparent){ctx.fillStyle='#f3f5f6';ctx.fillRect(0,0,w,h);}
+    let x=0;
+    for(let i=0;i<list.length;i++){
+      const viewer=list[i],pw=quickMode?viewer.canvas.width:Math.floor((i+1)*w/list.length)-Math.floor(i*w/list.length),ph=quickMode?viewer.canvas.height:h;
+      if(quickMode)ctx.drawImage(viewer.canvas,x,0);else{
+        const aa=Number(antialias.value),pixels=pauseSync(()=>renderImagePixels(viewer,pw*aa,ph*aa,{transparent}));const part=doc.createElement('canvas');part.width=pw*aa;part.height=ph*aa;
+        part.getContext('2d').putImageData(new ImageData(pixels,pw*aa,ph*aa),0,0);ctx.drawImage(part,x,0,pw,ph);
+      }
+      if(!quickMode&&guides.value==='overlays'){const scale=ph/Math.max(1,viewer.canvas.clientHeight);ctx.save();ctx.beginPath();ctx.rect(x,0,pw,ph);ctx.clip();ctx.translate(x,0);drawSceneGuides(ctx,viewer,Math.min(pw,420*scale),ph,scale);ctx.restore();}x+=pw;
+    }
+    const blob=await canvasImageBlob(output,fmt,q/100);downloadImageBlob(blob,`BuildingWebViewer-${w}x${h}.${fmt==='jpeg'?'jpg':fmt}`,doc);
+  }
+  const run=async quickMode=>{submit.disabled=true;if(quick)quick.disabled=true;status.textContent=t('正在导出…');try{await save(quickMode);status.textContent=t('图片已导出。');}catch(error){status.textContent=error.message;}finally{submit.disabled=false;if(quick)quick.disabled=!visible().some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0);}};
+  submit.onclick=()=>run(false);if(quick)quick.onclick=()=>run(true);
+}
+
+
+// Source: src/shared/presentation-controls.js
+
+
+function mountPresentationControls({root=document,getViewers,pauseSync=callback=>callback()}) {
+  const container=root.querySelector('#settings-panel-display');if(!container)return;
+  const doc=container.ownerDocument,section=doc.createElement('section');section.className='inspector-section presentation-controls';
+  const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
+  section.append(el('h3','渲染样式'));const status=el('p');status.className='presentation-help';status.setAttribute('role','status');
+  function field(name,label,kind,values){
+    const row=el('label',label),input=el(kind==='select'?'select':'input');input.setAttribute('aria-label',t(label));
+    const initial=currentPresentation()[name];
+    if(kind==='select'){for(const [value,text] of values){const o=el('option',text);o.value=value;input.append(o);}input.value=initial;}
+    else if(kind==='checkbox'){input.type='checkbox';input.checked=initial;}
+    else if(kind==='color'){input.type='color';input.value=initial || values;}
+    else{input.type='number';input.min=values[0];input.max=values[1];input.step=values[2];input.value=initial;}
+    row.append(input);section.append(row);
+    input.onchange=()=>{
+      const value=kind==='checkbox'?input.checked:['select','color'].includes(kind)?input.value:Number(input.value);
+      if(kind==='number'&&(!Number.isFinite(value)||value<Number(input.min)||value>Number(input.max))){status.textContent=t('请输入范围内的数值。');return;}
+      const prior=currentPresentation()[name];
+      try{pauseSync(()=>{for(const viewer of getViewers())viewer.setOptions({[name]:value});});rememberPresentation({[name]:value});status.textContent=name==='pointRatio'?t('仅抽样当前显示点；原始数据与计算、文件导出不变。'):'';}
+      catch(error){pauseSync(()=>{for(const viewer of getViewers())try{viewer.setOptions({[name]:prior});}catch{}});if(kind==='checkbox')input.checked=prior;else input.value=prior;status.textContent=error.message;}
+    };
+    if(kind==='number')input.oninput=input.onchange;
+    return input;
+  }
+  field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');field('legend','颜色图例','checkbox');
+  if(root.body.dataset.tool!=='lod')field('pointCountLabel','显示点数','checkbox');
+  if(root.body.dataset.tool!=='lod'){
+    field('pointStyle','点的样式','select',[['disc','圆点'],['square','方点'],['sphere','球形光照']]);
+    const ratio=field('pointRatio','显示点比例（%）','number',[1,100,1]);
+    const slider=el('input');slider.type='range';slider.min=1;slider.max=100;slider.step=1;slider.value=ratio.value;slider.setAttribute('aria-label',t('拖动调整显示点比例'));
+    const pair=el('span');pair.className='presentation-range';ratio.before(pair);pair.append(slider,ratio);
+    // Coalesce rapid pointer events; one sample-buffer update per animation frame.
+    let pending=null;const applyRatio=ratio.onchange;
+    const schedule=()=>{if(pending===null)pending=requestAnimationFrame(()=>{pending=null;applyRatio();slider.value=ratio.value;});};
+    slider.oninput=()=>{ratio.value=slider.value;schedule();};
+    ratio.oninput=ratio.onchange=()=>{if(ratio.value!==''&&ratio.checkValidity()){slider.value=ratio.value;schedule();}};
+    const help=el('p','球形光照为拟球着色，不生成球体网格。比例抽样作用于当前勾选显示的点云，100% 恢复全部已加载点。');help.className='presentation-help';section.append(help);
+  }
+  if(root.body.dataset.tool!=='pointcloud'){
+    const style=field('lineStyle','线的样式','select',[['native','细线'],['cylinder','圆柱'],['box','方柱']]);
+    const width=field('lineWidth','线宽（屏幕 px）','number',[.5,24,.5]),gradient=field('lineGradient','端点渐变（立体线）','checkbox');
+    const end=field('lineEndColor','渐变终点颜色','color','#417ec4');
+    const availability=()=>{width.disabled=gradient.disabled=style.value==='native';end.disabled=style.value==='native'||!gradient.checked;};
+    style.addEventListener('change',availability);gradient.addEventListener('change',availability);availability();
+    const help=el('p','立体线使用实例化绘制；渐变沿文件中的边方向变化。细线宽度由浏览器决定。');help.className='presentation-help';section.append(help);
+  }
+  if(root.body.dataset.tool==='lod')field('surfaceStyle','面的光照','select',[['matte','柔和光照'],['unlit','无光照'],['gloss','高光材质']]);
+  section.append(status);container.append(section);
+}
+
+
 // Source: src/shared/sidebar.js
 
 function projectSidebarWidth(value, available, inspector = false) {
@@ -1404,11 +1939,15 @@ function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) 
     separator.setAttribute('aria-valuemax', String(projectSidebarWidth(500, workspace.clientWidth, workspace.classList.contains('inspector-open'))));
   }
   function fold(value) {
+    const hadSidebarFocus = sidebar.contains(sidebar.ownerDocument.activeElement);
     folded = value; workspace.classList.toggle('project-collapsed', value); sidebar.inert = value;
     toggle.setAttribute('aria-expanded', String(!value)); toggle.title = value ? t('展开项目栏') : t('收起项目栏');
-    toggle.textContent = value ? t('▤ 展开项目') : t('▤ 收起项目');
+    toggle.setAttribute('aria-label', toggle.title);
+    toggle.classList.toggle('active', !value);
+    collapse.setAttribute('aria-expanded', String(!value));
+    collapse.setAttribute('aria-controls', sidebar.id);
     separator.tabIndex = value ? -1 : 0;
-    if (value) toggle.focus();
+    if (value && hadSidebarFocus) toggle.focus();
   }
   toggle.onclick = () => fold(!folded); collapse.onclick = () => fold(true);
   separator.onpointerdown = event => {
@@ -1435,11 +1974,95 @@ function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) 
 }
 
 
+// Source: src/shared/resource-monitor.js
+
+function viewerResourceStats(viewers) {
+  const totals = {models:0, triangles:0, points:0, edges:0, bufferBytes:0, contextLost:false};
+  const seen = new Set();
+  const addBuffer = value => {
+    if (!value || seen.has(value)) return;
+    seen.add(value); totals.bufferBytes += value.byteLength || 0;
+  };
+  for (const viewer of viewers) {
+    if (!viewer || viewer.disposed) continue;
+    totals.contextLost ||= Boolean(viewer.contextLost);
+    totals.models += viewer.models?.length || 0; totals.triangles += viewer.triangleCount || 0;
+    totals.points += viewer.pointCount || 0; totals.edges += viewer.edgeCount || 0;
+    for (const buffer of Object.values(viewer.buffers || {})) addBuffer(buffer);
+    for (const buffer of Object.values(viewer.styledLines?.shapes || {})) addBuffer(buffer);
+    for (const entry of viewer.entityCache?.values() || []) {
+      addBuffer(entry.points); addBuffer(entry.colors); addBuffer(entry.scalar); addBuffer(entry.sample);
+    }
+  }
+  return totals;
+}
+
+function readableMemory(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return t('不可用');
+  if (bytes < 1024) return Math.round(bytes)+' B';
+  if (bytes < 1024**2) return (bytes/1024).toFixed(1)+' KiB';
+  return bytes >= 1024**3 ? (bytes/1024**3).toFixed(2)+' GiB' : (bytes/1024**2).toFixed(1)+' MiB';
+}
+
+/** Read existing buffer metadata; never force a render or read back GPU buffers. */
+function mountResourceMonitor({root=document, getViewers=()=>[]}) {
+  const footer=root.querySelector('.workspace > main > footer');
+  if (!footer || root.getElementById('resource-monitor')) return;
+  const make=(tag,text)=>{const node=root.createElement(tag);if(text)node.textContent=text;return node;};
+  const details=make('details');details.id='resource-monitor';details.className='resource-monitor';
+  const summary=make('summary',t('运行状态'));summary.setAttribute('aria-controls','resource-panel');
+  const panel=make('section');panel.id='resource-panel';panel.className='resource-panel';panel.setAttribute('aria-label',t('页面运行状态'));
+  const heading=make('div');heading.className='resource-heading';heading.append(make('strong',t('页面运行状态')));
+  const close=make('button','×');close.type='button';close.setAttribute('aria-label',t('关闭运行状态'));heading.append(close);
+  const list=make('dl'), values={};
+  for(const [key,label] of [['heap','JS 堆内存（近似）'],['buffers','几何缓冲'],['refresh','界面刷新率（采样）'],['models','已加载模型 / 三角面'],['clouds','已加载点 / 线段'],['system','电脑 CPU / GPU 占用']]) {
+    const row=make('div');values[key]=make('dd','—');row.append(make('dt',t(label)),values[key]);list.append(row);
+  }
+  const note=make('p',t('JS 堆内存不是页面总内存；几何缓冲仅统计已上传的数据（含缓存），不含驱动、纹理和帧缓冲，也不是显存总占用。数据规模按各视窗合计。'));
+  const rateNote=make('p',t('刷新率用于观察界面响应，不等于模型渲染帧率。仅展开时采样；后台暂停。系统占用请使用任务管理器。'));
+  panel.append(heading,list,note,rateNote);details.append(summary,panel);footer.insertBefore(details,footer.querySelector('.project-links'));
+  let frame=null,last=0,frames=0,lastRate=null,disposed=false;
+  const count=n=>Number(n).toLocaleString();
+  function refresh() {
+    if (disposed || root.hidden) return;
+    const data=viewerResourceStats(getViewers());
+    let heap=null;try{heap=globalThis.performance?.memory?.usedJSHeapSize;}catch{}
+    values.heap.textContent=readableMemory(heap);values.buffers.textContent=data.contextLost?t('上下文已丢失'):readableMemory(data.bufferBytes);
+    values.refresh.textContent=lastRate===null?'—':Math.round(lastRate)+' Hz';
+    values.models.textContent=count(data.models)+' / '+count(data.triangles);
+    values.clouds.textContent=count(data.points)+' / '+count(data.edges);
+    values.system.textContent=t('浏览器未提供');
+    summary.title=t('查看当前页面的数据规模与运行状态');
+  }
+  function stop(){if(frame!==null)cancelAnimationFrame(frame);frame=null;last=0;frames=0;lastRate=null;}
+  function tick(now) {
+    if(disposed || !details.open || root.hidden){stop();return;}
+    if(!last)last=now;else frames++;
+    if(now-last>=1000){lastRate=frames*1000/(now-last);last=now;frames=0;refresh();}
+    frame=requestAnimationFrame(tick);
+  }
+  function sample(){stop();refresh();if(details.open && !root.hidden)frame=requestAnimationFrame(tick);}
+  details.addEventListener('toggle',sample);
+  close.onclick=()=>{details.open=false;summary.focus();};
+  const onKey=event=>{if(event.key==='Escape' && details.open){details.open=false;summary.focus();}};
+  const onOutside=event=>{if(details.open && !details.contains(event.target))details.open=false;};
+  root.addEventListener('visibilitychange',sample);root.addEventListener('keydown',onKey);root.addEventListener('pointerdown',onOutside);
+  refresh();
+  return ()=>{disposed=true;stop();root.removeEventListener('visibilitychange',sample);root.removeEventListener('keydown',onKey);root.removeEventListener('pointerdown',onOutside);details.remove();};
+}
+
+
 // Source: src/shared/viewer-layout.js
 
 
+
+
+
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
-function mountViewerLayout({root = document} = {}) {
+function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
+  mountResourceMonitor({root, getViewers});
+  mountImageExport({root,getViewers,pauseSync});
+  mountPresentationControls({root,getViewers,pauseSync});
   const sidebar = root.querySelector('.workspace > .sidebar');
   if (sidebar) {
     sidebar.id ||= 'project-sidebar';
@@ -1447,8 +2070,10 @@ function mountViewerLayout({root = document} = {}) {
     let toggle = root.getElementById('toggle-project');
     if (!toggle) {
       toggle = root.createElement('button'); toggle.id = 'toggle-project';
-      root.querySelector('.header-right').prepend(toggle);
+      toggle.type = 'button';
     }
+    root.querySelector('.toolbar.viewer-toolbar').prepend(toggle);
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m4-11 3 3-3 3"/></svg><span>' + t('项目') + '</span>';
     toggle.setAttribute('aria-controls', sidebar.id);
     let collapse = root.getElementById('collapse-project');
     if (!collapse) {
@@ -1525,6 +2150,66 @@ function mountViewerLayout({root = document} = {}) {
 }
 
 
+// Source: src/shared/line-renderer.js
+
+/** Instanced tubes share existing endpoint buffers; no mesh per edge is allocated. */
+class StyledLineRenderer {
+  constructor(gl) { this.gl=gl; this.ext=gl.getExtension('ANGLE_instanced_arrays'); this.program=null; }
+  init() {
+    if(this.program || !this.ext) return;
+    const gl=this.gl;
+    const vertex=`precision highp float;
+attribute vec3 radial; attribute vec3 startPoint; attribute vec3 endPoint;
+uniform mat4 matrix; uniform vec3 offset; uniform float radius;
+varying vec3 n; varying float along;
+void main(){vec3 d=endPoint-startPoint;float len=length(d);vec3 axis=len>0.0000001?d/len:vec3(0.,0.,1.);
+vec3 side=normalize(cross(axis,abs(axis.z)<.9?vec3(0.,0.,1.):vec3(0.,1.,0.)));vec3 other=cross(axis,side);
+n=side*radial.x+other*radial.y;along=radial.z;
+vec3 p=mix(startPoint,endPoint,along)+offset+n*radius;
+gl_Position=len>0.0000001?matrix*vec4(p,1.):vec4(2.,2.,2.,1.);}`;
+    const fragment=`precision mediump float;
+varying vec3 n; varying float along;uniform vec3 colorA;uniform vec3 colorB;
+void main(){float light=.48+.52*abs(dot(n/max(length(n),.00001),normalize(vec3(-.5,-.7,1.1))));gl_FragColor=vec4(mix(colorA,colorB,along)*light,1.);}`;
+    const shaders=[];
+    try {
+      for(const [type,source] of [[gl.VERTEX_SHADER,vertex],[gl.FRAGMENT_SHADER,fragment]]){const shader=gl.createShader(type);shaders.push(shader);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(shader));}
+      const p=gl.createProgram();gl.attachShader(p,shaders[0]);gl.attachShader(p,shaders[1]);gl.linkProgram(p);
+      if(!gl.getProgramParameter(p,gl.LINK_STATUS)){const error=gl.getProgramInfoLog(p);gl.deleteProgram(p);throw Error(error);}
+      this.program=p;this.loc={};
+      for(const name of ['radial','startPoint','endPoint'])this.loc[name]=gl.getAttribLocation(p,name);
+      for(const name of ['matrix','offset','radius','colorA','colorB'])this.loc[name]=gl.getUniformLocation(p,name);
+      this.shapes={};
+      for(const [name,sides] of [['cylinder',12],['box',4]]){
+        const values=[], point=(i,z)=>[Math.cos(i*2*Math.PI/sides),Math.sin(i*2*Math.PI/sides),z];
+        for(let i=0;i<sides;i++){
+          values.push(...point(i,0),...point(i+1,0),...point(i,1),...point(i,1),...point(i+1,0),...point(i+1,1));
+          // Flat end caps; radial normal is adequate for this compact illustrative style.
+          values.push(0,0,0,...point(i+1,0),...point(i,0),0,0,1,...point(i,1),...point(i+1,1));
+        }
+        const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(values),gl.STATIC_DRAW);
+        this.shapes[name]={buffer,count:values.length/3,byteLength:values.length*4};
+      }
+    } finally {for(const shader of shaders)gl.deleteShader(shader);}
+  }
+  draw({buffer,stride=12,matrix,offset=[0,0,0],radius,style='cylinder',color=[.3,.4,.5],endColor=null}) {
+    if(!buffer?.count || !this.ext)return false;
+    this.init(); const gl=this.gl,loc=this.loc,shape=this.shapes[style]||this.shapes.cylinder;
+    // Other programs use overlapping attribute locations; reset before drawing.
+    const max=gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+    for(let i=0;i<max;i++){gl.disableVertexAttribArray(i);this.ext.vertexAttribDivisorANGLE(i,0);}
+    gl.useProgram(this.program);gl.uniformMatrix4fv(loc.matrix,false,matrix);gl.uniform3fv(loc.offset,offset);gl.uniform1f(loc.radius,radius);
+    gl.uniform3fv(loc.colorA,color);gl.uniform3fv(loc.colorB,endColor?rgbHex(endColor):color);
+    gl.bindBuffer(gl.ARRAY_BUFFER,shape.buffer);gl.enableVertexAttribArray(loc.radial);gl.vertexAttribPointer(loc.radial,3,gl.FLOAT,false,12,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,buffer.buffer);
+    for(const [name,at] of [['startPoint',0],['endPoint',stride]]){gl.enableVertexAttribArray(loc[name]);gl.vertexAttribPointer(loc[name],3,gl.FLOAT,false,stride*2,at);this.ext.vertexAttribDivisorANGLE(loc[name],1);}
+    gl.depthMask(true);this.ext.drawArraysInstancedANGLE(gl.TRIANGLES,0,shape.count,Math.floor(buffer.count/2));
+    for(const name of ['radial','startPoint','endPoint']){this.ext.vertexAttribDivisorANGLE(loc[name],0);gl.disableVertexAttribArray(loc[name]);}
+    return true;
+  }
+  dispose(){if(this.program)this.gl.deleteProgram(this.program);for(const shape of Object.values(this.shapes||{}))this.gl.deleteBuffer(shape.buffer);}
+}
+
+
 // Source: src/shared/touch-camera.js
 /** Pointer gestures shared by mesh, wireframe and point-cloud renderers. */
 function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
@@ -1568,55 +2253,10 @@ function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
 }
 
 
-// Source: src/shared/palettes.js
-
-/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
-const PALETTE_DEFINITIONS = Object.freeze({
-  current: {label: t('当前色带'), stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
-  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
-  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
-  grayscale: {label: t('灰度'), stops: [[.08,.08,.08],[.95,.95,.95]]},
-  'blue-white-red': {label: t('蓝—白—红'), stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
-});
-
-function samplePalette(t, palette = 'current', reverse = false) {
-  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
-  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
-  if (reverse) value = 1 - value;
-  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
-  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
-}
-
-function paletteUniforms(palette = 'current', reverse = false) {
-  const values = new Float32Array(27);
-  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
-  return values;
-}
-
-function validatePaletteOptions(options) {
-  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
-  if (options.range !== null && options.range !== undefined) {
-    const {min, max} = options.range;
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error(t('手动色域需要有限数值，且最小值必须小于最大值。'));
-  }
-}
-
-const PALETTE_GLSL = `
-uniform vec3 colorStops[9];
-vec3 paletteColor(float value) {
-  float t = clamp(value, 0.0, 1.0) * 8.0;
-  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
-  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
-  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
-  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
-  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
-  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
-  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
-  return mix(colorStops[7], colorStops[8], t - 7.0);
-}`;
-
-
 // Source: src/lod/renderer.js
+
+
+
 
 
 
@@ -1637,13 +2277,15 @@ uniform mat4 matrix;
 uniform mediump int kind;
 uniform mediump int colorByBuilding;
 varying vec4 color;
+varying vec3 surfaceNormal;
 void main() {
   gl_Position = matrix * vec4(position, 1.0);
+  surfaceNormal = normal;
   heightValue = vertexHeight * heightTransform.y + heightTransform.x;
   if (kind == 0) {
     vec3 base = abs(normal.z) > .22 ? vec3(.46, .59, .67) : vec3(.91, .89, .84);
     if (colorByBuilding == 1) base = buildingColor * (abs(normal.z) > .22 ? .86 : 1.13);
-    float light = .75 + .25 * abs(dot(normal, normalize(vec3(-.5, -.7, 1.1))));
+    float light = 1.0;
     color = vec4(base * light, 1.0);
   } else if (kind == 2) {
     color = vec4(.67, .71, .74, .24);
@@ -1656,6 +2298,9 @@ void main() {
 const FRAGMENT_SHADER = `
 precision mediump float;
 varying vec4 color;
+varying vec3 surfaceNormal;
+uniform int surfaceStyle;
+uniform vec3 viewDirection;
 varying highp float heightValue;
 uniform mediump int kind;
 uniform mediump int colorByBuilding;
@@ -1663,6 +2308,11 @@ ${PALETTE_GLSL}
 void main() {
   gl_FragColor = colorByBuilding == 2 && (kind == 0 || kind == 3)
     ? vec4(paletteColor(heightValue), kind == 0 ? 1.0 : .9) : color;
+  if(kind==0 && surfaceStyle!=1) {
+    vec3 n=normalize(surfaceNormal),lightDirection=normalize(vec3(-.5,-.7,1.1));
+    gl_FragColor.rgb *= .75+.25*abs(dot(n,lightDirection));
+    if(surfaceStyle==2)gl_FragColor.rgb+=vec3(.3)*pow(abs(dot(n,normalize(lightDirection+viewDirection))),32.);
+  }
 }`;
 
 class MeshViewer {
@@ -1671,7 +2321,7 @@ class MeshViewer {
     this.onLabels = onLabels;
     this.onError = onError;
     this.onViewChange = onViewChange;
-    this.options = { mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
+    this.options = { ...currentPresentation(), mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.baseHeight = 30;
     this.sceneBounds = [[-5, -5, 0], [5, 5, 10]];
@@ -1725,7 +2375,9 @@ class MeshViewer {
       throw new Error(t("WebGL 程序链接失败：{0}", [message]));
     }
     this.program = program;
+    this.styledLines = new StyledLineRenderer(gl);
     this.locations = {
+      surfaceStyle: gl.getUniformLocation(program,'surfaceStyle'), viewDirection:gl.getUniformLocation(program,'viewDirection'),
       position: gl.getAttribLocation(program, 'position'),
       normal: gl.getAttribLocation(program, 'normal'),
       buildingColor: gl.getAttribLocation(program, 'buildingColor'),
@@ -1810,7 +2462,7 @@ class MeshViewer {
       gl.deleteBuffer(buffer);
       throw new Error(t('显存不足，请减少同时查看的楼栋数量。'));
     }
-    return { buffer, count: values.length / 10 };
+    return { buffer, count: values.length / 10, byteLength: values.length * 4 };
   }
 
   setModels(models) {
@@ -1913,6 +2565,12 @@ class MeshViewer {
     }
     for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
     this.buffers = nextBuffers;
+    const retainPositions = values => {
+      const positions = new Float32Array(values.length / 10 * 3);
+      for(let i=0,j=0;i<values.length;i+=10)for(let axis=0;axis<3;axis++)positions[j++]=values[i+axis];
+      return positions;
+    };
+    this.edgePositions = {all: retainPositions(allEdges), feature: retainPositions(featureEdges)};
     this.models = models;
     this.labelAnchors = labels;
     this.triangleCount = triangles.length / 30;
@@ -1929,10 +2587,16 @@ class MeshViewer {
     if (!['real', 'normalized'].includes(next.scale)) throw new Error(t("不支持的比例模式：{0}", [next.scale]));
     next.palette ||= 'current'; next.reverse = !!next.reverse; next.range = next.range ? {...next.range} : null;
     validatePaletteOptions(next);
+    if(next.lineStyle!=='native'&&!this.styledLines?.ext)throw Error(t('此浏览器不支持立体线，请使用细线。'));
     const rebuild = next.scale !== this.options.scale;
     this.options = next;
     if (rebuild) this.setModels(this.models);
     else this.render();
+  }
+
+  vectorSegments() {
+    const values=this.options.mode==='wire'||this.options.mode==='solid-wire'?this.edgePositions?.all:this.options.edges?this.edgePositions?.feature:null;
+    const segments=[];if(values)for(let i=0;i<values.length;i+=6)segments.push([Array.from(values.subarray(i,i+3)),Array.from(values.subarray(i+3,i+6))]);return segments;
   }
 
   setView(view) {
@@ -1970,7 +2634,7 @@ class MeshViewer {
 
   matrix() {
     const [r, u, t] = this.basis();
-    const aspect = this.canvas.width / Math.max(1, this.canvas.height);
+    const aspect = (this.exportTarget?.width || this.canvas.width) / Math.max(1, this.exportTarget?.height || this.canvas.height);
     const height = this.baseHeight / this.camera.zoom, width = height * aspect;
     const cx = dot(this.target, r) + this.camera.pan[0], cy = dot(this.target, u) + this.camera.pan[1];
     const depth = Math.max(10, Math.hypot(...this.sceneBounds[1].map((v, i) => v - this.sceneBounds[0][i]))) * 4;
@@ -1989,15 +2653,16 @@ class MeshViewer {
     if (this.disposed || this.contextLost) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     const canvas = this.canvas, gl = this.gl, rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.max(1, Math.round(rect.width * dpr)), height = Math.max(1, Math.round(rect.height * dpr));
-    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+    const dpr = this.exportTarget?.scale || Math.min(window.devicePixelRatio || 1, 2);
+    const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr)), height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
+    if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
     const matrix = this.matrix(), loc = this.locations;
     gl.viewport(0, 0, width, height);
-    gl.clearColor(.951, .960, .965, 1);
+    gl.depthMask(true);gl.clearColor(this.exportTarget?.transparent?0:.951, this.exportTarget?.transparent?0:.960, this.exportTarget?.transparent?0:.965, this.exportTarget?.transparent?0:1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(loc.matrix, false, matrix);
+    gl.uniform1i(loc.surfaceStyle,this.options.surfaceStyle==='unlit'?1:this.options.surfaceStyle==='gloss'?2:0);gl.uniform3fv(loc.viewDirection,this.basis()[2]);
     gl.uniform1i(loc.colorByBuilding, this.options.colors === 'height' ? 2 : this.options.colors === 'building' ? 1 : 0);
     gl.uniform3fv(loc.colorStops, paletteUniforms(this.options.palette, this.options.reverse));
     const range = this.options.range || this.heightRange, span = range ? range.max - range.min : 0;
@@ -2007,7 +2672,7 @@ class MeshViewer {
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const draw = (buffer, kind, primitive) => {
       if (!buffer?.count) return;
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
@@ -2025,8 +2690,12 @@ class MeshViewer {
       draw(this.buffers.triangles, 0, gl.TRIANGLES);
       gl.disable(gl.POLYGON_OFFSET_FILL);
     }
-    if (this.options.mode === 'wire' || this.options.mode === 'solid-wire') draw(this.buffers.allEdges, 3, gl.LINES);
-    else if (this.options.edges) draw(this.buffers.featureEdges, 1, gl.LINES);
+    const all = this.options.mode === 'wire' || this.options.mode === 'solid-wire';
+    const edgeBuffer=all?this.buffers.allEdges:this.options.edges?this.buffers.featureEdges:null;
+    if(this.options.lineStyle==='native')draw(edgeBuffer,all?3:1,gl.LINES);
+    else this.styledLines.draw({buffer:edgeBuffer,stride:40,matrix,radius:this.options.lineWidth/2*this.baseHeight/this.camera.zoom/Math.max(1,rect.height),style:this.options.lineStyle,color:[.23,.36,.43],endColor:this.options.lineGradient?this.options.lineEndColor:null});
+    if(this.exportTarget)return;
+    updateSceneGuides(this);
     this.onLabels(this.options.labels ? this.labelAnchors.map(({ id, bounds: [min, max] }) => {
       let xMin = Infinity, xMax = -Infinity, yMin = Infinity;
       for (const px of [min[0], max[0]]) for (const py of [min[1], max[1]]) for (const pz of [min[2], max[2]]) {
@@ -2058,6 +2727,7 @@ class MeshViewer {
     this.resizeObserver.disconnect();
     for (const [name, fn, options] of this.listeners) this.canvas.removeEventListener(name, fn, options);
     for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
+    this.styledLines?.dispose();this.guideCanvas?.remove();
     this.gl.deleteProgram(this.program);
     this.onLabels([]);
   }
@@ -2093,6 +2763,28 @@ function parseOBJ(text, id, bytes = 0) {
   if (!vertices.length || !faces.length) throw Error(t('OBJ 中没有可显示的顶点和三角面'));
   if (faces.some(face => face.some(index => index >= vertices.length))) throw Error(t('OBJ 面索引超出顶点范围'));
   return {id, vertices, faces, bounds, stats: {vertices: vertices.length, triangles: faces.length, bytes}};
+}
+
+
+// Source: src/lod/selection.js
+
+/** Expand ranges against imported IDs, never allocate an arbitrary numeric interval. */
+function parseLodIds(value, catalogById) {
+  if (!value.trim()) return [];
+  const tokens = value.trim().replace(/\s*[-–—~～]\s*/g, '-').split(/[\s,，;；、]+/).filter(Boolean);
+  const result = new Set();
+  for (const token of tokens) {
+    if (catalogById.has(token)) { result.add(token); continue; }
+    const match = token.match(/^#?(\d+)(?:-(\d+))?$/);
+    if (!match) throw Error(t('无法识别“{0}”。请使用编号或范围，例如 1, 3, 100-105。', [token]));
+    const start = Number(match[1]), end = match[2] ? Number(match[2]) : start;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end) throw Error(t('编号范围不正确：{0}', [token]));
+    if (!match[2]) { result.add(String(start)); continue; }
+    const matches = [...catalogById.keys()].filter(id => String(Number(id)) === id && Number(id) >= start && Number(id) <= end).sort((a,b) => Number(a)-Number(b));
+    if (matches.length !== end - start + 1) throw Error(t('编号范围 {0} 包含未导入的模型，请检查编号。', [token]));
+    for (const id of matches) result.add(id);
+  }
+  return [...result];
 }
 
 
@@ -2578,9 +3270,10 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
 
 
 
+
+
 initializeLocale();
 const $ = (id) => document.getElementById(id);
-const MAX_SELECTED = 24;
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
@@ -2631,12 +3324,14 @@ function filteredModels() {
   return catalog.filter(model => modelProject.matches(model, $('search').value.trim().replace(/^#/,'')));
 }
 function renderList() {
-  $('filter-count').textContent = t("{0} 栋模型", [number(filteredModels().length)]);
+  $('filter-count').textContent = t("匹配 {0} 项 · 已勾选 {1}", [number(filteredModels().length), selected.size]);
+  $('item-count').textContent = t('共 {0} 项', [number(catalog.length)]);
+  for (const id of ['select-all-models','invert-model-selection']) $(id).disabled = !filteredModels().length;
   $('random-selection').disabled = !catalog.length;
   modelTree?.render();
 }
 function renderSelection(syncInput = true) {
-  $('selection-count').textContent = `${selected.size} / ${MAX_SELECTED}`;
+  $('selection-count').textContent = t('已勾选 {0} 栋', [selected.size]);
   $('previous-group').disabled = !selected.size; $('next-group').disabled = !selected.size;
   const fragment = document.createDocumentFragment();
   for (const id of orderedIds()) {
@@ -2659,28 +3354,10 @@ function selectIds(ids) {
   const unique = [...new Set(ids.map(String))];
   const invalid = unique.filter(id => !catalogById.has(id));
   if (invalid.length) { showError(t("找不到楼栋编号：{0}", [invalid.slice(0, 8).join('、')])); return false; }
-  if (unique.length > MAX_SELECTED) { renderList(); showError(t("一次最多预览 {0} 栋，当前选择了 {1} 栋。请缩小编号范围。", [MAX_SELECTED, unique.length])); return false; }
   selected = new Set(unique); clearError(); renderSelection(); renderList(); loadSelection(); return true;
 }
-function parseIds(value) {
-  if (!value.trim()) return [];
-  const normalized = value.trim().replace(/\s*[-–—~～]\s*/g, '-');
-  const tokens = normalized.split(/[\s,，;；、]+/).filter(Boolean);
-  const result = new Set();
-  for (const token of tokens) {
-    if (catalogById.has(token)) { result.add(token); continue; }
-    const match = token.match(/^#?(\d+)(?:-(\d+))?$/);
-    if (!match) throw Error(t("无法识别“{0}”。请使用编号或范围，例如 1, 3, 100-105。", [token]));
-    const start = Number(match[1]), end = match[2] ? Number(match[2]) : start;
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end) throw Error(t("编号范围不正确：{0}", [token]));
-    if (end - start + 1 > MAX_SELECTED) throw Error(t("一次最多预览 {0} 栋，请缩小编号范围。", [MAX_SELECTED]));
-    for (let id = start; id <= end; id++) result.add(String(id));
-    if (result.size > MAX_SELECTED) throw Error(t("一次最多预览 {0} 栋。", [MAX_SELECTED]));
-  }
-  return [...result];
-}
 function applyBatch(append) {
-  try { const ids = parseIds($('batch-ids').value); selectIds(append ? [...selected, ...ids] : ids); }
+  try { const ids = parseLodIds($('batch-ids').value, catalogById); selectIds(append ? [...selected, ...ids] : ids); }
   catch (error) { showError(error.message); }
 }
 async function loadSelection() {
@@ -2693,7 +3370,7 @@ async function loadSelection() {
     cameraControls?.refresh(); updateHeightLegend();
     renderLabels([]);
     $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
-    $('scene-stats').textContent = catalog.length ? t('未选择楼栋') : t('请先点击左侧“选择模型文件夹”');
+    $('scene-stats').textContent = catalog.length ? t('未选择楼栋') : t('请先在项目栏添加文件或文件夹');
     return;
   }
   $('loading').hidden = !ids.length;
@@ -2773,32 +3450,6 @@ function nextGroup(direction) {
   start = ((start % catalog.length) + catalog.length) % catalog.length;
   selectIds(Array.from({length: Math.min(count, catalog.length)}, (_, i) => catalog[(start + i) % catalog.length].id));
 }
-function screenshot() {
-  if (!viewer || !currentModels.length) return;
-  viewer.render();
-  const canvas = $('scene'), result = document.createElement('canvas');
-  const header = 80; result.width = canvas.width; result.height = canvas.height + header;
-  const ctx = result.getContext('2d');
-  ctx.fillStyle = '#f5f8f7'; ctx.fillRect(0, 0, result.width, result.height);
-  ctx.drawImage(canvas, 0, header);
-  ctx.fillStyle = '#2d4845'; ctx.font = '500 23px sans-serif';
-  ctx.fillText('LOD · ' + currentModels.map(model => '#' + model.id).join('  '), 25, 32, result.width - 50);
-  ctx.font = '14px sans-serif'; ctx.fillStyle = '#738580';
-  ctx.fillText($('layout-title').textContent + ' / ' + $('layout-note').textContent, 25, 58, result.width - 50);
-  const ratio = canvas.width / canvas.clientWidth;
-  if (options.labels) for (const label of latestLabels) {
-    if (!label.visible) continue;
-    ctx.font = `${12 * ratio}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#3b5b53';
-    ctx.fillText('#' + label.id, label.x * ratio, header + (label.y + 13) * ratio);
-  }
-  const filename = `LOD_${orderedIds().join('-')}_${options.scale}.png`;
-  result.toBlob(blob => {
-    if (!blob) { showError(t('无法生成截图，请降低窗口尺寸后重试。')); return; }
-    const url = URL.createObjectURL(blob), link = document.createElement('a');
-    link.download = filename; link.href = url; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }, 'image/png');
-}
 
 $('replace-selection').onclick = () => applyBatch(false);
 $('add-selection').onclick = () => applyBatch(true);
@@ -2815,7 +3466,7 @@ $('next-group').onclick = () => nextGroup(1);
 $('fit-view').onclick = () => viewer?.fit();
 $('zoom-in').onclick = () => viewer?.zoomBy(1.2);
 $('zoom-out').onclick = () => viewer?.zoomBy(1 / 1.2);
-$('screenshot').onclick = screenshot;
+
 $('retry').onclick = () => { clearError(); if (!catalog.length || !viewer) init(); else loadSelection(); };
 $('dismiss-error').onclick = clearError;
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => {
@@ -2862,13 +3513,17 @@ function removeModelEntries(members) {
   $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
   selectIds([...selected]);
 }
+const importLodRecords=archiveImportQueue({accepts:name=>/\.obj$/i.test(name),
+  receive:records=>folderReady(records.map(item=>item.file),new Map(records.map(item=>[item.file,item.path]))),
+  onProgress:message=>{$('drop-status').hidden=false;$('drop-status').textContent=message;},onError:showError});
+const pickLodFiles=event=>{const records=Array.from(event.target.files,file=>({file,path:file.webkitRelativePath||file.name}));event.target.value='';importLodRecords(records).catch(()=>{});};
 $('choose-folder').onclick = () => $('folder-input').click();
-$('folder-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };
+$('folder-input').onchange = pickLodFiles;
 
 function init() {
   try {
     ensureViewer();
-    mountViewerLayout();
+    mountViewerLayout({getViewers: () => viewer ? [viewer] : []});
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
       getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),
@@ -2877,11 +3532,15 @@ function init() {
       onGroupSelection: changeModelVisibility, onVisibility: changeModelVisibility,
       onRemove: removeModelEntries, onChange: renderList, detail: model => `${(model.bytes / 1024).toFixed(1)} KB`,
     });
-    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.obj$/i.test(name), onFiles: items => {
-      return folderReady(items.map(item => item.file), new Map(items.map(item => [item.file,item.path])));
-    }});
+    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name), onFiles: importLodRecords});
+    $('select-all-models').onclick = () => selectIds([...selected, ...filteredModels().map(model => model.id)]);
+    $('invert-model-selection').onclick = () => {
+      const next = new Set(selected);
+      for (const model of filteredModels()) next.has(model.id) ? next.delete(model.id) : next.add(model.id);
+      selectIds([...next]);
+    };
     $('choose-file').onclick = () => $('file-input').click();
-    $('file-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };
+    $('file-input').onchange = pickLodFiles;
     $('total-count').textContent = t('尚未选择文件夹');
     $('source-path').textContent = t('尚未选择文件夹。关闭或刷新网页后，请手动重新选择。');
     $('folder-status').textContent = t('选择含 OBJ 的目录 · 文件仅在本机读取');

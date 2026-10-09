@@ -69,3 +69,12 @@
 @media(max-width:700px){.project-sidebar .project-tree{min-height:150px}.project-sidebar #project-controls{max-height:none}.project-sidebar .cloud-mode-controls .segmented{width:100%}}
 
 .app-header .tool-icon{width:38px;height:34px;background:none;border-radius:0;object-fit:contain}.empty-tool-icon{opacity:.75;margin-bottom:12px}
+
+.project-sidebar .point-drop-hint{border:1px dashed #d7e3da;border-radius:6px;text-align:center;color:#80958a;background:#f8fbf9}
+.project-sidebar .sidebar-heading>span{white-space:nowrap;font-variant-numeric:tabular-nums}
+.project-sidebar .sidebar-heading #collapse-project{min-width:32px;min-height:32px;padding:0;border:1px solid #e2eae5;border-radius:6px;background:#f9fbfa}
+.project-sidebar .project-batch[open]{max-height:240px;overflow:auto}
+.project-batch .button-row{flex-wrap:wrap}.project-batch .project-selection-limit{font-size:10px;margin-top:10px;color:#73877b;line-height:1.6}
+.project-sidebar .list-meta{gap:4px;flex-wrap:wrap}.project-sidebar .list-meta>span{line-height:1.8}
+
+.project-sidebar .cloud-batch-actions{display:flex;align-items:center}

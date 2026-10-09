@@ -1,3 +1,5 @@
+import { archiveImportQueue } from '../shared/zip-import.js';
+import { mountCloudColors } from '../shared/cloud-colors.js';
 import { initializeLocale } from '../shared/i18n.js';
 import { t } from '../shared/i18n.js';
 import { ViewerProject } from '../shared/project-model.js';
@@ -31,7 +33,7 @@ initializeLocale();
   let currentPointName = '', messages = [], loadController = null;
   const cached = new CloudFileCache({readCloud: (file, options) => file.generatedCloud ? samplePointCloud(file.generatedCloud, options.maxPoints) : readPointCloud(file, options)}), selectedCloudEntries = new Set();
   let columnsControls = null, processingControls = null, displayedItems = [], resultSerial = 0;
-  let cameraControls = null, paletteControls = null;
+  let cameraControls = null, paletteControls = null, cloudColors = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   const pointProject = new ViewerProject(); let projectControls = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
@@ -91,13 +93,13 @@ initializeLocale();
   function list() {
     const filtered = matchingEntries();
     if (!isWire) {
-      $('filter-count').textContent = t("{0} 个点云 · 已选 {1}", [pretty(filtered.length), selectedCloudEntries.size]);
-      $('item-count').textContent = pretty(entries.length);
+      $('filter-count').textContent = t("匹配 {0} 项 · 已勾选 {1}", [pretty(filtered.length), selectedCloudEntries.size]);
+      $('item-count').textContent = t('共 {0} 项', [pretty(entries.length)]);
       projectControls?.render(); updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
       processingControls?.refresh([...selectedCloudEntries], Boolean(loadController)); return;
     }
     $('filter-count').textContent = t("{0} 个建筑 ID", [pretty(filtered.length)]);
-    $('item-count').textContent = pretty(entries.length);
+    $('item-count').textContent = t('共 {0} 项', [pretty(entries.length)]);
     projectControls?.render();
   }
 
@@ -137,7 +139,7 @@ initializeLocale();
     }
   }
   function clear() {
-    processingControls?.cancel(); displayedItems = [];
+    processingControls?.cancel(); displayedItems = [];cloudColors?.refresh();
     loadController?.abort(); loadController = null;
     selectedCloudEntries.clear(); lastCloudEntry = null; cached.setActive([]);
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
@@ -299,7 +301,8 @@ initializeLocale();
       const source = loaded.cloud?.sources?.find(source => source.name === entry.id);
       const chip = document.createElement('span'); chip.className = 'cloud-chip';
       const dot = document.createElement('i'); dot.className = 'cloud-source-dot'; dot.setAttribute('aria-hidden', 'true');
-      if (source?.color) dot.style.background = `rgb(${source.color.map(value => Math.round(value * 255)).join(',')})`;
+      if(entry.displayColor)dot.style.background=entry.displayColor;
+      else if (source?.color) dot.style.background = `rgb(${source.color.map(value => Math.round(value * 255)).join(',')})`;
       const title = document.createElement('span'); title.textContent = entry.id;
       title.title = source ? t("{0} · {1} / {2} 点；色标对应“按文件”着色", [entry.id, pretty(source.count), pretty(source.totalCount)]) : entry.id;
       const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', t("取消显示 {0}", [entry.id]));
@@ -343,13 +346,13 @@ initializeLocale();
       const description = describePointClouds(items);
       snapshot = preserveCamera ? captureView() : null;
       initViewers();
-      viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color})), {preserveView: false});
-      displayedItems = items; columnsControls?.refresh();
+      viewers[0].setClouds(items.map((item, index) => ({...item, color: description.sources[index].color, displayColor:item.entry.displayColor})), {preserveView: false});
+      displayedItems = items; columnsControls?.refresh();cloudColors?.refresh();
       loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
       currentPointName = items.map(item => item.name).join(' + ');
       messages = [...(loaded.cloud?.notes || [])];
-      messages.push(maxPoints ? t("每个文件最多显示 {0} 点，增减选择不会改变其他文件的采样。", [pretty(maxPoints)]) : t('全量显示 · 不设置点数上限。'));
+      messages.push(maxPoints ? t("每个文件最多显示 {0} 点，增减选择不会改变其他文件的采样。", [pretty(maxPoints)]) : t('全量读取 · 不设置读取点数上限。'));
       messages.push(t("本次解析 {0} 个文件，复用 {1} 个缓存。", [cached.stats.reads - before.reads, cached.stats.hits - before.hits]));
       fields();
       if (snapshot) restoreView(snapshot, viewers[0]);
@@ -481,8 +484,9 @@ initializeLocale();
     const color = $('color-mode').value;
     options = { ...options, ...paletteControls?.getOptions(), showPoints: $('show-points').checked, showWire: isWire && $('show-wire').checked,
       grid: $('show-grid').checked, pointSize: Number($('point-size').value), pointOpacity: Number($('point-opacity').value),
-      wireColor: $('wire-color').value, colorMode: color === 'custom-rgb' ? 'rgb' : color,
+      pointColor: $('point-color').value, wireColor: $('wire-color').value, colorMode: color === 'custom-rgb' ? 'rgb' : color,
       rgbFields: color === 'custom-rgb' ? ['rgb-r', 'rgb-g', 'rgb-b'].map(id => $(id).value) : null };
+    $('point-color').disabled=color!=='solid';
     $('rgb-fields').hidden = color !== 'custom-rgb'; $('point-size-value').value = String(options.pointSize);
     $('point-opacity-value').value = `${Math.round(options.pointOpacity * 100)}%`;
     pauseSync(() => viewers.forEach(viewer => viewer.setOptions(options))); viewers[0]?.render();
@@ -502,42 +506,6 @@ initializeLocale();
     if (!others.has(changed.value)) return;
     const replacement = [...changed.options].find(item => item.value && !others.has(item.value));
     changed.value = replacement?.value || ''; error(t('并排对比需要选择不同的线框文件，已自动改为其他可用文件。'));
-  }
-  function exportScreenshot() {
-    if (!viewers[0] || !active) return;
-    const screenshotId = isWire ? active.id : (loaded.cloud?.sources || []).map(source => source.name).join(' + ');
-    const screenshotCloud = loaded.cloud, screenshotSourceCount = loaded.cloud?.sources?.length || 0;
-    const screenshotWires = loadedWires.slice();
-    const screenshotFiles = selectedFiles.wires.slice();
-    const count = activeViewerCount(), activeViewers = viewers.slice(0, count); activeViewers[0].render();
-    const source = activeViewers[0].canvas;
-    if (!(source.width > 0 && source.height > 0)) return error(t('当前画布尺寸无效，无法保存截图。'));
-    const panelWidth = Math.min(count === 1 ? 1100 : 720, source.width);
-    const panelHeight = Math.max(1, Math.round(panelWidth * source.height / source.width));
-    const heading = 42, footer = 50, output = document.createElement('canvas');
-    output.width = panelWidth * count; output.height = heading + panelHeight + footer;
-    const context = output.getContext('2d'); context.fillStyle = '#fff'; context.fillRect(0, 0, output.width, output.height);
-    const pointText = screenshotCloud ? t("{0} / {1} 点", [pretty(screenshotCloud.count), pretty(screenshotCloud.totalCount)]) : t('未加载点云');
-    const fitText = (text, width) => {
-      let value = String(text); while (value.length > 4 && context.measureText(value).width > width) value = `${value.slice(0, -2)}…`; return value;
-    };
-    activeViewers.forEach((viewer, index) => {
-      const x = index * panelWidth, wire = screenshotWires[index] || null;
-      const label = isWire ? screenshotFiles[index]?.name || t('未加载线框') : screenshotId;
-      context.fillStyle = '#193047'; context.font = 'bold 17px sans-serif'; context.fillText(fitText(label, panelWidth - 28), x + 14, 27);
-      context.drawImage(viewer.canvas, x, heading, panelWidth, panelHeight);
-      context.fillStyle = '#f4f7f6'; context.fillRect(x, heading + panelHeight, panelWidth, footer);
-      context.fillStyle = '#526b72'; context.font = '13px sans-serif';
-      const lineText = isWire ? wire ? t("{0} 条线{1}", [pretty(wire.edges.length), wire.edges.length ? '' : t(' · 空线框')]) : t('未加载线框') : t('点云');
-      context.fillText(fitText(`${lineText} · ${pointText}`, panelWidth - 28), x + 14, heading + panelHeight + 30);
-    });
-    output.toBlob(blob => {
-      if (!blob) return error(t('浏览器无法生成截图。'));
-      const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url;
-      const downloadId = !isWire && screenshotSourceCount > 1 ? `${screenshotSourceCount}_files` : screenshotId;
-      link.download = `${isWire ? 'wireframe' : 'pointcloud'}_${downloadId.replace(/[^a-zA-Z0-9_.-]/g, '_')}.png`;
-      link.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
-    }, 'image/png');
   }
 
   if (!isWire) projectControls = mountProjectTree({
@@ -575,17 +543,20 @@ initializeLocale();
     onGroupSelection: () => {},
   });
 
+  const importRecords=archiveImportQueue({accepts:name=>pointExtension.test(name)||(isWire&&/\.obj$/i.test(name)),
+    receive:records=>receive(records.map(item=>item.file),true,new Map(records.map(item=>[item.file,item.path]))),
+    onProgress:message=>{$('drop-status').hidden=false;$('drop-status').textContent=message;},onError:error});
+  const pickFiles=event=>{const records=Array.from(event.target.files,file=>({file,path:file.webkitRelativePath||file.name}));event.target.value='';importRecords(records).catch(()=>{});};
   if (!isWire) mountPointDrop({
     zone: $('point-drop-zone'), status: $('drop-status'),
-    accepts: name => pointExtension.test(name),
-    onFiles: records => receiveCloudFiles(records.map(item => item.file), false,
-      new Map(records.map(item => [item.file, item.path]))),
+    accepts: name => pointExtension.test(name)||/\.zip$/i.test(name),
+    onFiles: importRecords,
   });
 
   $('choose-folder').onclick = () => $('folder-input').click();
-  $('folder-input').onchange = event => { receive(event.target.files, true); event.target.value = ''; };
+  $('folder-input').onchange = pickFiles;
   $('choose-file').onclick = () => $('file-input').click();
-  $('file-input').onchange = event => { receive(event.target.files, false); event.target.value = ''; };
+  $('file-input').onchange = pickFiles;
   $('attach-cloud').onclick = () => $('overlay-input').click();
   $('overlay-input').onchange = event => {
     const file = event.target.files[0]; event.target.value = ''; if (!file || !active) return;
@@ -608,7 +579,7 @@ initializeLocale();
     $('compare-mode').onchange = () => { setComparisonUI(); load({ preserveCamera: true }); };
     $('compare-count').onchange = () => { setComparisonUI(); load({ preserveCamera: true }); };
   }
-  for (const id of ['color-mode', 'show-points', 'show-wire', 'show-grid', 'wire-color', 'rgb-r', 'rgb-g', 'rgb-b']) $(id).onchange = update;
+  for (const id of ['color-mode', 'show-points', 'show-wire', 'show-grid', 'point-color', 'wire-color', 'rgb-r', 'rgb-g', 'rgb-b']) $(id).onchange = update;
   for (const id of ['point-size', 'point-opacity']) $(id).oninput = update;
   $('fit-view').onclick = () => viewers[0]?.fit(); $('zoom-in').onclick = () => viewers[0]?.zoomBy(1.2); $('zoom-out').onclick = () => viewers[0]?.zoomBy(1 / 1.2);
   for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => {
@@ -617,7 +588,7 @@ initializeLocale();
       other.classList.toggle('active', other === button); other.setAttribute('aria-pressed', String(other === button));
     }
   };
-  $('screenshot').onclick = exportScreenshot;
+
   document.addEventListener('keydown', event => {
     if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(event.target.tagName) && event.key.toLowerCase() === 'f') {
       event.preventDefault(); viewers[0]?.fit();
@@ -672,10 +643,13 @@ initializeLocale();
         await loadCloudSelection({preserveCamera:true});
       },
     });
-    mountViewerLayout();
-    if (isWire) mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.obj$/i.test(name) || pointExtension.test(name), onFiles: items => {
-      return receive(items.map(item => item.file), true, new Map(items.map(item => [item.file,item.path])));
+    mountViewerLayout({getViewers: () => viewers, pauseSync});
+    if(!isWire)cloudColors=mountCloudColors({container:$('settings-panel-display'),getItems:()=>displayedItems,onChange:()=>{
+      // Metadata-only: no parsing, GPU geometry upload, recentering or resampling.
+      for(const viewer of viewers)for(const entry of viewer.activeClouds||[])entry.item.displayColor=entry.item.entry?.displayColor;
+      pauseSync(()=>viewers.forEach(viewer=>viewer.render()));updateCloudSelection();
     }});
+    if (isWire) mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name) || pointExtension.test(name), onFiles: importRecords});
     clear(); update();
   } catch (cause) { error(cause.message); }
 })();

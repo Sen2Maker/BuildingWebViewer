@@ -39,7 +39,7 @@ python3 server.py --port 8765
 - `project-model.js` owns virtual folders and management selection, independent of rendering.
 - `project-tree.js` owns tree rows, Ctrl/Shift/rectangle selection, context menus and move/remove dialogs. Adapters provide entries, visibility, metadata and removal callbacks; it never reads a file or touches the renderer.
 - `project-import.js` preserves file identity and source paths across appended LOD/wireframe imports. Virtual moves never change import identities or cache keys. Point-cloud import retains its computed-result semantics.
-- Visibility and management selection are separate. LOD allows up to 24 visible models, point clouds honor single/multiple mode, wireframe previews one building set with up to three comparison panes. All support batch folder management.
+- Visibility and management selection are separate. LOD has no fixed model-count limit, point clouds honor single/multiple mode, wireframe previews one building set with up to three comparison panes. All support batch folder management.
 - `assets/css/project-tree.css` is the common file browser stylesheet. `viewer-layout.css` owns the viewer shell and inspector.
 
 ## Startup and icons
@@ -49,3 +49,13 @@ python3 server.py --port 8765
 Tool artwork lives in `assets/icons/` and is reused on the homepage, viewer header and empty state. The site favicon is independent.
 
 `package.json.version` controls generated page version links and package names. `src/shared/site-meta.json` and `site-footer.html` own page descriptions and shared project links; `build.py` also generates `sitemap.xml`. Run the build after changing them. `scripts/release.py` validates the release contract and never uploads anything.
+
+项目栏由 `src/shared/project-sidebar.html` 与配置生成，工具专用折叠区位于各自源码目录。修改模板后运行构建，不要手改 HTML 中的 `project-sidebar` 生成块。侧栏宽度、工具栏项目入口和焦点行为统一由 `src/shared/sidebar.js` 与 `viewer-layout.js` 管理。
+
+运行状态统一由 `src/shared/resource-monitor.js` 管理；内存指标必须说明统计范围，不能将 JS 堆或上传缓冲量标成整机内存/显存占用。刷新率采样仅在面板展开且页面可见时运行，不主动触发场景重绘。
+
+指标接口边界参考：[JS heap / performance.memory](https://developer.mozilla.org/en-US/docs/Web/API/Performance/memory)、[requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)。
+
+显示样式、方向比例尺与相机图片导出采用共享模块；实现边界见 [RENDERING.md](RENDERING.md)。
+
+ZIP 导入统一由 `src/shared/zip-import.js` 管理，工具只提供支持的扩展名与项目接收回调。移动端规划和实际完成边界见 [MOBILE.md](MOBILE.md)，设置面板验收见 [INSPECTOR-AUDIT.md](INSPECTOR-AUDIT.md)。

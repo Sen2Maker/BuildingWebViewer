@@ -56,6 +56,19 @@ def boot_page(source):
     return source
 
 
+def project_sidebar(source, name):
+    configs = json.loads((HERE / 'src/shared/project-sidebar.json').read_text(encoding='utf-8'))
+    if name not in configs: return source
+    config = configs[name]
+    shell = (HERE / 'src/shared/project-sidebar.html').read_text(encoding='utf-8')
+    for key in ['accept', 'list_id', 'selection_actions']:
+        shell = shell.replace('{{' + key + '}}', config[key])
+    shell = shell.replace('{{options}}', (HERE / config['options_file']).read_text(encoding='utf-8'))
+    pattern = r'<!-- project-sidebar:start -->[\s\S]*?<!-- project-sidebar:end -->'
+    if len(re.findall(pattern, source)) != 1: raise ValueError('Missing shared project sidebar: ' + name)
+    return re.sub(pattern, lambda _: '<!-- project-sidebar:start -->\n' + shell + '\n<!-- project-sidebar:end -->', source)
+
+
 def project_config():
     config = json.loads((HERE / 'package.json').read_text(encoding='utf-8'))
     if not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', config['version']):
@@ -79,7 +92,7 @@ def site_page(source, name, config):
     ])
     footer = (HERE / 'src/shared/site-footer.html').read_text(encoding='utf-8')
     repo = re.sub(r'\.git$', '', config['repository']['url'])
-    for key, value in {'author':config['author']['url'], 'repository':repo, 'release':repo + '/releases/tag/v' + config['version'], 'version':config['version']}.items():
+    for key, value in {'account':config['author']['url'].rstrip('/').split('/')[-1], 'author':config['author']['url'], 'repository':repo, 'release':repo + '/releases/tag/v' + config['version'], 'version':config['version']}.items():
         footer = footer.replace('{{' + key + '}}', esc(value))
     for marker, content in [('site-meta',metadata), ('site-footer',footer)]:
         pattern = r'<!-- ' + marker + r':start -->[\s\S]*?<!-- ' + marker + r':end -->'
@@ -118,7 +131,7 @@ def main():
     for name in PAGES:
         path = HERE / name
         source = path.read_text(encoding='utf-8')
-        output = site_page(boot_page(source), name, config)
+        output = site_page(project_sidebar(boot_page(source), name), name, config)
         def asset_version(match):
             name = match[2]
             digest = hashlib.sha256((HERE / name).read_bytes()).hexdigest()[:12]

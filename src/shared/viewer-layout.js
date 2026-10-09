@@ -1,8 +1,14 @@
+import { mountImageExport } from './image-export.js';
+import { mountPresentationControls } from './presentation-controls.js';
 import { t } from './i18n.js';
 import { mountProjectSidebar } from './sidebar.js';
+import { mountResourceMonitor } from './resource-monitor.js';
 
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
-export function mountViewerLayout({root = document} = {}) {
+export function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
+  mountResourceMonitor({root, getViewers});
+  mountImageExport({root,getViewers,pauseSync});
+  mountPresentationControls({root,getViewers,pauseSync});
   const sidebar = root.querySelector('.workspace > .sidebar');
   if (sidebar) {
     sidebar.id ||= 'project-sidebar';
@@ -10,8 +16,10 @@ export function mountViewerLayout({root = document} = {}) {
     let toggle = root.getElementById('toggle-project');
     if (!toggle) {
       toggle = root.createElement('button'); toggle.id = 'toggle-project';
-      root.querySelector('.header-right').prepend(toggle);
+      toggle.type = 'button';
     }
+    root.querySelector('.toolbar.viewer-toolbar').prepend(toggle);
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m4-11 3 3-3 3"/></svg><span>' + t('项目') + '</span>';
     toggle.setAttribute('aria-controls', sidebar.id);
     let collapse = root.getElementById('collapse-project');
     if (!collapse) {

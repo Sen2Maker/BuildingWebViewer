@@ -1,3 +1,7 @@
+import { displayColorOverride } from '../shared/cloud-colors.js';
+import { currentPresentation, displaySampleIndices } from '../shared/render-style.js';
+import { updateSceneGuides } from '../shared/scene-guides.js';
+import { StyledLineRenderer } from '../shared/line-renderer.js';
 import { t } from '../shared/i18n.js';
 import { mountTouchCamera } from '../shared/touch-camera.js';
 import { samplePalette, paletteUniforms, validatePaletteOptions, PALETTE_GLSL } from '../shared/palettes.js';
@@ -30,15 +34,24 @@ const CLOUD_FRAGMENT_SOURCE = `
 precision mediump float;
 uniform int isPoint;
 uniform float opacity;
+uniform int pointStyle;
 varying vec3 color;
 void main() {
   float alpha = opacity;
-  if (isPoint == 1) {
+  vec3 shaded = color;
+  if (isPoint == 1 && pointStyle != 1) {
     float radius = length(gl_PointCoord - vec2(.5));
     if (radius > .5) discard;
     alpha *= 1.0 - smoothstep(.40, .50, radius);
+    if (pointStyle == 2) {
+      vec2 xy = (gl_PointCoord - vec2(.5)) * 2.0;
+      vec3 n = vec3(xy.x, -xy.y, sqrt(max(0.0, 1.0-dot(xy,xy))));
+      float diffuse = max(0.0,dot(n,normalize(vec3(-.45,.6,1.))));
+      float spec = pow(max(0.0,dot(n,normalize(vec3(-.2,.3,1.)))),24.0);
+      shaded = color*(.32+.68*diffuse)+vec3(.22)*spec;
+    }
   }
-  gl_FragColor = vec4(color, alpha);
+  gl_FragColor = vec4(shaded, alpha);
 }`;
 
 function CLOUD_HEX(value, fallback) {
@@ -70,7 +83,7 @@ export class CloudViewer {
     this.canvas = canvas;
     this.onError = onError;
     this.onViewChange = onViewChange;
-    this.options = { showPoints: true, showWire: true, pointSize: 2, pointOpacity: 1,
+    this.options = { ...currentPresentation(), showPoints: true, showWire: true, pointSize: 2, pointOpacity: 1,
       colorMode: 'height', pointColor: '#547d99', wireColor: '#ed8e48', rgbFields: null, grid: true, palette: 'current', reverse: false, range: null };
     this.data = { cloud: null, wire: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
@@ -134,7 +147,9 @@ export class CloudViewer {
     }
     this.program = program;
     this.locations = { position: gl.getAttribLocation(program, 'position'), color: gl.getAttribLocation(program, 'vertexColor'), scalar: gl.getAttribLocation(program, 'scalarValue') };
-    for (const name of ['matrix', 'pointSize', 'useVertexColor', 'solidColor', 'isPoint', 'opacity', 'originOffset', 'scalarTransform', 'colorMode', 'colorStops[0]']) this.locations[name] = gl.getUniformLocation(program, name);
+    for (const name of ['matrix', 'pointSize', 'useVertexColor', 'solidColor', 'isPoint', 'opacity', 'pointStyle', 'originOffset', 'scalarTransform', 'colorMode', 'colorStops[0]']) this.locations[name] = gl.getUniformLocation(program, name);
+    this.styledLines = new StyledLineRenderer(gl);
+    this.uintIndices = gl.getExtension('OES_element_index_uint');
     const range = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
     this.pointSizeRange = range && range.length === 2 ? Array.from(range) : [1, 64];
   }
@@ -214,7 +229,7 @@ export class CloudViewer {
       gl.deleteBuffer(buffer);
       throw new Error(error === gl.OUT_OF_MEMORY ? t('显存不足，请降低点云采样数量。') : t("WebGL 缓冲区上传失败（{0}）。", [error]));
     }
-    return { buffer, count: values.length / 3 };
+    return { buffer, count: values.length / 3, byteLength: values.byteLength };
   }
 
   ensureCache() {
@@ -223,7 +238,7 @@ export class CloudViewer {
   }
 
   deleteEntity(entry) {
-    for (const item of [entry?.points, entry?.colors, entry?.scalar]) if (item) this.gl.deleteBuffer(item.buffer);
+    for (const item of [entry?.points, entry?.colors, entry?.scalar, entry?.sample]) if (item) this.gl.deleteBuffer(item.buffer);
   }
 
   pruneCache() {
@@ -404,7 +419,7 @@ export class CloudViewer {
     for (const {entry, ...update} of plan.updates) {
       for (const name of ['colors','scalar']) if (Object.hasOwn(update,name) && entry[name]) this.gl.deleteBuffer(entry[name].buffer);
       Object.assign(entry, update);
-      entry.gpuBytes = entry.count * (12 + (entry.colors ? 12 : 0) + (entry.scalar ? 8 : 0));
+      entry.gpuBytes = entry.count * (12 + (entry.colors ? 12 : 0) + (entry.scalar ? 8 : 0)) + (entry.sample?.byteLength || 0);
     }
     this.dataRange = plan.auto; this.colorRange = plan.range;
     this.effectiveColorMode = plan.mode; this.colorFallback = plan.fallback;
@@ -515,9 +530,30 @@ export class CloudViewer {
     next.rgbFields = Array.isArray(next.rgbFields) ? [...next.rgbFields] : null;
     next.palette ||= 'current'; next.reverse = !!next.reverse; next.range = next.range ? {...next.range} : null;
     validatePaletteOptions(next);
+    if(!['disc','square','sphere'].includes(next.pointStyle) || !Number.isFinite(next.pointRatio) || next.pointRatio<1 || next.pointRatio>100)throw Error(t('无效的点显示参数。'));
+    if(next.pointRatio<100&&!this.uintIndices&&this.activeClouds.some(entry=>entry.count>65535))throw Error(t('此浏览器不支持大点云的比例显示抽样。'));
+    if(next.lineStyle!=='native'&&!this.styledLines?.ext)throw Error(t('此浏览器不支持立体线，请使用细线。'));
     this.options = next;
     try { this.updateColorState(); } catch (error) { this.options = previous; this.onError(error.message); throw error; }
     this.render();
+  }
+
+  vectorSegments() {
+    const wire=this.wireEntry?.wire;
+    return wire && this.options.showWire ? wire.edges.map(edge=>edge.map(index=>wire.vertices[index].map((v,i)=>v-this.origin[i]))) : [];
+  }
+
+  sampledElements(entry) {
+    const ratio=this.options.pointRatio ?? 100;
+    if(ratio===100){if(entry.sample){this.gl.deleteBuffer(entry.sample.buffer);entry.gpuBytes-=entry.sample.byteLength;entry.sample=null;}return null;}
+    if(entry.sample?.ratio===ratio)return entry.sample;
+    const indices=displaySampleIndices(entry.count,ratio),gl=this.gl;
+    if(indices instanceof Uint32Array && !this.uintIndices)throw Error(t('此浏览器不支持大点云的比例显示抽样。'));
+    const buffer=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,buffer);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.STATIC_DRAW);
+    if(gl.getError()!==gl.NO_ERROR){gl.deleteBuffer(buffer);throw Error(t('抽样缓冲区分配失败。'));}
+    if(entry.sample){gl.deleteBuffer(entry.sample.buffer);entry.gpuBytes-=entry.sample.byteLength;}
+    entry.gpuBytes=(entry.gpuBytes||0)+indices.byteLength;
+    entry.sample={buffer,count:indices.length,byteLength:indices.byteLength,ratio,type:indices instanceof Uint32Array?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT};return entry.sample;
   }
 
   visibleBounds() {
@@ -560,7 +596,7 @@ export class CloudViewer {
 
   matrix() {
     const [r, u, t] = this.basis();
-    const height = this.baseHeight / this.camera.zoom, width = height * this.canvas.width / Math.max(1, this.canvas.height);
+    const height = this.baseHeight / this.camera.zoom, width = height * (this.exportTarget?.width || this.canvas.width) / Math.max(1, this.exportTarget?.height || this.canvas.height);
     const cx = CLOUD_DOT(this.target, r) + this.camera.pan[0], cy = CLOUD_DOT(this.target, u) + this.camera.pan[1];
     const extent = this.bounds ? Math.hypot(...this.bounds[1].map((value, axis) => value - this.bounds[0][axis])) : 1;
     const depth = Math.max(.001, extent) * 4;
@@ -579,18 +615,19 @@ export class CloudViewer {
     if (this.disposed || this.contextLost) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     const gl = this.gl, canvas = this.canvas, loc = this.locations, rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.max(1, Math.round(rect.width * dpr)), height = Math.max(1, Math.round(rect.height * dpr));
-    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+    const dpr = this.exportTarget?.scale || Math.min(window.devicePixelRatio || 1, 2);
+    const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr)), height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
+    if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
     gl.viewport(0, 0, width, height);
     gl.depthMask(true);
-    gl.clearColor(.951, .960, .965, 1);
+    gl.depthMask(true);gl.clearColor(this.exportTarget?.transparent?0:.951, this.exportTarget?.transparent?0:.960, this.exportTarget?.transparent?0:.965, this.exportTarget?.transparent?0:1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(loc.matrix, false, this.matrix());
     gl.uniform1f(loc.pointSize, CLOUD_CLAMP(this.options.pointSize * dpr, this.pointSizeRange[0], this.pointSizeRange[1]));
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
-    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform1i(loc.pointStyle, this.options.pointStyle === 'sphere' ? 2 : this.options.pointStyle === 'square' ? 1 : 0);
     gl.enableVertexAttribArray(loc.position);
     gl.uniform3fv(loc['colorStops[0]'], paletteUniforms(this.options.palette, this.options.reverse));
     const draw = (buffer, primitive, color, opacity, entry = null, mode = 0) => {
@@ -614,7 +651,9 @@ export class CloudViewer {
       gl.uniform1i(loc.useVertexColor, mode === 1 ? 1 : 0);
       gl.uniform3fv(loc.solidColor, color); gl.uniform1f(loc.opacity, opacity);
       gl.uniform1i(loc.isPoint, primitive === gl.POINTS ? 1 : 0);
-      gl.drawArrays(primitive, 0, buffer.count);
+      const sample = primitive === gl.POINTS && entry ? this.sampledElements(entry) : null;
+      if(sample){gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,sample.buffer);gl.drawElements(primitive,sample.count,sample.type,0);}
+      else gl.drawArrays(primitive, 0, buffer.count);
     };
     const anyVisible = (this.options.showPoints && this.pointCount && this.options.pointOpacity > 0) || (this.options.showWire && this.edgeCount);
     if (this.options.grid && anyVisible) { gl.depthMask(false); draw(this.buffers.grid, gl.LINES, [.60,.66,.70], .24); gl.depthMask(true); }
@@ -622,19 +661,24 @@ export class CloudViewer {
       gl.depthMask(this.options.pointOpacity >= 1);
       for (const entry of this.activeClouds || []) {
         const mode = this.effectiveColorMode;
-        const fileColor = mode === 'file' ? this.entryFileColor(entry) : null;
+        const fileColor = displayColorOverride(entry.item?.displayColor) || (mode === 'file' ? this.entryFileColor(entry) : null);
         const kind = mode === 'solid' || fileColor ? 0 : mode === 'rgb' || mode === 'file' ? 1 : mode === 'height' ? 2 : 3;
         draw(entry.points, gl.POINTS, fileColor || CLOUD_HEX(this.options.pointColor, [.33,.49,.60]), this.options.pointOpacity, entry, kind);
       }
       gl.depthMask(true);
     }
-    if (this.options.showWire) draw(this.wireEntry?.buffer, gl.LINES, CLOUD_HEX(this.options.wireColor, [.93,.56,.28]), 1, this.wireEntry);
+    if (this.options.showWire) {
+      if(this.options.lineStyle==='native')draw(this.wireEntry?.buffer, gl.LINES, CLOUD_HEX(this.options.wireColor, [.93,.56,.28]), 1, this.wireEntry);
+      else this.styledLines.draw({buffer:this.wireEntry?.buffer,matrix:this.matrix(),offset:(this.wireEntry?.origin||this.origin).map((v,i)=>v-this.origin[i]),radius:this.options.lineWidth/2*this.baseHeight/this.camera.zoom/Math.max(1,rect.height),style:this.options.lineStyle,color:CLOUD_HEX(this.options.wireColor,[.93,.56,.28]),endColor:this.options.lineGradient?this.options.lineEndColor:null});
+    }
     gl.depthMask(true);
+    if(this.exportTarget)return;
+    updateSceneGuides(this);
     this.onViewChange?.(this.getState());
   }
 
   getState() {
-    return { pointCount: this.pointCount, edgeCount: this.edgeCount,
+    return { displayedPointCount: this.options.showPoints ? this.activeClouds.reduce((sum,entry)=>sum+Math.floor(entry.count*(this.options.pointRatio??100)/100),0) : 0, pointCount: this.pointCount, edgeCount: this.edgeCount,
       colorRange: this.colorRange ? { ...this.colorRange } : null, dataRange: this.dataRange ? {...this.dataRange} : null,
       requestedColorMode: this.options.colorMode, effectiveColorMode: this.effectiveColorMode,
       colorFallback: this.colorFallback, fields: [...new Set((this.activeClouds || []).flatMap(entry => Object.keys(entry.cloud.fields || {})))],
@@ -656,6 +700,7 @@ export class CloudViewer {
     if (this.wireEntry?.buffer) this.gl.deleteBuffer(this.wireEntry.buffer.buffer);
     if (this.buffers.grid) this.gl.deleteBuffer(this.buffers.grid.buffer);
     this.entityCache?.clear(); this.activeClouds = []; this.wireEntry = null;
+    this.styledLines?.dispose();this.guideCanvas?.remove();this.sampleLabel?.remove();
     this.gl.deleteProgram(this.program);
     this.buffers = {};
   }

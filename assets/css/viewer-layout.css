@@ -98,7 +98,7 @@
 /* Compact navigation shared by the three viewers. */
 .app-header{height:52px;padding-block:0}.app-header .brand-icon{width:30px;height:30px;font-size:20px}.app-header h1{font-size:16px}.app-header p{display:none}.app-header .back-home{width:29px;height:29px;font-size:18px}
 .workspace{height:calc(100dvh - 52px);min-height:440px}.workspace>main{padding-top:14px}
-.app-header #toggle-project{font-size:11px;padding:6px 9px;background:#f5f9f6;color:#587460}.app-header .header-right{gap:12px}
+.app-header .header-right{gap:12px}
 .workspace{position:relative}.workspace>main{grid-column:2}.workspace>.viewer-inspector{grid-column:3}.workspace>.sidebar{grid-column:1}
 .workspace.project-collapsed{grid-template-columns:0 minmax(0,1fr)}
 .workspace.project-collapsed.inspector-open{grid-template-columns:0 minmax(0,1fr) 348px}
@@ -116,7 +116,7 @@ body{height:100vh;height:100dvh;overflow:hidden}
 .workspace>main>.viewport,.workspace>main>.viewer-grid{min-height:120px}
 .sidebar.drop-active{outline:2px dashed #659e87;outline-offset:-5px;background:#f0f8f2}
 .sidebar #drop-status{font-size:11px;color:#688778;line-height:1.6}
-#toggle-project{font-size:11px;padding:6px 9px}#collapse-project{margin-left:auto;padding:3px 8px;font-size:20px}
+#collapse-project{margin-left:auto;padding:3px 8px;font-size:20px}
 .app-header #total-count{display:none}
 @media(min-width:701px) and (max-width:1199px){.workspace.inspector-open{grid-template-columns:var(--project-width,300px) minmax(0,1fr)}}
 @media(max-width:700px){
@@ -139,3 +139,43 @@ body{height:100vh;height:100dvh;overflow:hidden}
 }
 
 .touch-hint{display:none}@media(max-width:700px){.workspace>main>footer .desktop-hint{display:none}.touch-hint{display:inline}}
+
+/* Navigation and project-panel recovery have separate, stable locations. */
+.app-header .back-home{width:auto;min-width:62px;gap:6px;display:flex;align-items:center;justify-content:center;padding:5px 8px;font-size:12px;color:#466a5a;text-decoration:none}
+.back-home svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#toggle-project{min-height:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;padding:7px 10px;font-size:11px;line-height:16px;color:#47725e;background:white;border:1px solid #d7e5dd;border-radius:7px}
+#toggle-project:hover,#toggle-project.active{background:#eaf3ed;border-color:#afc9b8;color:#315c45}
+#toggle-project svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:700px){#toggle-project{padding:7px;gap:4px}.app-header .back-home{min-width:58px}.app-header h1{max-width:calc(100vw - 190px)}}
+
+/* Shared, on-demand diagnostics. No system-utilization percentages are inferred. */
+.resource-monitor{position:relative;margin-left:auto;flex:none;color:#668477;font-size:10px}
+.resource-monitor>summary{list-style:none;padding:4px 7px;border:1px solid #dce7df;border-radius:5px;background:#f4f8f5;white-space:nowrap}
+.resource-monitor>summary::-webkit-details-marker{display:none}.resource-monitor>summary:before{content:'◉';margin-right:5px;color:#719b85}
+.resource-panel{position:fixed;z-index:60;right:18px;bottom:58px;width:350px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 90px);overflow:auto;background:#fff;border:1px solid #d5e2da;border-radius:11px;box-shadow:0 8px 35px #253d392b;padding:15px;color:#526d60;font-size:12px}
+.resource-heading{display:flex;align-items:center;justify-content:space-between;font-size:14px}.resource-heading button{border:0;padding:2px 8px;font-size:20px;background:#f2f7f4}
+.resource-panel dl{margin:12px 0}.resource-panel dl>div{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #edf2ee}.resource-panel dt{font-size:11px}.resource-panel dd{margin:0;font-size:12px;font-variant-numeric:tabular-nums;text-align:right}
+.resource-panel p{font-size:10px;line-height:1.7;margin-top:8px;color:#82958a}
+.workspace>main>footer .resource-monitor+.project-links{margin-left:0}
+@media(max-width:700px){.resource-panel{right:12px;bottom:80px}.workspace>main>footer .resource-monitor{margin-left:0}.workspace>main>footer .project-links{width:auto;margin-left:auto!important;font-size:9px;gap:9px}.resource-monitor>summary{font-size:9px;padding:3px 5px}}
+
+/* Shared camera exports and display-only rendering controls. */
+.scene-guides{position:absolute;left:0;bottom:0;width:150px;height:160px;pointer-events:none;z-index:2}
+.image-export>button{width:100%;margin:8px 0!important}.image-export details{margin-top:12px}.image-export summary{font-size:12px;color:#44715e;margin-bottom:12px}
+.image-export label,.presentation-controls>label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;margin:10px 0;color:#536e62}
+.image-export input[type=number],.presentation-controls input[type=number]{width:92px;padding:6px}
+.image-export select,.presentation-controls select{max-width:170px;padding:6px;font-size:11px}
+.presentation-help{font-size:10px;line-height:1.7;color:#7e9086;margin-top:8px}
+.image-export details>button{width:100%;margin-top:12px}.image-export details{scroll-margin:12px}
+.display-sample-status{position:absolute;bottom:14px;left:150px;font-size:10px;color:#657c70;pointer-events:none;z-index:2}
+
+.viewport-bottom .zoom-controls{margin-left:auto}
+
+/* A shared canvas draws matching screen/export annotations. */
+.shared-scene-overlays .viewport-bottom .scalar-legend,.shared-scene-overlays .viewport-bottom .legend{display:none!important}
+.presentation-range{display:flex;align-items:center;gap:7px;flex:1;max-width:185px}
+.presentation-range input[type=range]{width:100%;min-width:40px;accent-color:#527f68;touch-action:pan-y}
+.presentation-range input[type=number]{width:52px;flex:none;padding:5px}
+.presentation-controls input[type=color],.cloud-color-row input[type=color]{width:40px;height:29px;padding:2px;border:1px solid #d6e3da;border-radius:5px;background:white}
+.cloud-color-row{display:flex;gap:7px;align-items:center;margin:8px 0}.cloud-color-row label{display:flex;align-items:center;justify-content:space-between;gap:9px;flex:1;min-width:0;font-size:11px;color:#536e62}
+.cloud-color-row label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cloud-color-row input{flex:none}.cloud-color-row button{padding:5px 7px;font-size:10px}.cloud-colors>button{font-size:11px;width:100%;margin:8px 0}

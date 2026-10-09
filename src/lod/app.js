@@ -1,3 +1,4 @@
+import { archiveImportQueue } from '../shared/zip-import.js';
 import { ViewerProject } from '../shared/project-model.js';
 import { mountProjectTree } from '../shared/project-tree.js';
 import { appendLodFiles } from '../shared/project-import.js';
@@ -7,12 +8,12 @@ import { mountPointDrop } from '../shared/point-drop.js';
 import { mountViewerLayout } from '../shared/viewer-layout.js';
 import { MeshViewer } from './renderer.js';
 import { parseOBJ } from './obj-parser.js';
+import { parseLodIds } from './selection.js';
 import { mountCameraControls } from '../shared/camera-controls.js';
 import { mountPaletteControls, paletteGradient } from '../shared/palette-controls.js';
 
 initializeLocale();
 const $ = (id) => document.getElementById(id);
-const MAX_SELECTED = 24;
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
@@ -63,12 +64,14 @@ function filteredModels() {
   return catalog.filter(model => modelProject.matches(model, $('search').value.trim().replace(/^#/,'')));
 }
 function renderList() {
-  $('filter-count').textContent = t("{0} 栋模型", [number(filteredModels().length)]);
+  $('filter-count').textContent = t("匹配 {0} 项 · 已勾选 {1}", [number(filteredModels().length), selected.size]);
+  $('item-count').textContent = t('共 {0} 项', [number(catalog.length)]);
+  for (const id of ['select-all-models','invert-model-selection']) $(id).disabled = !filteredModels().length;
   $('random-selection').disabled = !catalog.length;
   modelTree?.render();
 }
 function renderSelection(syncInput = true) {
-  $('selection-count').textContent = `${selected.size} / ${MAX_SELECTED}`;
+  $('selection-count').textContent = t('已勾选 {0} 栋', [selected.size]);
   $('previous-group').disabled = !selected.size; $('next-group').disabled = !selected.size;
   const fragment = document.createDocumentFragment();
   for (const id of orderedIds()) {
@@ -91,28 +94,10 @@ function selectIds(ids) {
   const unique = [...new Set(ids.map(String))];
   const invalid = unique.filter(id => !catalogById.has(id));
   if (invalid.length) { showError(t("找不到楼栋编号：{0}", [invalid.slice(0, 8).join('、')])); return false; }
-  if (unique.length > MAX_SELECTED) { renderList(); showError(t("一次最多预览 {0} 栋，当前选择了 {1} 栋。请缩小编号范围。", [MAX_SELECTED, unique.length])); return false; }
   selected = new Set(unique); clearError(); renderSelection(); renderList(); loadSelection(); return true;
 }
-function parseIds(value) {
-  if (!value.trim()) return [];
-  const normalized = value.trim().replace(/\s*[-–—~～]\s*/g, '-');
-  const tokens = normalized.split(/[\s,，;；、]+/).filter(Boolean);
-  const result = new Set();
-  for (const token of tokens) {
-    if (catalogById.has(token)) { result.add(token); continue; }
-    const match = token.match(/^#?(\d+)(?:-(\d+))?$/);
-    if (!match) throw Error(t("无法识别“{0}”。请使用编号或范围，例如 1, 3, 100-105。", [token]));
-    const start = Number(match[1]), end = match[2] ? Number(match[2]) : start;
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end) throw Error(t("编号范围不正确：{0}", [token]));
-    if (end - start + 1 > MAX_SELECTED) throw Error(t("一次最多预览 {0} 栋，请缩小编号范围。", [MAX_SELECTED]));
-    for (let id = start; id <= end; id++) result.add(String(id));
-    if (result.size > MAX_SELECTED) throw Error(t("一次最多预览 {0} 栋。", [MAX_SELECTED]));
-  }
-  return [...result];
-}
 function applyBatch(append) {
-  try { const ids = parseIds($('batch-ids').value); selectIds(append ? [...selected, ...ids] : ids); }
+  try { const ids = parseLodIds($('batch-ids').value, catalogById); selectIds(append ? [...selected, ...ids] : ids); }
   catch (error) { showError(error.message); }
 }
 async function loadSelection() {
@@ -125,7 +110,7 @@ async function loadSelection() {
     cameraControls?.refresh(); updateHeightLegend();
     renderLabels([]);
     $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
-    $('scene-stats').textContent = catalog.length ? t('未选择楼栋') : t('请先点击左侧“选择模型文件夹”');
+    $('scene-stats').textContent = catalog.length ? t('未选择楼栋') : t('请先在项目栏添加文件或文件夹');
     return;
   }
   $('loading').hidden = !ids.length;
@@ -205,32 +190,6 @@ function nextGroup(direction) {
   start = ((start % catalog.length) + catalog.length) % catalog.length;
   selectIds(Array.from({length: Math.min(count, catalog.length)}, (_, i) => catalog[(start + i) % catalog.length].id));
 }
-function screenshot() {
-  if (!viewer || !currentModels.length) return;
-  viewer.render();
-  const canvas = $('scene'), result = document.createElement('canvas');
-  const header = 80; result.width = canvas.width; result.height = canvas.height + header;
-  const ctx = result.getContext('2d');
-  ctx.fillStyle = '#f5f8f7'; ctx.fillRect(0, 0, result.width, result.height);
-  ctx.drawImage(canvas, 0, header);
-  ctx.fillStyle = '#2d4845'; ctx.font = '500 23px sans-serif';
-  ctx.fillText('LOD · ' + currentModels.map(model => '#' + model.id).join('  '), 25, 32, result.width - 50);
-  ctx.font = '14px sans-serif'; ctx.fillStyle = '#738580';
-  ctx.fillText($('layout-title').textContent + ' / ' + $('layout-note').textContent, 25, 58, result.width - 50);
-  const ratio = canvas.width / canvas.clientWidth;
-  if (options.labels) for (const label of latestLabels) {
-    if (!label.visible) continue;
-    ctx.font = `${12 * ratio}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#3b5b53';
-    ctx.fillText('#' + label.id, label.x * ratio, header + (label.y + 13) * ratio);
-  }
-  const filename = `LOD_${orderedIds().join('-')}_${options.scale}.png`;
-  result.toBlob(blob => {
-    if (!blob) { showError(t('无法生成截图，请降低窗口尺寸后重试。')); return; }
-    const url = URL.createObjectURL(blob), link = document.createElement('a');
-    link.download = filename; link.href = url; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }, 'image/png');
-}
 
 $('replace-selection').onclick = () => applyBatch(false);
 $('add-selection').onclick = () => applyBatch(true);
@@ -247,7 +206,7 @@ $('next-group').onclick = () => nextGroup(1);
 $('fit-view').onclick = () => viewer?.fit();
 $('zoom-in').onclick = () => viewer?.zoomBy(1.2);
 $('zoom-out').onclick = () => viewer?.zoomBy(1 / 1.2);
-$('screenshot').onclick = screenshot;
+
 $('retry').onclick = () => { clearError(); if (!catalog.length || !viewer) init(); else loadSelection(); };
 $('dismiss-error').onclick = clearError;
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => {
@@ -294,13 +253,17 @@ function removeModelEntries(members) {
   $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
   selectIds([...selected]);
 }
+const importLodRecords=archiveImportQueue({accepts:name=>/\.obj$/i.test(name),
+  receive:records=>folderReady(records.map(item=>item.file),new Map(records.map(item=>[item.file,item.path]))),
+  onProgress:message=>{$('drop-status').hidden=false;$('drop-status').textContent=message;},onError:showError});
+const pickLodFiles=event=>{const records=Array.from(event.target.files,file=>({file,path:file.webkitRelativePath||file.name}));event.target.value='';importLodRecords(records).catch(()=>{});};
 $('choose-folder').onclick = () => $('folder-input').click();
-$('folder-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };
+$('folder-input').onchange = pickLodFiles;
 
 function init() {
   try {
     ensureViewer();
-    mountViewerLayout();
+    mountViewerLayout({getViewers: () => viewer ? [viewer] : []});
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
       getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),
@@ -309,11 +272,15 @@ function init() {
       onGroupSelection: changeModelVisibility, onVisibility: changeModelVisibility,
       onRemove: removeModelEntries, onChange: renderList, detail: model => `${(model.bytes / 1024).toFixed(1)} KB`,
     });
-    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.obj$/i.test(name), onFiles: items => {
-      return folderReady(items.map(item => item.file), new Map(items.map(item => [item.file,item.path])));
-    }});
+    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name), onFiles: importLodRecords});
+    $('select-all-models').onclick = () => selectIds([...selected, ...filteredModels().map(model => model.id)]);
+    $('invert-model-selection').onclick = () => {
+      const next = new Set(selected);
+      for (const model of filteredModels()) next.has(model.id) ? next.delete(model.id) : next.add(model.id);
+      selectIds([...next]);
+    };
     $('choose-file').onclick = () => $('file-input').click();
-    $('file-input').onchange = event => { folderReady(event.target.files); event.target.value = ''; };
+    $('file-input').onchange = pickLodFiles;
     $('total-count').textContent = t('尚未选择文件夹');
     $('source-path').textContent = t('尚未选择文件夹。关闭或刷新网页后，请手动重新选择。');
     $('folder-status').textContent = t('选择含 OBJ 的目录 · 文件仅在本机读取');

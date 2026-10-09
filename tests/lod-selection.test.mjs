@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {parseLodIds} from '../src/lod/selection.js';
+const catalog = new Map(Array.from({length:100},(_,i)=>[String(i+1),{}]));
+assert.equal(parseLodIds('1-100',catalog).length,100);
+assert.deepEqual(parseLodIds('1, 3-5, 3',catalog),['1','3','4','5']);
+assert.deepEqual(parseLodIds('',catalog),[]);
+assert.throws(()=>parseLodIds('1-9007199254740991',catalog),/未导入/);
+assert.throws(()=>parseLodIds('7-3',catalog),/不正确/);
+assert.throws(()=>parseLodIds('1-101',catalog),/未导入/);
+assert.deepEqual(parseLodIds('001',new Map([['001',{}]])),['001']);
+console.log('PASS unlimited imported-model ranges, deduplication, empty input and huge-range validation');

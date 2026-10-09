@@ -1,0 +1,20 @@
+{
+  "lod.html": {
+    "accept": ".obj,.zip",
+    "list_id": "model-list",
+    "selection_actions": "<button id=\"select-all-models\" disabled>全选</button><button id=\"invert-model-selection\" disabled>反选</button>",
+    "options_file": "src/lod/lod-project-options.html"
+  },
+  "wireframe.html": {
+    "accept": ".obj,.xyz,.txt,.csv,.pts,.ply,.pcd,.zip",
+    "list_id": "data-list",
+    "selection_actions": "",
+    "options_file": "src/cloud/wireframe-project-options.html"
+  },
+  "pointcloud.html": {
+    "accept": ".xyz,.txt,.csv,.pts,.ply,.pcd,.zip",
+    "list_id": "data-list",
+    "selection_actions": "<button id=\"select-all-clouds\" disabled>全选</button><button id=\"invert-cloud-selection\" disabled>反选</button>",
+    "options_file": "src/pointcloud/pointcloud-project-options.html"
+  }
+}

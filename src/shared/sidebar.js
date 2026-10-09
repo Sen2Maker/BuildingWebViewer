@@ -13,11 +13,15 @@ export function mountProjectSidebar({workspace, sidebar, toggle, collapse, separ
     separator.setAttribute('aria-valuemax', String(projectSidebarWidth(500, workspace.clientWidth, workspace.classList.contains('inspector-open'))));
   }
   function fold(value) {
+    const hadSidebarFocus = sidebar.contains(sidebar.ownerDocument.activeElement);
     folded = value; workspace.classList.toggle('project-collapsed', value); sidebar.inert = value;
     toggle.setAttribute('aria-expanded', String(!value)); toggle.title = value ? t('展开项目栏') : t('收起项目栏');
-    toggle.textContent = value ? t('▤ 展开项目') : t('▤ 收起项目');
+    toggle.setAttribute('aria-label', toggle.title);
+    toggle.classList.toggle('active', !value);
+    collapse.setAttribute('aria-expanded', String(!value));
+    collapse.setAttribute('aria-controls', sidebar.id);
     separator.tabIndex = value ? -1 : 0;
-    if (value) toggle.focus();
+    if (value && hadSidebarFocus) toggle.focus();
   }
   toggle.onclick = () => fold(!folded); collapse.onclick = () => fold(true);
   separator.onpointerdown = event => {

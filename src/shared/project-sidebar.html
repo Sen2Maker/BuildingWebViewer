@@ -1,0 +1,14 @@
+<aside class="sidebar project-sidebar point-drop-zone" id="point-drop-zone" aria-label="项目文件" aria-describedby="drop-hint">
+  <div class="sidebar-heading"><h2>项目文件</h2><span id="item-count">共 0 项</span><button id="collapse-project" type="button" aria-label="收起项目栏" title="收起项目栏">‹</button></div>
+  <div class="folder-section project-import">
+    <div class="project-import-buttons"><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept="{{accept}}" multiple hidden><button id="choose-folder">＋ 文件夹</button><input id="folder-input" type="file" webkitdirectory multiple hidden></div>
+    <p id="drop-hint" class="point-drop-hint">拖入文件或文件夹</p>
+    <p id="drop-status" class="point-drop-status" role="status" hidden></p>
+  </div>
+  <input id="search" type="search" aria-label="搜索文件或文件夹" placeholder="搜索文件或文件夹…" autocomplete="off">
+  <div class="list-meta"><span id="filter-count">尚未读取数据</span><div class="cloud-batch-actions" aria-label="显示选择">{{selection_actions}}<button id="clear-selection">取消</button></div></div>
+  <button id="project-root" class="project-root" title="拖到这里移出文件夹">▱ 项目根目录 <span>拖到此处移出分组</span></button>
+  <div id="{{list_id}}" class="model-list project-tree" aria-label="项目文件列表"></div>
+  <div id="project-controls"></div>
+  {{options}}
+</aside>

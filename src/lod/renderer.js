@@ -1,3 +1,6 @@
+import { currentPresentation } from '../shared/render-style.js';
+import { updateSceneGuides } from '../shared/scene-guides.js';
+import { StyledLineRenderer } from '../shared/line-renderer.js';
 import { t } from '../shared/i18n.js';
 import { mountTouchCamera } from '../shared/touch-camera.js';
 import { paletteUniforms, validatePaletteOptions, PALETTE_GLSL } from '../shared/palettes.js';
@@ -18,13 +21,15 @@ uniform mat4 matrix;
 uniform mediump int kind;
 uniform mediump int colorByBuilding;
 varying vec4 color;
+varying vec3 surfaceNormal;
 void main() {
   gl_Position = matrix * vec4(position, 1.0);
+  surfaceNormal = normal;
   heightValue = vertexHeight * heightTransform.y + heightTransform.x;
   if (kind == 0) {
     vec3 base = abs(normal.z) > .22 ? vec3(.46, .59, .67) : vec3(.91, .89, .84);
     if (colorByBuilding == 1) base = buildingColor * (abs(normal.z) > .22 ? .86 : 1.13);
-    float light = .75 + .25 * abs(dot(normal, normalize(vec3(-.5, -.7, 1.1))));
+    float light = 1.0;
     color = vec4(base * light, 1.0);
   } else if (kind == 2) {
     color = vec4(.67, .71, .74, .24);
@@ -37,6 +42,9 @@ void main() {
 const FRAGMENT_SHADER = `
 precision mediump float;
 varying vec4 color;
+varying vec3 surfaceNormal;
+uniform int surfaceStyle;
+uniform vec3 viewDirection;
 varying highp float heightValue;
 uniform mediump int kind;
 uniform mediump int colorByBuilding;
@@ -44,6 +52,11 @@ ${PALETTE_GLSL}
 void main() {
   gl_FragColor = colorByBuilding == 2 && (kind == 0 || kind == 3)
     ? vec4(paletteColor(heightValue), kind == 0 ? 1.0 : .9) : color;
+  if(kind==0 && surfaceStyle!=1) {
+    vec3 n=normalize(surfaceNormal),lightDirection=normalize(vec3(-.5,-.7,1.1));
+    gl_FragColor.rgb *= .75+.25*abs(dot(n,lightDirection));
+    if(surfaceStyle==2)gl_FragColor.rgb+=vec3(.3)*pow(abs(dot(n,normalize(lightDirection+viewDirection))),32.);
+  }
 }`;
 
 export class MeshViewer {
@@ -52,7 +65,7 @@ export class MeshViewer {
     this.onLabels = onLabels;
     this.onError = onError;
     this.onViewChange = onViewChange;
-    this.options = { mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
+    this.options = { ...currentPresentation(), mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.baseHeight = 30;
     this.sceneBounds = [[-5, -5, 0], [5, 5, 10]];
@@ -106,7 +119,9 @@ export class MeshViewer {
       throw new Error(t("WebGL 程序链接失败：{0}", [message]));
     }
     this.program = program;
+    this.styledLines = new StyledLineRenderer(gl);
     this.locations = {
+      surfaceStyle: gl.getUniformLocation(program,'surfaceStyle'), viewDirection:gl.getUniformLocation(program,'viewDirection'),
       position: gl.getAttribLocation(program, 'position'),
       normal: gl.getAttribLocation(program, 'normal'),
       buildingColor: gl.getAttribLocation(program, 'buildingColor'),
@@ -191,7 +206,7 @@ export class MeshViewer {
       gl.deleteBuffer(buffer);
       throw new Error(t('显存不足，请减少同时查看的楼栋数量。'));
     }
-    return { buffer, count: values.length / 10 };
+    return { buffer, count: values.length / 10, byteLength: values.length * 4 };
   }
 
   setModels(models) {
@@ -294,6 +309,12 @@ export class MeshViewer {
     }
     for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
     this.buffers = nextBuffers;
+    const retainPositions = values => {
+      const positions = new Float32Array(values.length / 10 * 3);
+      for(let i=0,j=0;i<values.length;i+=10)for(let axis=0;axis<3;axis++)positions[j++]=values[i+axis];
+      return positions;
+    };
+    this.edgePositions = {all: retainPositions(allEdges), feature: retainPositions(featureEdges)};
     this.models = models;
     this.labelAnchors = labels;
     this.triangleCount = triangles.length / 30;
@@ -310,10 +331,16 @@ export class MeshViewer {
     if (!['real', 'normalized'].includes(next.scale)) throw new Error(t("不支持的比例模式：{0}", [next.scale]));
     next.palette ||= 'current'; next.reverse = !!next.reverse; next.range = next.range ? {...next.range} : null;
     validatePaletteOptions(next);
+    if(next.lineStyle!=='native'&&!this.styledLines?.ext)throw Error(t('此浏览器不支持立体线，请使用细线。'));
     const rebuild = next.scale !== this.options.scale;
     this.options = next;
     if (rebuild) this.setModels(this.models);
     else this.render();
+  }
+
+  vectorSegments() {
+    const values=this.options.mode==='wire'||this.options.mode==='solid-wire'?this.edgePositions?.all:this.options.edges?this.edgePositions?.feature:null;
+    const segments=[];if(values)for(let i=0;i<values.length;i+=6)segments.push([Array.from(values.subarray(i,i+3)),Array.from(values.subarray(i+3,i+6))]);return segments;
   }
 
   setView(view) {
@@ -351,7 +378,7 @@ export class MeshViewer {
 
   matrix() {
     const [r, u, t] = this.basis();
-    const aspect = this.canvas.width / Math.max(1, this.canvas.height);
+    const aspect = (this.exportTarget?.width || this.canvas.width) / Math.max(1, this.exportTarget?.height || this.canvas.height);
     const height = this.baseHeight / this.camera.zoom, width = height * aspect;
     const cx = dot(this.target, r) + this.camera.pan[0], cy = dot(this.target, u) + this.camera.pan[1];
     const depth = Math.max(10, Math.hypot(...this.sceneBounds[1].map((v, i) => v - this.sceneBounds[0][i]))) * 4;
@@ -370,15 +397,16 @@ export class MeshViewer {
     if (this.disposed || this.contextLost) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     const canvas = this.canvas, gl = this.gl, rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.max(1, Math.round(rect.width * dpr)), height = Math.max(1, Math.round(rect.height * dpr));
-    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+    const dpr = this.exportTarget?.scale || Math.min(window.devicePixelRatio || 1, 2);
+    const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr)), height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
+    if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
     const matrix = this.matrix(), loc = this.locations;
     gl.viewport(0, 0, width, height);
-    gl.clearColor(.951, .960, .965, 1);
+    gl.depthMask(true);gl.clearColor(this.exportTarget?.transparent?0:.951, this.exportTarget?.transparent?0:.960, this.exportTarget?.transparent?0:.965, this.exportTarget?.transparent?0:1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(loc.matrix, false, matrix);
+    gl.uniform1i(loc.surfaceStyle,this.options.surfaceStyle==='unlit'?1:this.options.surfaceStyle==='gloss'?2:0);gl.uniform3fv(loc.viewDirection,this.basis()[2]);
     gl.uniform1i(loc.colorByBuilding, this.options.colors === 'height' ? 2 : this.options.colors === 'building' ? 1 : 0);
     gl.uniform3fv(loc.colorStops, paletteUniforms(this.options.palette, this.options.reverse));
     const range = this.options.range || this.heightRange, span = range ? range.max - range.min : 0;
@@ -388,7 +416,7 @@ export class MeshViewer {
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const draw = (buffer, kind, primitive) => {
       if (!buffer?.count) return;
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
@@ -406,8 +434,12 @@ export class MeshViewer {
       draw(this.buffers.triangles, 0, gl.TRIANGLES);
       gl.disable(gl.POLYGON_OFFSET_FILL);
     }
-    if (this.options.mode === 'wire' || this.options.mode === 'solid-wire') draw(this.buffers.allEdges, 3, gl.LINES);
-    else if (this.options.edges) draw(this.buffers.featureEdges, 1, gl.LINES);
+    const all = this.options.mode === 'wire' || this.options.mode === 'solid-wire';
+    const edgeBuffer=all?this.buffers.allEdges:this.options.edges?this.buffers.featureEdges:null;
+    if(this.options.lineStyle==='native')draw(edgeBuffer,all?3:1,gl.LINES);
+    else this.styledLines.draw({buffer:edgeBuffer,stride:40,matrix,radius:this.options.lineWidth/2*this.baseHeight/this.camera.zoom/Math.max(1,rect.height),style:this.options.lineStyle,color:[.23,.36,.43],endColor:this.options.lineGradient?this.options.lineEndColor:null});
+    if(this.exportTarget)return;
+    updateSceneGuides(this);
     this.onLabels(this.options.labels ? this.labelAnchors.map(({ id, bounds: [min, max] }) => {
       let xMin = Infinity, xMax = -Infinity, yMin = Infinity;
       for (const px of [min[0], max[0]]) for (const py of [min[1], max[1]]) for (const pz of [min[2], max[2]]) {
@@ -439,6 +471,7 @@ export class MeshViewer {
     this.resizeObserver.disconnect();
     for (const [name, fn, options] of this.listeners) this.canvas.removeEventListener(name, fn, options);
     for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
+    this.styledLines?.dispose();this.guideCanvas?.remove();
     this.gl.deleteProgram(this.program);
     this.onLabels([]);
   }
