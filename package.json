@@ -9,7 +9,7 @@
   "engines": {
     "node": ">=18"
   },
-  "version": "1.2.0",
+  "version": "1.2.3",
   "description": "Browser-based LOD mesh, wireframe and point cloud viewers. Local files, no data upload.",
   "homepage": "https://sen2maker.github.io/BuildingWebViewer/",
   "repository": {

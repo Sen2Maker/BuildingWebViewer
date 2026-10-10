@@ -4,13 +4,19 @@ App 复用三个网页查看器，文件和项目保存在手机内。网页不�
 
 ## 安装与使用
 
-1. 安装 `BuildingWebViewer-v1.2.0-preview.1.apk`。预览版为独立应用，Android 7.0+，需要 Android System WebView 110 或更高版本。
+1. 安装 `BuildingWebViewer-v1.2.3-preview.1.apk`。预览版为独立应用，Android 7.0+，兼容构建目标为 Android System WebView 60+。JavaScript 语法转换与缺失接口回归已加入构建；实际 GPU/WebGL 和厂商内核仍需真机验证。
 2. 从 QQ 或文件管理器“分享/用其他应用打开”文件或压缩包，选择 **BuildingWebViewer Preview**。也可在 App 内新建项目或导入文件。
 3. 选择项目，再进入 LOD、线框或点云。解压后的目录保留；线框和对应点云请放在同一目录。
 4. 修改项目树、勾选、属性标签、显示颜色和相机会自动保存。计算结果写入项目；手机关闭应用后可从首页重新打开。
 5. 卸载前用“导出项目备份”保存 `.bwv.zip`，以后通过首页“导入文件/压缩包”恢复。回收站可恢复；清空后不能撤销。
 
 支持常见 ZIP/7z/RAR/TAR 及 GZ、BZ2、XZ、ZSTD、LZ4 等压缩过滤器。实际变体受 libarchive 支持范围限制；不支持密码、分卷、嵌套压缩包。原生解压不沿用网页 512 MiB 上限，但需要足够存储空间；大型点云渲染仍受手机内存/GPU 限制。
+
+## 手机返回键与手势
+
+在查看器中返回：先关闭已打开的设置/菜单，再保存当前项目并回到 App 项目首页。保存失败会留在当前页，可查看“保存失败”的提示并重试。在首页再次返回才交由系统退出或退到后台。原生弹窗与文件选择器优先处理返回，不会直接关闭 App。页面上的首页按钮使用相同保存流程，保留中英文选择。
+
+System Back closes open settings/menus first, then saves the viewer and returns to project home. Failed saves keep the current page. Back at home leaves the app; native dialogs and file pickers retain their normal Back behavior.
 
 ## 保存与空间
 
@@ -22,11 +28,19 @@ App 复用三个网页查看器，文件和项目保存在手机内。网页不�
 
 ## 更新策略
 
-App 首页比较内置网页与在线网页版本。`PATCH`（如 1.2.0 → 1.2.1）且 `nativeApi` 兼容时自动下载网页资源；`MINOR/MAJOR` 先弹窗。正在查看项目时不替换页面；在项目首页或下一次启动启用。
+启动只读取 APK 内置或已校验的本地网页，先显示本地项目，完全不等待 GitHub。首页渲染后延迟进行一次后台检查，3 秒无结果或网络错误直接忽略，不显示错误弹窗；返回项目首页不会反复检查。首页底部显示本地版本、Android 与 WebView 版本。App 首页比较内置网页与在线网页版本。`PATCH`（如 1.2.0 → 1.2.1）且 `nativeApi` 兼容时自动下载网页资源；`MINOR/MAJOR` 先弹窗。正在查看项目时不替换页面；只在下一次启动启用，不自动重载当前首页。
 
 下载仅接受本仓库的 HTTPS Release 资源、校验 SHA-256、限大小、拒绝越界路径，完成后原子切换。未成功启动的网页包下次启动回退。原生接口改变时递增 `nativeApi`，必须安装新 APK，不能通过网页热更新新增 Android 权限或原生代码。
 
-更新发布需同时准备 `BuildingWebViewer-web-vX.Y.Z.zip` 与站点 `mobile-update.json`。只有网页版本但没有兼容 App 包时，App 引导打开 Release。断网正常使用内置版本。线上更新链路要在正式发布配套资源后验收，不能用本地编译成功代替上线验证。
+更新发布需同时准备 `BuildingWebViewer-web-vX.Y.Z.zip` 与站点 `mobile-update.json`。只有网页版本但没有兼容 App 包时，App 引导打开 Release。断网正常使用内置版本。v1.2.3 将原生接口代号升级为 `nativeApi: 4`。旧 APK 需要覆盖安装新版，才能修复启动路径并获得原生诊断；这不能靠网页热更新完成。线上更新链路要在正式发布配套资源后验收，不能用本地编译成功代替上线验证。
+
+## 启动问题定位
+
+首页可打开“启动诊断”；页面加载失败时也会出现原生“诊断 / Diagnose”按钮。报告包含 APK/本地网页版本、Android/WebView、实际入口、资源检查、最近两次启动事件与错误码，可复制或导出文本。仅保留有限日志，不自动上传；分享前可自行检查内容。
+
+“重试本地首页”重新打开本机页面；“使用内置页面”恢复 APK 随附网页，保留项目文件。渲染进程退出时需关闭再打开 App。加载失败不等于内核版本过低：v1.2.0/1.2.1 的首页路径缺少 `/`，属于 App 配置错误，v1.2.2 已修复。WebView 60 是兼容目标，不代表所有设备/GPU 已实测。
+
+Startup diagnostics run natively, even when JavaScript fails. Reports stay local and can be copied/exported. Retry the local home or restore bundled pages without deleting projects. The older start-path defect was an app configuration error, not proof of an outdated WebView.
 
 ## 开发构建
 
@@ -55,6 +69,6 @@ bash mobile/android/gradlew -p mobile/android :app:connectedDebugAndroidTest
 
 ## English
 
-The Android preview bundles all three viewers for offline use. Share files/archives to the app, select a persistent project, then choose a viewer. Projects use atomic manifests and deduplicated private files; export `.bwv.zip` backups before uninstalling. Completed edits persist, but abrupt process death can lose the last in-flight operation.
+The Android preview bundles all three viewers for offline use. The compatibility build targets WebView 60+ (Android 7+) with downlevel syntax and offline polyfills; actual device/GPU compatibility still needs verification. Local startup never waits for GitHub: one deferred background check times out after 3 seconds, silently. Verified web updates are staged for the next launch, with no live reload. v1.2.3 includes the startup fixes, diagnostics and Android Back navigation; it requires a new APK (nativeApi 4). Share files/archives to the app, select a persistent project, then choose a viewer. Projects use atomic manifests and deduplicated private files; export `.bwv.zip` backups before uninstalling. Completed edits persist, but abrupt process death can lose the last in-flight operation.
 
 Build with Node 22+, Python 3, JDK 21 and Android SDK 36 using the commands above. Compatible patch web bundles update automatically; feature releases ask first, and native changes require a new APK. Debug signing and a separate preview application ID are intentional. Validate QQ sharing, background/process recovery, large files and the published update channel on physical devices before a stable release.

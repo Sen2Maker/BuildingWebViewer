@@ -1,5 +1,6 @@
 import { initializeLocale, t } from '../shared/i18n.js';
 import { mobileProjects } from '../shared/mobile-project.js';
+import { runMobileUpdate } from './update-check.js';
 initializeLocale();
 document.getElementById('mobile-language').href='?lang='+(document.documentElement.lang==='en'?'zh':'en');
 const mobileHomeAPI=mobileProjects(),mobileHomeList=document.getElementById('projects'),mobileHomeStatus=document.getElementById('status');
@@ -27,26 +28,22 @@ async function refreshMobileProjects(){
 document.getElementById('new-project').onclick=async()=>{try{const name=prompt(t('项目名称'),new Date().toLocaleDateString());if(name===null)return;await mobileHomeAPI.createProject({name});await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('import-project').onclick=async()=>{try{mobileHomeSay(t('正在导入…'));const result=await mobileHomeAPI.pickFiles({});await refreshMobileProjects();mobileHomeSay(result.cancelled?'':t('导入完成，请选择查看工具'));}catch(error){mobileHomeSay(error.message);await refreshMobileProjects();}};
 document.getElementById('trash').onclick=async()=>{mobileShowTrash=!mobileShowTrash;document.getElementById('trash').textContent=t(mobileShowTrash?'返回项目':'回收站');await refreshMobileProjects();};
-refreshMobileProjects().catch(error=>mobileHomeSay(error.message));
+refreshMobileProjects().then(()=>mobileHomeAPI?.updateHealthy().catch(()=>{})).catch(error=>mobileHomeSay(error.message));
 if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobileHomeSay(info.error||t('收到新项目，请选择查看工具'));await refreshMobileProjects();});
 
 document.getElementById('clean-storage').onclick=async()=>{try{const {freed}=await mobileHomeAPI.cleanupStorage();mobileHomeSay(t('已清理 {0} MB 未引用文件',[(freed/1048576).toFixed(1)]));}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('empty-trash').onclick=async()=>{if(!confirm(t('永久删除回收站内的项目？请先导出需要的项目备份。')))return;try{await mobileHomeAPI.emptyTrash();await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
-async function checkMobileUpdate(){
-  if(!mobileHomeAPI)return;
-  await mobileHomeAPI.updateHealthy();
-  try{
-    const info=await mobileHomeAPI.checkUpdate();
-    document.getElementById('version-info').textContent=t('App 网页 v{0} · 在线网页 v{1}',[info.current,info.website]);
-    if(info.kind==='none')return;
-    if(info.kind==='apk'){
-      if(confirm(t('网页已更新到 v{0}，此更新需要新版 APK。打开发布页面？',[info.website])))location.href=info.release;
-      return;
-    }
-    if(info.kind==='feature'&&!confirm(t('发现功能更新 v{0}。现在更新 App 网页？项目和数据会保留。',[info.website])))return;
-    await mobileHomeAPI.installWebUpdate();
-    // Updates activate at the project home, never while a viewer is editing a project.
-    if(location.pathname.endsWith('/assets/mobile/index.html'))await mobileHomeAPI.activateWebUpdate();
-  }catch{document.getElementById('version-info').textContent=t('离线可用 · 暂未取得在线版本');}
+document.getElementById('show-diagnostics').onclick=()=>mobileHomeAPI?.showDiagnostics().catch(()=>{});
+// Local projects render independently; update failure is intentionally silent.
+if(mobileHomeAPI){
+  mobileHomeAPI.runtimeInfo().then(info=>{
+    document.getElementById('version-info').textContent=t('App 本地 v{0} · Android {1} · WebView {2}',[info.current,info.android,info.webview]);
+  }).catch(()=>{});
+  // One background attempt per WebView session, after initial local rendering.
+  setTimeout(()=>runMobileUpdate({api:mobileHomeAPI,
+    once:()=>{try{if(sessionStorage.getItem('bwv.update.checked'))return false;sessionStorage.setItem('bwv.update.checked','1');}catch{}return true;},
+    isHome:()=>!document.hidden && location.pathname.endsWith('/assets/mobile/index.html'),
+    ask:(kind,info)=>confirm(t(kind==='apk'?'网页已更新到 v{0}，此更新需要新版 APK。打开发布页面？':'发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。',[info.website])),
+    openRelease:url=>{location.href=url;},
+  }),1500);
 }
-checkMobileUpdate();

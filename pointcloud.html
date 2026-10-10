@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>点云查看器 · 三维数据工具箱</title><!-- site-meta:start -->
-<meta name="application-build" content="b2a92f55902cd211">
+<meta name="application-build" content="5a82fae9542c1d91">
 <meta name="description" content="本地点云查看与处理：TXT、XYZ、CSV、PTS、PLY、PCD，多文件叠加、RGB/HSV、属性映射、法向量计算与合并导出。Local point cloud viewing and processing: multi-file overlays, RGB/HSV, attribute mapping, normals and merged export.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.2.0">
+<meta name="application-version" content="1.2.3">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/pointcloud.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="点云查看器 / Point Cloud Viewer · BuildingWebViewer">
@@ -137,7 +137,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 
 <div class="viewport" id="viewport"><canvas id="scene" aria-label="点云查看器三维预览"></canvas><div class="scene-note"><strong id="view-note">点云原始坐标 · 按属性着色</strong><span id="geometry-note">未选择数据时保持空白</span></div><div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/pointcloud.svg?v=1ab5d0c165b5" alt="" width="96" height="81"><h3>打开数据，从这里开始</h3><p>添加点云文件或文件夹，再勾选左侧一个或多个文件。</p></div><div id="loading" class="loading" role="status" hidden><i></i><span>正在读取文件…</span></div><div id="error" class="error-banner" role="alert" hidden><span></span><button id="dismiss-error" aria-label="关闭提示">×</button></div><div class="viewport-bottom"><div id="color-legend" class="scalar-legend" hidden><span id="color-name"></span><i></i><span id="color-min"></span><span>—</span><span id="color-max"></span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div></div>
 <div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">文件不会上传</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.2.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.2.0</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.2.3" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.2.3</a></nav>
 
 <!-- site-footer:end --></footer></main>
 <aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
@@ -152,4 +152,4 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
     <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
   </div><p class="inspector-footer">显示即时生效 · 数据修改需应用 · Esc 收起</p>
 </aside></div>
-<script data-viewer-src="assets/js/cloud.bundle.js?v=72493ae03400"></script></body></html>
+<script data-viewer-src="assets/js/cloud.bundle.js?v=723ef307d5fc"></script></body></html>

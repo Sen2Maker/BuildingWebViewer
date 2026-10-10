@@ -6,6 +6,42 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.2.3] - 2026-10-10
+
+Android 返回导航修复；包含此前未发布的 1.2.1 / 1.2.2 修复。Android Preview 仍为测试版。
+
+- Android 返回键/返回手势：查看器先处理已打开的设置或菜单，然后保存当前项目并返回 App 项目首页；首页再返回时交由系统退出/退到后台，不重放旧查看器历史。
+- 页面首页按钮与系统返回共用保存流程；保留语言，合并连续返回操作，保存失败时留在当前页并显示保存错误。原生弹窗与文件选择器仍优先响应自身返回。
+- 修复本地启动地址，保留原生诊断、WebView 60 兼容构建和不阻塞启动的后台检查。网页和项目都在本机；诊断报告仅手动导出。
+- 本版需要覆盖安装 APK（nativeApi 4），项目格式和预览签名保持不变。Android 15 厂商手势仍需真机确认。
+- Android system Back now returns from viewers to project home after saving. Home Back leaves the app rather than replaying old viewer history; open settings/menus and native dialogs close first.
+- Shared save-aware navigation preserves language, coalesces repeated Back requests, and keeps the viewer open on save failure.
+- Includes the unpublished local-startup, offline compatibility and native diagnostic fixes. Native API 4 requires the new preview APK; project formats remain compatible.
+
+## [1.2.2] - 2026-10-10
+
+未单独发布，合并入 1.2.3 / Included in 1.2.3; not separately published. 包含 1.2.1 兼容修复。
+
+- 修复 Android 首页路径缺少前导斜杠，导致本地地址被拼成错误主机名的问题；构建与原生 Activity 测试覆盖实际入口。
+- 加载失败不再一概提示“WebView 不支持”。新增独立于网页脚本的原生诊断窗口，记录本次/上次启动、设备与内核版本、页面地址、资源状态、网络/HTTP/脚本错误与渲染进程退出。
+- 诊断可在首页打开，失败时保留原生入口；支持复制/导出报告、重试本地首页、恢复 APK 内置页面。报告留在本机，不自动上传，恢复不删除项目。
+- 保留 WebView 60 兼容构建与离线优先启动。原生接口代号升为 3，本修复需要安装新 APK，不能通过网页补丁修复旧 APK 的启动地址。
+- Fix the missing leading slash in the Android start path, which created an incorrect hostname. Add a real Activity startup regression test.
+- Replace misleading engine-version advice with native startup diagnostics, available even if the page cannot run. Copy/export local reports, retry the local home, or restore bundled pages without deleting projects.
+- Includes the unpublished 1.2.1 compatibility work. Native API 3 requires a new APK; optional update checks never block local startup.
+
+## [1.2.1] - 2026-10-10
+
+未单独发布，合并入 1.2.3 / Included in 1.2.3; not separately published.
+
+- Android 兼容构建目标从 WebView 110 降至 60；转换所有脚本（包含 HTML 启动脚本），补齐数组、对象、Promise、文件读取、DOM 与 ResizeObserver/AbortController 接口；增加旧 CSS 的基础布局回退。
+- 启动仅加载本地查看器和项目。一次延迟后台版本检查，3 秒失败静默忽略；补丁只下载暂存，下次启动启用，不自动重载正在使用的页面。
+- 首页显示本地版本、Android 与 WebView 版本，便于定位厂商设备差异。原生接口代号升为 2，需要覆盖安装新 APK；项目保存格式不变。
+- 添加降级接口、旧语法解析、离线项目首页及更新超时/迟到响应的回归检查。旧设备 WebGL 和 QQ 分享仍需真机验收。
+- Target WebView 60+ with downlevel scripts, bundled offline API fallbacks and basic CSS fallbacks; retain Android 7+ as the OS minimum.
+- Local-first startup with one deferred, silent, bounded update check. Stage compatible patches for next launch; never reload an active page. Show local runtime versions for diagnosis.
+- Native API 2 requires APK installation; saved projects remain compatible. Device/GPU and QQ-share validation is still required.
+
 ## [1.2.0] - 2026-10-10
 
 网页正式更新，附带 Android 预览测试版 / Stable website release with an Android preview attachment.

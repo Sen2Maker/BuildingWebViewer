@@ -71,7 +71,7 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
     try {
       // The picker must be invoked during the original button gesture, before any reads.
       let handle = null;
-      const stem = selected.length > 1 ? `merged_${selected.length}_clouds` : selected[0].id.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}_.-]/gu, '_');
+      const stem = selected.length > 1 ? `merged_${selected.length}_clouds` : selected[0].id.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*\u0000-\u0020\u007f]/g, '_');
       const filename = `${stem}_${scope === 'full' ? 'all' : 'display'}.${format}`;
       if (kind === 'export' && el('process-save-method').value === 'direct' && typeof window.showSaveFilePicker === 'function') {
         handle = await window.showSaveFilePicker({suggestedName: filename, types: [{description: format.toUpperCase(), accept: {[format === 'ply' ? 'application/octet-stream' : 'text/plain']: [`.${format}`]}}]});

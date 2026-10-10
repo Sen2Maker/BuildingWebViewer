@@ -1,0 +1,5 @@
+/* Loaded last only in the Android package. Keep essentials usable on older engines. */
+@supports not (inset:0){#page-boot{top:0;right:0;bottom:0;left:0}#page-boot .boot-mark:after{top:0;right:0;bottom:0;left:0}}
+@supports not (height:100dvh){html,body{min-height:100vh}}
+@supports not (overflow-wrap:anywhere){article h2,article p,#status{word-wrap:break-word;word-break:break-word}}
+@media(max-width:700px){header{padding:12px}main{padding:12px}.mobile-actions button,.mobile-tools button{margin:3px}header img{margin-right:10px}}

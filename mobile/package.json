@@ -2,8 +2,24 @@
   "name": "building-web-viewer-mobile",
   "private": true,
   "type": "module",
-  "scripts": {"sync": "cap sync android", "open": "cap open android"},
-  "dependencies": {"@capacitor/core": "8.5.3", "@capacitor/android": "8.5.3"},
-  "devDependencies": {"@capacitor/cli": "8.5.3"},
-  "engines": {"node": ">=22"}
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "abort-controller": "3.0.0",
+    "acorn": "8.19.0",
+    "core-js": "3.50.0",
+    "esbuild": "0.28.2",
+    "jsdom": "26.1.0",
+    "resize-observer-polyfill": "1.5.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }

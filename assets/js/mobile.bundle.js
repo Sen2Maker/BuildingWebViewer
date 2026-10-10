@@ -5,6 +5,9 @@
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',
+  '发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。': 'Feature update v{0} is available. Download for next launch? Projects and data will be kept.',
+
 "请将线框与点云放在同一压缩包目录内导入":"Import wireframes and point clouds together in the same archive folder.",
 "不支持分卷与密码压缩包 · 卸载前请导出项目备份":"No split or password archives · Export project backups before uninstalling",
 "{0} 个文件 · {1} MB":"{0} files · {1} MB",
@@ -1052,7 +1055,20 @@ function initializeLocale(doc = document) {
 }
 
 
+// Source: src/shared/mobile-navigation.js
+/** One save-aware route home, shared by the toolbar and Android system Back. */
+function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
+  let pending=null;
+  return function returnHome(){
+    if(pending)return pending;
+    pending=Promise.resolve().then(flush).then(()=>navigate(`assets/mobile/index.html?lang=${language()==='en'?'en':'zh'}`)).finally(()=>{pending=null;});
+    return pending;
+  };
+}
+
+
 // Source: src/shared/mobile-project.js
+
 
 let mobileProjectPlugin;
 function isMobileApp(){return Boolean(globalThis.Capacitor?.isNativePlatform?.());}
@@ -1109,6 +1125,16 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
   const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
   const flush=()=>{clearTimeout(timer);timer=null;return ready?saver.flush():Promise.resolve();};
   const schedule=()=>{if(!ready)return;clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
+  const goHome=createMobileHomeNavigation({flush,navigate:url=>root.location.replace(url),language:()=>root.documentElement.lang});
+  const home=root.querySelector('.back-home');
+  if(home){home.href='assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
+  globalThis.bwvReturnToProjectHome=()=>{
+    // Existing viewer Escape handlers close open settings/menus before leaving the project.
+    const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});
+    (root.activeElement||root).dispatchEvent(event);
+    if(!event.defaultPrevented)goHome().catch(()=>{});
+  };
+
   try{
     const project=await api.getProject({id});status.textContent=t('正在恢复项目…');
     const records=project.files.map(record=>({file:new NativeProjectFile(id,record),path:record.path}));await receive(records);
@@ -1116,7 +1142,6 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     const pick=async()=>{try{await flush();status.textContent=t('正在导入…');const result=await api.pickFiles({id});if(!result.cancelled)root.location.reload();else status.textContent=t('已保存');}catch(error){status.textContent=error.message;}};
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
-    const home=root.querySelector('.back-home');home.href='assets/mobile/index.html';home.onclick=async event=>{event.preventDefault();try{await flush();root.location.href=home.href;}catch{}};
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
     const background=()=>{flush().catch(()=>{});onBackground();};
     root.addEventListener('visibilitychange',()=>root.hidden?background():onForeground());
@@ -1142,7 +1167,31 @@ async function nativeExportWriter(name){
 }
 
 
+// Source: src/mobile/update-check.js
+/** Optional network work must never gate local project startup or reload a live page. */
+function mobileDeadline(work, milliseconds = 3000) {
+  let timer;
+  return Promise.race([Promise.resolve().then(work),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Update check timed out')),milliseconds);})]).finally(()=>clearTimeout(timer));
+}
+async function runMobileUpdate({api,onVersion=()=>{},ask=()=>false,openRelease=()=>{},isHome=()=>true,once=()=>true,timeout=3000}) {
+  try { await mobileDeadline(()=>api.updateHealthy(),timeout); } catch { /* Local content stays usable. */ }
+  if(!once())return 'skipped';
+  try {
+    const info=await mobileDeadline(()=>api.checkUpdate(),timeout);
+    onVersion(info);
+    if(!isHome()||info.kind==='none'||info.kind==='offline')return info.kind;
+    if(info.kind==='apk'){if(ask('apk',info))openRelease(info.release);return 'apk';}
+    if(info.kind==='feature'&&!ask('feature',info))return 'declined';
+    await api.installWebUpdate();
+    // Installation stages a verified local package. MainActivity selects it next launch.
+    // Never reload: the user may already be importing or opening a project.
+    return 'staged';
+  } catch { return 'offline'; }
+}
+
+
 // Source: src/mobile/home.js
+
 
 
 initializeLocale();
@@ -1172,28 +1221,24 @@ async function refreshMobileProjects(){
 document.getElementById('new-project').onclick=async()=>{try{const name=prompt(t('项目名称'),new Date().toLocaleDateString());if(name===null)return;await mobileHomeAPI.createProject({name});await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('import-project').onclick=async()=>{try{mobileHomeSay(t('正在导入…'));const result=await mobileHomeAPI.pickFiles({});await refreshMobileProjects();mobileHomeSay(result.cancelled?'':t('导入完成，请选择查看工具'));}catch(error){mobileHomeSay(error.message);await refreshMobileProjects();}};
 document.getElementById('trash').onclick=async()=>{mobileShowTrash=!mobileShowTrash;document.getElementById('trash').textContent=t(mobileShowTrash?'返回项目':'回收站');await refreshMobileProjects();};
-refreshMobileProjects().catch(error=>mobileHomeSay(error.message));
+refreshMobileProjects().then(()=>mobileHomeAPI?.updateHealthy().catch(()=>{})).catch(error=>mobileHomeSay(error.message));
 if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobileHomeSay(info.error||t('收到新项目，请选择查看工具'));await refreshMobileProjects();});
 
 document.getElementById('clean-storage').onclick=async()=>{try{const {freed}=await mobileHomeAPI.cleanupStorage();mobileHomeSay(t('已清理 {0} MB 未引用文件',[(freed/1048576).toFixed(1)]));}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('empty-trash').onclick=async()=>{if(!confirm(t('永久删除回收站内的项目？请先导出需要的项目备份。')))return;try{await mobileHomeAPI.emptyTrash();await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
-async function checkMobileUpdate(){
-  if(!mobileHomeAPI)return;
-  await mobileHomeAPI.updateHealthy();
-  try{
-    const info=await mobileHomeAPI.checkUpdate();
-    document.getElementById('version-info').textContent=t('App 网页 v{0} · 在线网页 v{1}',[info.current,info.website]);
-    if(info.kind==='none')return;
-    if(info.kind==='apk'){
-      if(confirm(t('网页已更新到 v{0}，此更新需要新版 APK。打开发布页面？',[info.website])))location.href=info.release;
-      return;
-    }
-    if(info.kind==='feature'&&!confirm(t('发现功能更新 v{0}。现在更新 App 网页？项目和数据会保留。',[info.website])))return;
-    await mobileHomeAPI.installWebUpdate();
-    // Updates activate at the project home, never while a viewer is editing a project.
-    if(location.pathname.endsWith('/assets/mobile/index.html'))await mobileHomeAPI.activateWebUpdate();
-  }catch{document.getElementById('version-info').textContent=t('离线可用 · 暂未取得在线版本');}
+document.getElementById('show-diagnostics').onclick=()=>mobileHomeAPI?.showDiagnostics().catch(()=>{});
+// Local projects render independently; update failure is intentionally silent.
+if(mobileHomeAPI){
+  mobileHomeAPI.runtimeInfo().then(info=>{
+    document.getElementById('version-info').textContent=t('App 本地 v{0} · Android {1} · WebView {2}',[info.current,info.android,info.webview]);
+  }).catch(()=>{});
+  // One background attempt per WebView session, after initial local rendering.
+  setTimeout(()=>runMobileUpdate({api:mobileHomeAPI,
+    once:()=>{try{if(sessionStorage.getItem('bwv.update.checked'))return false;sessionStorage.setItem('bwv.update.checked','1');}catch{}return true;},
+    isHome:()=>!document.hidden && location.pathname.endsWith('/assets/mobile/index.html'),
+    ask:(kind,info)=>confirm(t(kind==='apk'?'网页已更新到 v{0}，此更新需要新版 APK。打开发布页面？':'发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。',[info.website])),
+    openRelease:url=>{location.href=url;},
+  }),1500);
 }
-checkMobileUpdate();
 
 })();

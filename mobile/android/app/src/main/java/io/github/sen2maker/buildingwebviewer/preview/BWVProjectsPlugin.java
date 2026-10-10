@@ -21,8 +21,20 @@ public class BWVProjectsPlugin extends Plugin {
   @Override public void load(){store=new ProjectStore(getContext());updater=new WebUpdater(getContext());IO.execute(()->{File folder=new File(getContext().getCacheDir(),"exports");File[] old=folder.listFiles();if(old!=null)for(File file:old)if(System.currentTimeMillis()-file.lastModified()>7L*24*3600*1000)ProjectStore.deleteTree(file);});Intent intent=getActivity().getIntent();if(isShare(intent)){getActivity().setIntent(new Intent());acceptShare(intent);}}
   interface Task{JSONObject run()throws Exception;}
   private void run(PluginCall call,Task task){IO.execute(()->{try{call.resolve(JSObject.fromJSONObject(task.run()));}catch(Exception error){call.reject(error.getMessage(),error);}});}
-  @PluginMethod public void updateHealthy(PluginCall call){updater.healthy();call.resolve();}
-  @PluginMethod public void checkUpdate(PluginCall call){NETWORK.execute(()->{try{call.resolve(JSObject.fromJSONObject(updater.check(bridge.getServerBasePath())));}catch(Exception error){call.reject(error.getMessage());}});}
+  @PluginMethod public void updateHealthy(PluginCall call){updater.healthy();getActivity().runOnUiThread(()->((MainActivity)getActivity()).diagnostics.healthy());call.resolve();}
+  private static final ScheduledExecutorService UPDATE_TIMEOUT=Executors.newSingleThreadScheduledExecutor();
+  @PluginMethod public void showDiagnostics(PluginCall call){getActivity().runOnUiThread(()->((MainActivity)getActivity()).showDiagnostics());call.resolve();}
+  @PluginMethod public void runtimeInfo(PluginCall call){getActivity().runOnUiThread(()->{try{
+    String version="unknown";
+    if(android.os.Build.VERSION.SDK_INT>=26){android.content.pm.PackageInfo engine=android.webkit.WebView.getCurrentWebViewPackage();if(engine!=null)version=engine.versionName;}
+    else{java.util.regex.Matcher match=java.util.regex.Pattern.compile("Chrome/([0-9.]+)").matcher(bridge.getWebView().getSettings().getUserAgentString());if(match.find())version=match.group(1);}
+    call.resolve(new JSObject().put("current",updater.currentVersion(bridge.getServerBasePath())).put("android",android.os.Build.VERSION.RELEASE).put("webview",version));
+  }catch(Exception error){call.reject(error.getMessage());}});}
+  @PluginMethod public void checkUpdate(PluginCall call){
+    java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();
+    Future<?> task=NETWORK.submit(()->{try{JSObject result=JSObject.fromJSONObject(updater.check(bridge.getServerBasePath()));if(delivered.compareAndSet(false,true))call.resolve(result);}catch(Exception error){if(delivered.compareAndSet(false,true))call.resolve(new JSObject().put("kind","offline"));}});
+    UPDATE_TIMEOUT.schedule(()->{if(delivered.compareAndSet(false,true)){task.cancel(true);call.resolve(new JSObject().put("kind","offline"));}},3,TimeUnit.SECONDS);
+  }
   @PluginMethod public void installWebUpdate(PluginCall call){NETWORK.execute(()->{try{String path=updater.install();call.resolve(new JSObject().put("installed",true));}catch(Exception error){call.reject(error.getMessage());}});}
   @PluginMethod public void activateWebUpdate(PluginCall call){String path=updater.startupPath();call.resolve();if(path!=null)getActivity().runOnUiThread(()->bridge.setServerBasePath(path));}
   @PluginMethod public void cleanupStorage(PluginCall call){run(call,()->new JSONObject().put("freed",store.cleanup()));}

@@ -1,4 +1,5 @@
 import { t } from './i18n.js';
+import { createMobileHomeNavigation } from './mobile-navigation.js';
 let mobileProjectPlugin;
 export function isMobileApp(){return Boolean(globalThis.Capacitor?.isNativePlatform?.());}
 export function mobileProjects(){if(!isMobileApp())return null;return mobileProjectPlugin ||= globalThis.Capacitor.registerPlugin('BWVProjects');}
@@ -54,6 +55,16 @@ export async function mountMobileProject({receive,getState,restoreState,onBackgr
   const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
   const flush=()=>{clearTimeout(timer);timer=null;return ready?saver.flush():Promise.resolve();};
   const schedule=()=>{if(!ready)return;clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
+  const goHome=createMobileHomeNavigation({flush,navigate:url=>root.location.replace(url),language:()=>root.documentElement.lang});
+  const home=root.querySelector('.back-home');
+  if(home){home.href='assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
+  globalThis.bwvReturnToProjectHome=()=>{
+    // Existing viewer Escape handlers close open settings/menus before leaving the project.
+    const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});
+    (root.activeElement||root).dispatchEvent(event);
+    if(!event.defaultPrevented)goHome().catch(()=>{});
+  };
+
   try{
     const project=await api.getProject({id});status.textContent=t('正在恢复项目…');
     const records=project.files.map(record=>({file:new NativeProjectFile(id,record),path:record.path}));await receive(records);
@@ -61,7 +72,6 @@ export async function mountMobileProject({receive,getState,restoreState,onBackgr
     const pick=async()=>{try{await flush();status.textContent=t('正在导入…');const result=await api.pickFiles({id});if(!result.cancelled)root.location.reload();else status.textContent=t('已保存');}catch(error){status.textContent=error.message;}};
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
-    const home=root.querySelector('.back-home');home.href='assets/mobile/index.html';home.onclick=async event=>{event.preventDefault();try{await flush();root.location.href=home.href;}catch{}};
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
     const background=()=>{flush().catch(()=>{});onBackground();};
     root.addEventListener('visibilitychange',()=>root.hidden?background():onForeground());

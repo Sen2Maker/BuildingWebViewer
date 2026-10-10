@@ -4,12 +4,12 @@
   "webDir": "web",
   "server": {
     "androidScheme": "https",
-    "appStartPath": "assets/mobile/index.html",
+    "appStartPath": "/assets/mobile/index.html",
     "errorPath": "assets/mobile/webview-required.html"
   },
   "android": {
     "allowMixedContent": false,
-    "minWebViewVersion": 110
+    "minWebViewVersion": 60
   },
   "loggingBehavior": "none"
 }

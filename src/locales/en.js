@@ -1,5 +1,8 @@
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 export const EN_MESSAGES = {
+  'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',
+  '发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。': 'Feature update v{0} is available. Download for next launch? Projects and data will be kept.',
+
 "请将线框与点云放在同一压缩包目录内导入":"Import wireframes and point clouds together in the same archive folder.",
 "不支持分卷与密码压缩包 · 卸载前请导出项目备份":"No split or password archives · Export project backups before uninstalling",
 "{0} 个文件 · {1} MB":"{0} files · {1} MB",
