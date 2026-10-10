@@ -1,0 +1,36 @@
+name: Retire two obsolete Android preview releases
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  retire:
+    if: github.repository == 'Sen2Maker/BuildingWebViewer' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - name: Preserve old assets privately as draft releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, urllib.request
+          base = 'https://api.github.com/repos/Sen2Maker/BuildingWebViewer/releases/'
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
+          def api(path, data=None):
+              request = urllib.request.Request(base + path, headers=headers, data=None if data is None else json.dumps(data).encode(), method='GET' if data is None else 'PATCH')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          latest = api('latest')
+          assert latest['tag_name'] == 'v1.3.0' and not latest['draft']
+          assert any(a['name'] == 'BuildingWebViewer-Android-v1.3.0-preview.1.apk' for a in latest['assets'])
+          for release_id, tag in [(408455861, 'v1.2.0'), (408516242, 'v1.2.4')]:
+              before = api(str(release_id))
+              assert before['tag_name'] == tag and not before.get('immutable')
+              assets = sorted(a['id'] for a in before['assets'])
+              after = api(str(release_id), {'draft': True})
+              assert after['draft'] and after['tag_name'] == tag
+              assert sorted(a['id'] for a in after['assets']) == assets
+              print(tag + ': draft; all ' + str(len(assets)) + ' assets preserved')
+          PYCODE
