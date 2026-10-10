@@ -1173,20 +1173,69 @@ function mobileDeadline(work, milliseconds = 3000) {
   let timer;
   return Promise.race([Promise.resolve().then(work),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Update check timed out')),milliseconds);})]).finally(()=>clearTimeout(timer));
 }
-async function runMobileUpdate({api,onVersion=()=>{},ask=()=>false,openRelease=()=>{},isHome=()=>true,once=()=>true,timeout=3000}) {
+async function runMobileUpdate({api,onVersion=()=>{},ask=()=>false,onDownload=()=>{},isHome=()=>true,once=()=>true,timeout=3000}) {
   try { await mobileDeadline(()=>api.updateHealthy(),timeout); } catch { /* Local content stays usable. */ }
   if(!once())return 'skipped';
   try {
     const info=await mobileDeadline(()=>api.checkUpdate(),timeout);
     onVersion(info);
     if(!isHome()||info.kind==='none'||info.kind==='offline')return info.kind;
-    if(info.kind==='apk'){if(ask('apk',info))openRelease(info.release);return 'apk';}
-    if(info.kind==='feature'&&!ask('feature',info))return 'declined';
-    await api.installWebUpdate();
-    // Installation stages a verified local package. MainActivity selects it next launch.
-    // Never reload: the user may already be importing or opening a project.
+    if(info.kind==='apk'){
+      if(!await ask('apk',info)||!isHome())return 'declined';
+      onDownload('apk');await api.downloadApkUpdate();return 'apk-ready';
+    }
+    if(info.kind!=='patch'&&info.kind!=='feature')return 'offline';
+    if(info.kind==='feature'&&!await ask('feature',info))return 'declined';
+    if(!isHome())return 'skipped';
+    onDownload('web');await api.installWebUpdate();
+    // Stage only. Actual activation and the announcement happen on the next launch.
     return 'staged';
-  } catch { return 'offline'; }
+  } catch(error) { return error?.message==='Download cancelled'?'cancelled':'offline'; }
+}
+
+
+// Source: src/mobile/mobile-updates.js
+
+/** App-only controls: updates never interrupt project rendering or reload live pages. */
+function initializeMobileUpdates(api) {
+  if (!api) return;
+  const en=document.documentElement.lang==='en',say=(zh,enText)=>en?enText:zh;
+  const panel=document.getElementById('mobile-updates'),status=document.getElementById('update-status');
+  const check=document.getElementById('check-update'),install=document.getElementById('install-update'),permission=document.getElementById('install-permission'),cancel=document.getElementById('cancel-update');
+  for(const [id,zh,english] of [
+    ['show-updates','版本与更新','Version & updates'],['check-update','检查更新','Check updates'],
+    ['show-release-notes','当前版本公告','Release notes'],['install-update','继续安装','Continue installation'],
+    ['install-permission','允许安装更新','Allow installation'],['cancel-update','取消下载','Cancel download']
+  ])document.getElementById(id).textContent=say(zh,english);
+  panel.querySelector('h2').textContent=say('版本与更新','Version & updates');
+  let busy=false;
+  const home=()=>!document.hidden && location.pathname.endsWith('/assets/mobile/index.html');
+  const message=text=>{status.textContent=text;};
+  async function refreshReady(){try{const ready=await api.apkUpdateStatus();install.hidden=!ready.ready;permission.hidden=!ready.ready||!ready.permissionRequired;if(ready.ready)message(say('安装包已验证，可继续安装。','The APK is verified and ready to install.'));}catch{}}
+  document.getElementById('show-updates').onclick=()=>{panel.hidden=!panel.hidden;if(!panel.hidden)refreshReady();};
+  document.getElementById('show-release-notes').onclick=()=>api.showReleaseNotes({manual:true,lang:en?'en':'zh'}).catch(()=>{});
+  permission.onclick=()=>api.allowApkInstall().catch(error=>message(error.message));
+  install.onclick=async()=>{try{const result=await api.installApkUpdate();if(result.permissionRequired){permission.hidden=false;message(say('请先允许此应用安装更新，然后返回并点击“继续安装”。','Allow this app to install updates, then return and select Continue installation.'));}else message(say('已交给系统安装，请完成系统确认。取消后仍可继续使用当前版本。','The Android installer is open. Confirm there; cancelling keeps your current version.'));}catch(error){message(error.message);}};
+  cancel.onclick=()=>api.cancelApkDownload().catch(()=>{});
+  api.addListener('apkUpdateProgress',info=>{message(say('正在下载 App 更新：','Downloading app update: ')+Math.min(100,Math.round(info.received/info.total*100))+'%');}).catch(()=>{});
+  async function run(manual=false){
+    if(busy)return;
+    busy=true;check.disabled=true;
+    if(manual){panel.hidden=false;message(say('正在检查签名更新…','Checking signed updates…'));}
+    try{
+      const result=await runMobileUpdate({api,isHome:home,
+        once:()=>{if(manual)return true;try{if(sessionStorage.getItem('bwv.update.checked'))return false;sessionStorage.setItem('bwv.update.checked','1');}catch{}return true;},
+        ask:(kind,info)=>confirm((kind==='apk'?say('发现 App 更新，需要下载并由 Android 确认安装。','App update available. Download it, then confirm installation in Android.'):say('发现功能更新，下次启动生效。','Feature update available; takes effect on next launch.'))+'\n\nv'+info.website+'\n\n'+(info.notes?.[en?'en':'zh']||'')+'\n\n'+say('是否下载？','Download now?')),
+        onDownload:kind=>{if(kind==='apk'){panel.hidden=false;cancel.hidden=false;message(say('正在下载并验证 APK…','Downloading and verifying APK…'));}}
+      });
+      if(result==='apk-ready'){panel.hidden=false;await refreshReady();if(home())await install.onclick();}
+      else if(result==='staged'){if(manual)message(say('网页更新已验证，下次重新启动 App 生效。','Web update verified. It will apply on your next app launch.'));}
+      else if(manual)message(({none:say('当前已是最新兼容版本。','You are up to date.'),offline:say('未取得有效更新，可能是网络、设备时间或校验问题。当前版本仍可正常使用。','No valid update received. Check your connection or device time. Your local version remains usable.'),cancelled:say('下载已取消，保持当前版本。','Download cancelled; keeping your current version.'),declined:say('已取消，保持当前版本。','Cancelled; keeping your current version.')})[result]||say('未执行更新。','No update applied.'));
+    }finally{busy=false;check.disabled=false;cancel.hidden=true;}
+  }
+  check.onclick=()=>run(true);
+  setTimeout(()=>run(false),1500);
+  refreshReady();
 }
 
 
@@ -1221,7 +1270,7 @@ async function refreshMobileProjects(){
 document.getElementById('new-project').onclick=async()=>{try{const name=prompt(t('项目名称'),new Date().toLocaleDateString());if(name===null)return;await mobileHomeAPI.createProject({name});await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('import-project').onclick=async()=>{try{mobileHomeSay(t('正在导入…'));const result=await mobileHomeAPI.pickFiles({});await refreshMobileProjects();mobileHomeSay(result.cancelled?'':t('导入完成，请选择查看工具'));}catch(error){mobileHomeSay(error.message);await refreshMobileProjects();}};
 document.getElementById('trash').onclick=async()=>{mobileShowTrash=!mobileShowTrash;document.getElementById('trash').textContent=t(mobileShowTrash?'返回项目':'回收站');await refreshMobileProjects();};
-refreshMobileProjects().then(()=>mobileHomeAPI?.updateHealthy().catch(()=>{})).catch(error=>mobileHomeSay(error.message));
+refreshMobileProjects().then(async()=>{if(mobileHomeAPI){await mobileHomeAPI.updateHealthy();await mobileHomeAPI.showReleaseNotes({lang:document.documentElement.lang==='en'?'en':'zh',manual:false});}}).catch(error=>mobileHomeSay(error.message));
 if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobileHomeSay(info.error||t('收到新项目，请选择查看工具'));await refreshMobileProjects();});
 
 document.getElementById('clean-storage').onclick=async()=>{try{const {freed}=await mobileHomeAPI.cleanupStorage();mobileHomeSay(t('已清理 {0} MB 未引用文件',[(freed/1048576).toFixed(1)]));}catch(error){mobileHomeSay(error.message);}};
@@ -1230,15 +1279,9 @@ document.getElementById('show-diagnostics').onclick=()=>mobileHomeAPI?.showDiagn
 // Local projects render independently; update failure is intentionally silent.
 if(mobileHomeAPI){
   mobileHomeAPI.runtimeInfo().then(info=>{
-    document.getElementById('version-info').textContent=t('App 本地 v{0} · Android {1} · WebView {2}',[info.current,info.android,info.webview]);
+    document.getElementById('version-info').textContent=(document.documentElement.lang==='en'?'Local web v':'本地网页 v')+info.current+' · APK '+(info.apkVersion||'—')+' · Android '+info.android+' · WebView '+info.webview;
   }).catch(()=>{});
-  // One background attempt per WebView session, after initial local rendering.
-  setTimeout(()=>runMobileUpdate({api:mobileHomeAPI,
-    once:()=>{try{if(sessionStorage.getItem('bwv.update.checked'))return false;sessionStorage.setItem('bwv.update.checked','1');}catch{}return true;},
-    isHome:()=>!document.hidden && location.pathname.endsWith('/assets/mobile/index.html'),
-    ask:(kind,info)=>confirm(t(kind==='apk'?'网页已更新到 v{0}，此更新需要新版 APK。打开发布页面？':'发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。',[info.website])),
-    openRelease:url=>{location.href=url;},
-  }),1500);
+  initializeMobileUpdates(mobileHomeAPI);
 }
 
 })();

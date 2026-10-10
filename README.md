@@ -59,7 +59,7 @@ python3 build.py --site --zip
 python3 scripts/check.py  # 开发检查，需要 Node 18+
 ```
 
-此命令更新浏览器脚本，并生成静态站点 `_site/` 和带版本号的程序包 `dist/BuildingWebViewer-vX.Y.Z.zip`（同时保留无版本号本地副本）。提交修改时一并提交生成的脚本。
+此命令更新浏览器脚本，并生成静态站点 `_site/` 和带版本号的程序包 `dist/BuildingWebViewer-Web-vX.Y.Z.zip`（同时保留无版本号本地副本）。提交修改时一并提交生成的脚本。
 
 实现细节与参考资料见 [设计说明](docs/DESIGN_NOTES.md)。
 

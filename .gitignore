@@ -30,3 +30,9 @@ models/
 
 # Local Android toolchain, licenses and caches
 .local-build/
+
+# Never commit update signing keys or generated update payloads
+*.pem
+*.key
+*.p12
+*.bwvupdate

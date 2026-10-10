@@ -1,0 +1,11 @@
+{
+  "version": "1.3.0",
+  "keyId": "bwv-update-p256-2026",
+  "sequence": 1,
+  "issuedAt": 1791590400,
+  "expiresAt": 1807142400,
+  "notes": {
+    "zh": "新增签名更新验证：拒绝被篡改、过期和重放的更新清单。\n网页修复更新自动准备，功能更新先确认；涉及 Android 底层时可在 App 内下载并验证 APK，再交给系统确认安装。\n新增“版本与更新”和更新公告；公告在实际升级后展示一次，也可随时查看。\n继续保持本地项目、离线启动与失败回退。旧版 Preview 请覆盖安装本版。",
+    "en": "Signed update verification rejects tampered, expired and replayed metadata.\nWeb fixes are staged automatically; feature updates ask first. Native app upgrades download and verify an APK before opening Android installation confirmation.\nVersion & updates controls and local release notes appear once after an actual upgrade and remain available manually.\nLocal projects, offline startup and rollback are preserved. Install this APK over the previous preview."
+  }
+}

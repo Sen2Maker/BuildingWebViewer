@@ -1,6 +1,6 @@
 import { initializeLocale, t } from '../shared/i18n.js';
 import { mobileProjects } from '../shared/mobile-project.js';
-import { runMobileUpdate } from './update-check.js';
+import { initializeMobileUpdates } from './mobile-updates.js';
 initializeLocale();
 document.getElementById('mobile-language').href='?lang='+(document.documentElement.lang==='en'?'zh':'en');
 const mobileHomeAPI=mobileProjects(),mobileHomeList=document.getElementById('projects'),mobileHomeStatus=document.getElementById('status');
@@ -28,7 +28,7 @@ async function refreshMobileProjects(){
 document.getElementById('new-project').onclick=async()=>{try{const name=prompt(t('项目名称'),new Date().toLocaleDateString());if(name===null)return;await mobileHomeAPI.createProject({name});await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('import-project').onclick=async()=>{try{mobileHomeSay(t('正在导入…'));const result=await mobileHomeAPI.pickFiles({});await refreshMobileProjects();mobileHomeSay(result.cancelled?'':t('导入完成，请选择查看工具'));}catch(error){mobileHomeSay(error.message);await refreshMobileProjects();}};
 document.getElementById('trash').onclick=async()=>{mobileShowTrash=!mobileShowTrash;document.getElementById('trash').textContent=t(mobileShowTrash?'返回项目':'回收站');await refreshMobileProjects();};
-refreshMobileProjects().then(()=>mobileHomeAPI?.updateHealthy().catch(()=>{})).catch(error=>mobileHomeSay(error.message));
+refreshMobileProjects().then(async()=>{if(mobileHomeAPI){await mobileHomeAPI.updateHealthy();await mobileHomeAPI.showReleaseNotes({lang:document.documentElement.lang==='en'?'en':'zh',manual:false});}}).catch(error=>mobileHomeSay(error.message));
 if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobileHomeSay(info.error||t('收到新项目，请选择查看工具'));await refreshMobileProjects();});
 
 document.getElementById('clean-storage').onclick=async()=>{try{const {freed}=await mobileHomeAPI.cleanupStorage();mobileHomeSay(t('已清理 {0} MB 未引用文件',[(freed/1048576).toFixed(1)]));}catch(error){mobileHomeSay(error.message);}};
@@ -37,13 +37,7 @@ document.getElementById('show-diagnostics').onclick=()=>mobileHomeAPI?.showDiagn
 // Local projects render independently; update failure is intentionally silent.
 if(mobileHomeAPI){
   mobileHomeAPI.runtimeInfo().then(info=>{
-    document.getElementById('version-info').textContent=t('App 本地 v{0} · Android {1} · WebView {2}',[info.current,info.android,info.webview]);
+    document.getElementById('version-info').textContent=(document.documentElement.lang==='en'?'Local web v':'本地网页 v')+info.current+' · APK '+(info.apkVersion||'—')+' · Android '+info.android+' · WebView '+info.webview;
   }).catch(()=>{});
-  // One background attempt per WebView session, after initial local rendering.
-  setTimeout(()=>runMobileUpdate({api:mobileHomeAPI,
-    once:()=>{try{if(sessionStorage.getItem('bwv.update.checked'))return false;sessionStorage.setItem('bwv.update.checked','1');}catch{}return true;},
-    isHome:()=>!document.hidden && location.pathname.endsWith('/assets/mobile/index.html'),
-    ask:(kind,info)=>confirm(t(kind==='apk'?'网页已更新到 v{0}，此更新需要新版 APK。打开发布页面？':'发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。',[info.website])),
-    openRelease:url=>{location.href=url;},
-  }),1500);
+  initializeMobileUpdates(mobileHomeAPI);
 }

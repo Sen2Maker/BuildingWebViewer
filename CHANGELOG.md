@@ -6,6 +6,20 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.3.0] - 2026-10-10
+
+签名更新与完整的 App 升级流程 / Signed updates and an integrated App upgrade flow. Android remains Preview.
+
+- 原生验证 ECDSA P-256 / SHA-256 签名清单，内置公钥；校验版本序号、有效期、来源、大小、哈希和兼容性，拒绝无签名、被篡改及回放的网络更新。私钥不进入仓库、APK 或 CI。
+- 网页修复更新自动准备，功能更新先确认；下一次启动生效。Android 底层更新先展示说明，经同意下载，验证包名、版本、哈希及与已安装 App 相同的证书，再交给 Android 系统确认安装。支持下载进度、取消、继续安装与安装来源授权入口。
+- App 首页新增“版本与更新”：手动检查与本地版本公告。公告随包保存，实际启用版本后展示一次；下载、取消、失败及回退不会伪报更新完成。
+- 下载文件区分为 Android APK、Web ZIP 与 App 专用 `.bwvupdate`。nativeApi 5，需要覆盖安装新版 APK；项目数据格式不变。
+- 旧 v1.2.0 / v1.2.4 Release 在新版验证发布后转为草稿，停止公开分发旧 APK，保留 Git 标签与恢复能力。已安装的旧 App 不能远程撤回。
+- Native ECDSA signature verification with pinned public keys, sequence/expiry checks and artifact hashes. Unsigned or tampered updates fail closed while local projects remain usable offline.
+- Consent-based native APK downloads verify package/version/certificate before Android installation confirmation. Patch web updates stage automatically; feature updates ask first.
+- Version controls, download progress/cancellation, and bundled release notes shown once after activation. Distinct APK, Web ZIP and `.bwvupdate` downloads.
+- Native API 5 requires reinstalling the preview APK over the previous version. Existing data and preview signing identity are retained. Key rotation currently requires a trusted APK upgrade; this is not a complete TUF implementation.
+
 ## [1.2.4] - 2026-10-10
 
 Android 返回导航修复；包含此前未正式发布的 1.2.1–1.2.3 修复。Android Preview 仍为测试版。

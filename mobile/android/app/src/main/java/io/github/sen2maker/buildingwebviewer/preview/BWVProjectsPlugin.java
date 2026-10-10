@@ -28,13 +28,37 @@ public class BWVProjectsPlugin extends Plugin {
     String version="unknown";
     if(android.os.Build.VERSION.SDK_INT>=26){android.content.pm.PackageInfo engine=android.webkit.WebView.getCurrentWebViewPackage();if(engine!=null)version=engine.versionName;}
     else{java.util.regex.Matcher match=java.util.regex.Pattern.compile("Chrome/([0-9.]+)").matcher(bridge.getWebView().getSettings().getUserAgentString());if(match.find())version=match.group(1);}
-    call.resolve(new JSObject().put("current",updater.currentVersion(bridge.getServerBasePath())).put("android",android.os.Build.VERSION.RELEASE).put("webview",version));
+    call.resolve(new JSObject().put("current",updater.currentVersion(bridge.getServerBasePath())).put("apkVersion",getContext().getPackageManager().getPackageInfo(getContext().getPackageName(),0).versionName).put("android",android.os.Build.VERSION.RELEASE).put("webview",version));
   }catch(Exception error){call.reject(error.getMessage());}});}
   @PluginMethod public void checkUpdate(PluginCall call){
     java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();
     Future<?> task=NETWORK.submit(()->{try{JSObject result=JSObject.fromJSONObject(updater.check(bridge.getServerBasePath()));if(delivered.compareAndSet(false,true))call.resolve(result);}catch(Exception error){if(delivered.compareAndSet(false,true))call.resolve(new JSObject().put("kind","offline"));}});
     UPDATE_TIMEOUT.schedule(()->{if(delivered.compareAndSet(false,true)){task.cancel(true);call.resolve(new JSObject().put("kind","offline"));}},3,TimeUnit.SECONDS);
   }
+  private volatile Future<?> apkDownload;
+  private final java.util.concurrent.atomic.AtomicBoolean apkBusy=new java.util.concurrent.atomic.AtomicBoolean();
+  @PluginMethod public void downloadApkUpdate(PluginCall call){
+    if(!apkBusy.compareAndSet(false,true)){call.reject("A download is already running");return;}
+    java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();
+    FutureTask<Void> task=new FutureTask<Void>(()->{try{new ApkUpdater(updater).download((received,total)->notifyListeners("apkUpdateProgress",new JSObject().put("received",received).put("total",total)));if(delivered.compareAndSet(false,true))call.resolve(new JSObject().put("ready",true));}catch(Exception error){if(delivered.compareAndSet(false,true))call.reject(error.getMessage());}finally{apkBusy.set(false);}return null;}){
+      @Override protected void done(){if(isCancelled()){apkBusy.set(false);if(delivered.compareAndSet(false,true))call.reject("Download cancelled");}}
+    };
+    apkDownload=task;NETWORK.execute(task);
+  }
+  @PluginMethod public void cancelApkDownload(PluginCall call){Future<?> task=apkDownload;if(task!=null)task.cancel(true);call.resolve();}
+  @PluginMethod public void apkUpdateStatus(PluginCall call){NETWORK.execute(()->{ApkUpdater apk=new ApkUpdater(updater);apk.cleanInstalled();try{apk.verified();call.resolve(new JSObject().put("ready",true).put("permissionRequired",apk.needsPermission()));}catch(Exception ignored){call.resolve(new JSObject().put("ready",false));}});}
+  @PluginMethod public void allowApkInstall(PluginCall call){getActivity().runOnUiThread(()->{try{new ApkUpdater(updater).permission(getActivity());call.resolve();}catch(Exception error){call.reject(error.getMessage());}});}
+  @PluginMethod public void installApkUpdate(PluginCall call){NETWORK.execute(()->{try{
+    ApkUpdater apk=new ApkUpdater(updater);apk.verified();
+    getActivity().runOnUiThread(()->{try{if(!getActivity().getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))throw new IOException("Return to the app to install");if(apk.needsPermission()){call.resolve(new JSObject().put("permissionRequired",true));return;}apk.install(getActivity());call.resolve(new JSObject().put("installerOpened",true));}catch(Exception error){call.reject(error.getMessage());}});
+  }catch(Exception error){call.reject(error.getMessage());}});}
+  @PluginMethod public void showReleaseNotes(PluginCall call){IO.execute(()->{try{
+    JSONObject info=updater.announcement(bridge.getServerBasePath());boolean manual=call.getBoolean("manual",false),english="en".equals(call.getString("lang","zh"));
+    if(!manual&&!info.getBoolean("unread")){call.resolve();return;}
+    getActivity().runOnUiThread(()->{try{if(!getActivity().getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)){call.resolve();return;}
+      new androidx.appcompat.app.AlertDialog.Builder(getActivity()).setTitle((english?"Release notes · v":"版本公告 · v")+info.getString("version")).setMessage(info.getJSONObject("notes").getString(english?"en":"zh")).setPositiveButton(english?"Got it":"知道了",(dialog,which)->{updater.prefs.edit().putBoolean("announcement."+info.optString("version"),true).apply();}).setOnDismissListener(dialog->call.resolve()).show();
+    }catch(Exception error){call.reject(error.getMessage());}});
+  }catch(Exception error){call.reject(error.getMessage());}});}
   @PluginMethod public void installWebUpdate(PluginCall call){NETWORK.execute(()->{try{String path=updater.install();call.resolve(new JSObject().put("installed",true));}catch(Exception error){call.reject(error.getMessage());}});}
   @PluginMethod public void activateWebUpdate(PluginCall call){String path=updater.startupPath();call.resolve();if(path!=null)getActivity().runOnUiThread(()->bridge.setServerBasePath(path));}
   @PluginMethod public void cleanupStorage(PluginCall call){run(call,()->new JSONObject().put("freed",store.cleanup()));}

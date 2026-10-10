@@ -4,7 +4,7 @@ App 复用三个网页查看器，文件和项目保存在手机内。网页不�
 
 ## 安装与使用
 
-1. 安装 `BuildingWebViewer-v1.2.4-preview.1.apk`。预览版为独立应用，Android 7.0+，兼容构建目标为 Android System WebView 60+。JavaScript 语法转换与缺失接口回归已加入构建；实际 GPU/WebGL 和厂商内核仍需真机验证。
+1. 安装 `BuildingWebViewer-Android-v1.3.0-preview.1.apk`。预览版为独立应用，Android 7.0+，兼容构建目标为 Android System WebView 60+。JavaScript 语法转换与缺失接口回归已加入构建；实际 GPU/WebGL 和厂商内核仍需真机验证。
 2. 从 QQ 或文件管理器“分享/用其他应用打开”文件或压缩包，选择 **BuildingWebViewer Preview**。也可在 App 内新建项目或导入文件。
 3. 选择项目，再进入 LOD、线框或点云。解压后的目录保留；线框和对应点云请放在同一目录。
 4. 修改项目树、勾选、属性标签、显示颜色和相机会自动保存。计算结果写入项目；手机关闭应用后可从首页重新打开。
@@ -28,11 +28,20 @@ System Back closes open settings/menus first, then saves the viewer and returns 
 
 ## 更新策略
 
-启动只读取 APK 内置或已校验的本地网页，先显示本地项目，完全不等待 GitHub。首页渲染后延迟进行一次后台检查，3 秒无结果或网络错误直接忽略，不显示错误弹窗；返回项目首页不会反复检查。首页底部显示本地版本、Android 与 WebView 版本。App 首页比较内置网页与在线网页版本。`PATCH`（如 1.2.0 → 1.2.1）且 `nativeApi` 兼容时自动下载网页资源；`MINOR/MAJOR` 先弹窗。正在查看项目时不替换页面；只在下一次启动启用，不自动重载当前首页。
+App 启动只读本地内容，项目先显示，随后延迟进行一次后台更新检查。3 秒内没有有效结果就静默略过，不影响离线使用。首页“版本与更新”也可手动检查、查看当前公告或继续安装已下载 APK。
 
-下载仅接受本仓库的 HTTPS Release 资源、校验 SHA-256、限大小、拒绝越界路径，完成后原子切换。未成功启动的网页包下次启动回退。原生接口改变时递增 `nativeApi`，必须安装新 APK，不能通过网页热更新新增 Android 权限或原生代码。
+| 更新 | 行为 |
+| --- | --- |
+| PATCH 且原生接口兼容 | 验签后自动准备，下次重新启动启用 |
+| MINOR / MAJOR 且兼容 | 展示已签名的说明，经同意后准备，下次启动启用 |
+| 原生接口不兼容 | 同意后下载 APK，验证包名/版本/文件哈希/安装证书，再打开系统安装界面 |
 
-更新发布需同时准备 `BuildingWebViewer-web-vX.Y.Z.zip` 与站点 `mobile-update.json`。只有网页版本但没有兼容 App 包时，App 引导打开 Release。断网正常使用内置版本。v1.2.4 将原生接口代号升级为 `nativeApi: 4`。旧 APK 需要覆盖安装新版，才能修复启动路径并获得原生诊断；这不能靠网页热更新完成。线上更新链路要在正式发布配套资源后验收，不能用本地编译成功代替上线验证。
+Android 安装仍需用户确认。Android 8+ 首次需用户允许本 App 安装更新；取消不会更改当前安装。下载提供进度、取消与重新下载；已验证 APK 可稍后继续安装。后台杀进程会中止未完成下载，下次可重新检查，不承诺断点续传。
+
+公告保存在包内，成功进入新版项目首页后展示一次；手动入口可再次查看。只有下载完成不算升级成功，回退不会展示失败版本的成功公告。更新后的网页版本可能高于系统显示的 APK 版本，这是两层版本的正常区别。
+
+v1.3.0 使用 nativeApi 5，需要覆盖安装新版 APK。新客户端只接受内置公钥验证通过的 ECDSA 签名清单，再检查单调序号、有效期、文件哈希、大小和兼容性。验证失败继续使用本地版本，绝不降级为无签名更新。已经安装的可信网页过期后仍可离线运行。详见 [更新安全与发布](UPDATE_SECURITY.md)。
+
 
 ## 启动问题定位
 
@@ -69,6 +78,6 @@ bash mobile/android/gradlew -p mobile/android :app:connectedDebugAndroidTest
 
 ## English
 
-The Android preview bundles all three viewers for offline use. The compatibility build targets WebView 60+ (Android 7+) with downlevel syntax and offline polyfills; actual device/GPU compatibility still needs verification. Local startup never waits for GitHub: one deferred background check times out after 3 seconds, silently. Verified web updates are staged for the next launch, with no live reload. v1.2.4 includes the startup fixes, diagnostics and Android Back navigation; it requires a new APK (nativeApi 4). Share files/archives to the app, select a persistent project, then choose a viewer. Projects use atomic manifests and deduplicated private files; export `.bwv.zip` backups before uninstalling. Completed edits persist, but abrupt process death can lose the last in-flight operation.
+The Android preview bundles all three viewers for offline use. The compatibility build targets WebView 60+ (Android 7+) with downlevel syntax and offline polyfills; actual device/GPU compatibility still needs verification. Local startup never waits for GitHub: one deferred background check times out after 3 seconds, silently. Verified web updates are staged for the next launch, with no live reload. v1.3.0 adds signed web updates, consent-based APK download/verification and local release notes; it requires a new APK (nativeApi 5). Share files/archives to the app, select a persistent project, then choose a viewer. Projects use atomic manifests and deduplicated private files; export `.bwv.zip` backups before uninstalling. Completed edits persist, but abrupt process death can lose the last in-flight operation.
 
 Build with Node 22+, Python 3, JDK 21 and Android SDK 36 using the commands above. Compatible patch web bundles update automatically; feature releases ask first, and native changes require a new APK. Debug signing and a separate preview application ID are intentional. Validate QQ sharing, background/process recovery, large files and the published update channel on physical devices before a stable release.

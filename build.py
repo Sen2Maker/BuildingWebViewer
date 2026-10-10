@@ -178,13 +178,13 @@ def main():
     if args.zip:
         files = site_files() + ['build.py','server.py','start.sh','package.json','README.md','README.en.md','CHANGELOG.md','AGENTS.md','.gitignore','.gitattributes']
         for folder in ['src','tests','scripts','docs','.github']:
-            files.extend(str(f.relative_to(HERE)) for f in sorted((HERE / folder).rglob('*')) if f.is_file())
+            files.extend(str(f.relative_to(HERE)) for f in sorted((HERE / folder).rglob('*')) if f.is_file() and '__pycache__' not in f.parts)
         for f in sorted((HERE / 'mobile').rglob('*')):
             rel = f.relative_to(HERE / 'mobile')
-            if not f.is_file() or any(part in {'node_modules','web','.gradle','build','.idea','capacitor-cordova-android-plugins','assets'} for part in rel.parts): continue
-            if f.name in {'local.properties'} or f.suffix in {'.apk','.jks','.keystore','.log'}: continue
+            if not f.is_file() or any(part in {'__pycache__','node_modules','web','.gradle','build','.idea','capacitor-cordova-android-plugins','assets'} for part in rel.parts): continue
+            if f.name in {'local.properties'} or f.suffix in {'.apk','.jks','.keystore','.pem','.key','.p12','.bwvupdate','.log'}: continue
             files.append(str(f.relative_to(HERE)))
-        target = HERE / 'dist' / ('BuildingWebViewer-v' + config['version'] + '.zip')
+        target = HERE / 'dist' / ('BuildingWebViewer-Web-v' + config['version'] + '.zip')
         target.parent.mkdir(exist_ok=True)
         with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
             for name in sorted(set(files)):

@@ -26,6 +26,7 @@ public class BackNavigationTest {
   }
   @Test public void allViewersReturnToProjectHomeAndHomeLeavesActivity()throws Exception{
     Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ProjectStore store=new ProjectStore(context);
+    WebUpdater updates=new WebUpdater(context);String announcementKey="announcement."+updates.bundledVersion();boolean oldAck=updates.prefs.getBoolean(announcementKey,false);updates.prefs.edit().putBoolean(announcementKey,true).commit();
     String id=store.create("Back regression").getString("id");
     try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
       waitFor(scenario,"!!(document.getElementById('projects')&&document.getElementById('projects').children.length)");
@@ -42,6 +43,6 @@ public class BackNavigationTest {
       back();
       for(int i=0;i<40&&scenario.getState()==Lifecycle.State.RESUMED;i++)SystemClock.sleep(250);
       assertNotEquals("Home Back must leave foreground rather than replay a viewer",Lifecycle.State.RESUMED,scenario.getState());
-    }finally{new android.util.AtomicFile(store.manifest(id)).delete();}
+    }finally{new android.util.AtomicFile(store.manifest(id)).delete();updates.prefs.edit().putBoolean(announcementKey,oldAck).commit();}
   }
 }

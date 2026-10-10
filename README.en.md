@@ -59,7 +59,7 @@ python3 build.py --site --zip
 python3 scripts/check.py  # Development checks; requires Node 18+
 ```
 
-This updates the browser bundles and creates `_site/` for static hosting and `dist/BuildingWebViewer-vX.Y.Z.zip` for distribution (plus an unversioned local copy). Commit the generated bundles alongside source changes.
+This updates the browser bundles and creates `_site/` for static hosting and `dist/BuildingWebViewer-Web-vX.Y.Z.zip` for distribution (plus an unversioned local copy). Commit the generated bundles alongside source changes.
 
 See [design notes](docs/DESIGN_NOTES.md) (Chinese) for implementation details and references.
 

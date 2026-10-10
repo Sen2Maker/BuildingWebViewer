@@ -13,5 +13,6 @@ jobs:
         with:
           fetch-depth: 0
       - run: python3 scripts/check.py
+      - run: python3 mobile/test-signing.py
       - run: python3 build.py --zip
       - run: python3 scripts/release.py

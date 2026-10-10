@@ -33,7 +33,7 @@ def validate(tag=None, package=True):
             head = subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
             if current_tag.stdout.strip() != head: raise ValueError('This version is already released; increment package.json.version and add a changelog entry')
     if package:
-        name = 'BuildingWebViewer-v'+version+'.zip'; file = ROOT/'dist'/name
+        name = 'BuildingWebViewer-Web-v'+version+'.zip'; file = ROOT/'dist'/name
         expected = hashlib.sha256(file.read_bytes()).hexdigest()+'  '+name+'\n'
         if (ROOT/'dist/SHA256SUMS.txt').read_text() != expected: raise ValueError('Package checksum mismatch')
         with zipfile.ZipFile(file) as archive:

@@ -37,7 +37,7 @@ const div=w.document.createElement('div');div.textContent='old';div.replaceChild
 const blob=new w.Blob(['hello']);assert.equal(await blob.text(),'hello');assert.equal((await blob.arrayBuffer()).byteLength,5);
 assert.equal(typeof w.ResizeObserver,'function');const controller=new w.AbortController();controller.abort();assert.equal(controller.signal.aborted,true);
 // Local projects must render even if the optional network call never completes.
-w.Capacitor={isNativePlatform:()=>true,registerPlugin:()=>({showDiagnostics:async()=>{},listProjects:async()=>({projects:[{id:'saved',name:'Offline project',files:[],updatedAt:Date.now(),status:'ready'}]}),addListener:()=>{},runtimeInfo:async()=>({current:'1.2.1',android:'7',webview:'60'}),updateHealthy:async()=>{},checkUpdate:()=>new Promise(()=>{})})};
+w.Capacitor={isNativePlatform:()=>true,registerPlugin:()=>({showDiagnostics:async()=>{},listProjects:async()=>({projects:[{id:'saved',name:'Offline project',files:[],updatedAt:Date.now(),status:'ready'}]}),addListener:async()=>({remove:async()=>{}}),showReleaseNotes:async()=>{},apkUpdateStatus:async()=>({ready:false}),runtimeInfo:async()=>({current:'1.2.1',android:'7',webview:'60'}),updateHealthy:async()=>{},checkUpdate:()=>new Promise(()=>{})})};
 w.eval(await readFile(path.join(web,'assets/js/mobile.bundle.js'),'utf8'));
 await new Promise(r=>setTimeout(r,40));assert.match(w.document.getElementById('projects').textContent,/Offline project/);assert.match(w.document.getElementById('version-info').textContent,/60/);dom.window.close();
 console.log(`PASS ${count} Android scripts parse as ES2017; missing-API fallbacks and offline project home verified.`);
