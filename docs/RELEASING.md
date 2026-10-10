@@ -29,6 +29,8 @@ python3 scripts/check.py
 python3 scripts/release.py
 ```
 
+构建会拒绝站点文本中的 CRLF，文本需统一为 LF。暂存后还应核对待发布文件与 Git 索引中的字节一致，再创建标签；不能只比较工作目录，以免 Git 自动规范化改变构建指纹或附件哈希。
+
 检查器验证版本、更新日志、网页元数据、发布包和 SHA-256。提交源文件与生成文件后创建同版本的附注标签，例如 `git tag -a v1.0.1 -m "BuildingWebViewer v1.0.1"`，再推送 `main` 和这个标签。
 
 在 GitHub Releases 选择**已有标签**，标题为 `BuildingWebViewer v1.0.1`，粘贴更新日志对应章节。可用 `python3 scripts/release.py --notes` 输出正文。上传：

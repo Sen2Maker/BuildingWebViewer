@@ -130,6 +130,11 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(output, encoding='utf-8')
         print(f'{"Checked" if args.check else "Built"} {target.relative_to(HERE)}')
+    # Git normalizes text on commit; reject different shipped bytes before fingerprinting/packaging.
+    for name in site_files():
+        path = HERE / name
+        if path.suffix in {'.html', '.js', '.css', '.json', '.svg', '.xml', '.txt', '.md'} and b'\r\n' in path.read_bytes():
+            raise SystemExit('Normalize shipped text to LF before building: ' + name)
     rendered_pages = {}
     for name in PAGES:
         path = HERE / name

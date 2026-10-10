@@ -6,9 +6,9 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
-## [1.2.3] - 2026-10-10
+## [1.2.4] - 2026-10-10
 
-Android 返回导航修复；包含此前未发布的 1.2.1 / 1.2.2 修复。Android Preview 仍为测试版。
+Android 返回导航修复；包含此前未正式发布的 1.2.1–1.2.3 修复。Android Preview 仍为测试版。
 
 - Android 返回键/返回手势：查看器先处理已打开的设置或菜单，然后保存当前项目并返回 App 项目首页；首页再返回时交由系统退出/退到后台，不重放旧查看器历史。
 - 页面首页按钮与系统返回共用保存流程；保留语言，合并连续返回操作，保存失败时留在当前页并显示保存错误。原生弹窗与文件选择器仍优先响应自身返回。
@@ -18,9 +18,15 @@ Android 返回导航修复；包含此前未发布的 1.2.1 / 1.2.2 修复。And
 - Shared save-aware navigation preserves language, coalesces repeated Back requests, and keeps the viewer open on save failure.
 - Includes the unpublished local-startup, offline compatibility and native diagnostic fixes. Native API 4 requires the new preview APK; project formats remain compatible.
 
+- 统一许可证文本换行并在构建时检查，避免 Git 规范化后出现本地与 CI 构建指纹/附件哈希不一致。Enforce LF in shipped text to keep local and CI artifacts identical.
+
+## [1.2.3] - 2026-10-10
+
+标签已推送，未发布 Release：发布校验发现许可证文本换行与 Git 归一化不一致，修正后随 1.2.4 发布；不移动原标签。Tagged but not released due to an artifact line-ending mismatch; superseded by 1.2.4 without rewriting the tag.
+
 ## [1.2.2] - 2026-10-10
 
-未单独发布，合并入 1.2.3 / Included in 1.2.3; not separately published. 包含 1.2.1 兼容修复。
+未单独发布，合并入 1.2.4 / Included in 1.2.4; not separately published. 包含 1.2.1 兼容修复。
 
 - 修复 Android 首页路径缺少前导斜杠，导致本地地址被拼成错误主机名的问题；构建与原生 Activity 测试覆盖实际入口。
 - 加载失败不再一概提示“WebView 不支持”。新增独立于网页脚本的原生诊断窗口，记录本次/上次启动、设备与内核版本、页面地址、资源状态、网络/HTTP/脚本错误与渲染进程退出。
@@ -32,7 +38,7 @@ Android 返回导航修复；包含此前未发布的 1.2.1 / 1.2.2 修复。And
 
 ## [1.2.1] - 2026-10-10
 
-未单独发布，合并入 1.2.3 / Included in 1.2.3; not separately published.
+未单独发布，合并入 1.2.4 / Included in 1.2.4; not separately published.
 
 - Android 兼容构建目标从 WebView 110 降至 60；转换所有脚本（包含 HTML 启动脚本），补齐数组、对象、Promise、文件读取、DOM 与 ResizeObserver/AbortController 接口；增加旧 CSS 的基础布局回退。
 - 启动仅加载本地查看器和项目。一次延迟后台版本检查，3 秒失败静默忽略；补丁只下载暂存，下次启动启用，不自动重载正在使用的页面。
