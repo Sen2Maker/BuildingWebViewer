@@ -5,6 +5,47 @@
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+"请将线框与点云放在同一压缩包目录内导入":"Import wireframes and point clouds together in the same archive folder.",
+"不支持分卷与密码压缩包 · 卸载前请导出项目备份":"No split or password archives · Export project backups before uninstalling",
+"{0} 个文件 · {1} MB":"{0} files · {1} MB",
+"此页面需要 Android App。网页版请使用工具首页。":"This page requires the Android app. Use the tools home for the website.",
+"离线可用 · 暂未取得在线版本":"Works offline · Online version unavailable",
+"发现功能更新 v{0}。现在更新 App 网页？项目和数据会保留。":"Feature update v{0} is available. Update the app web interface now? Projects and data are kept.",
+"网页已更新到 v{0}，此更新需要新版 APK。打开发布页面？":"Website v{0} requires a newer APK. Open the release page?",
+"App 网页 v{0} · 在线网页 v{1}":"App web v{0} · Website v{1}",
+"永久删除回收站内的项目？请先导出需要的项目备份。":"Permanently delete all trashed projects? Export any backups you need first.",
+"已清理 {0} MB 未引用文件":"Cleaned {0} MB of unused files",
+"项目文件读取不完整":"Incomplete project file read",
+"已发起分享":"Share dialog opened",
+"正在导出备份…":"Exporting backup…",
+"正在导入…":"Importing…",
+"保存失败":"Save failed",
+"保存中…":"Saving…",
+"项目恢复失败":"Project restore failed",
+"正在恢复项目…":"Restoring project…",
+"导入压缩包":"Import archive",
+"项目自动保存在此设备":"Project saved automatically on this device",
+"收到新项目，返回首页查看":"New project received. Return to projects to open it.",
+"收到新项目，请选择查看工具":"New project received. Choose a viewer.",
+"导入完成，请选择查看工具":"Import complete. Choose a viewer.",
+"从分享接收文件，或新建一个项目。":"Share files to this app or create a project.",
+"导入未完成，可重试或清理":"Import incomplete. Retry or clear.",
+"清理未完成导入":"Clear incomplete import",
+"重试导入":"Retry import",
+"恢复项目":"Restore project",
+"移入回收站":"Move to trash",
+"添加文件":"Add files",
+"项目名称":"Project name",
+"导出项目备份":"Export project backup",
+"清空回收站":"Empty trash",
+"清理未引用文件":"Clean unused files",
+"返回项目":"Back to projects",
+"回收站":"Trash",
+"导入文件 / 压缩包":"Import files / archive",
+"新建项目":"New project",
+"文件保存在本机。选择一个项目，再打开查看工具。":"Files stay on this device. Select a project, then open a viewer.",
+"我的项目":"My projects",
+"本地项目 · Android Preview":"Local projects · Android Preview",
 "压缩包包含不安全的文件路径。":"Archive contains an unsafe path.",
 "无法读取 ZIP 目录，文件可能损坏。":"Cannot read ZIP directory; the file may be damaged.",
 "暂不支持分卷或 ZIP64 压缩包。":"Split and ZIP64 archives are not supported yet.",
@@ -1011,6 +1052,96 @@ function initializeLocale(doc = document) {
 }
 
 
+// Source: src/shared/mobile-project.js
+
+let mobileProjectPlugin;
+function isMobileApp(){return Boolean(globalThis.Capacitor?.isNativePlatform?.());}
+function mobileProjects(){if(!isMobileApp())return null;return mobileProjectPlugin ||= globalThis.Capacitor.registerPlugin('BWVProjects');}
+/** Disk-backed File interface: text point readers request slices instead of a whole-file Blob. */
+class NativeProjectFile {
+  constructor(projectId,record){this.projectId=projectId;this.record=record;this.name=record.path.split('/').at(-1);this.size=record.size;this.lastModified=record.modified||0;this.webkitRelativePath=record.path;this.nativeKey=record.key;}
+  slice(start=0,end=this.size){
+    const size=this.size;start=start<0?Math.max(0,size+start):Math.min(start,size);end=end<0?Math.max(0,size+end):Math.min(end,size);end=Math.max(start,end);
+    return {size:end-start,arrayBuffer:async()=>{
+      const output=new Uint8Array(end-start);let cursor=start;
+      while(cursor<end){const length=Math.min(1048576,end-cursor),reply=await mobileProjects().readChunk({id:this.projectId,key:this.nativeKey,offset:cursor,length});const binary=atob(reply.data);if(binary.length!==length)throw Error(t('项目文件读取不完整'));for(let i=0;i<binary.length;i++)output[cursor-start+i]=binary.charCodeAt(i);cursor+=length;}
+      return output.buffer;
+    }};
+  }
+  async text(){return new TextDecoder().decode(await this.slice().arrayBuffer());}
+  async arrayBuffer(){return this.slice().arrayBuffer();}
+}
+function snapshotProjectTree(project,entries){return {groups:[...project.groups.values()].map(g=>({...g})),serial:project.serial,items:entries.map(e=>({id:e.id,group:e.group,treeName:e.treeName,columnSettings:e.columnSettings,displayColor:e.displayColor}))};}
+function restoreProjectTree(project,entries,state){
+  if(!state?.groups||!state?.items)return entries;
+  const groups=new Map(state.groups.map(g=>[g.id,{...g}]));
+  for(const g of groups.values()){let at=g,visited=new Set();while(at){if(visited.has(at.id))throw Error('Invalid project folder cycle');visited.add(at.id);at=groups.get(at.parent);}}
+  project.groups=groups;project.serial=Number(state.serial)||groups.size;
+  const saved=new Map(state.items.map(e=>[e.id,e]));
+  // Removed items stay excluded on reopen; newly imported native files remain discoverable.
+  return entries.filter(e=>!state.knownIds?.includes(e.id)||saved.has(e.id)).map(e=>{const previous=saved.get(e.id);if(previous)Object.assign(e,previous);else project.assign(e,e.file?.webkitRelativePath||e.sourceGroup||e.treeName||e.id);return e;});
+}
+async function mobileShareBlob(blob,name){
+  const api=mobileProjects();if(!api)return false;
+  const {token}=await api.beginExport({name});
+  try { for(let start=0;start<blob.size;start+=262144){const bytes=new Uint8Array(await blob.slice(start,start+262144).arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));await api.appendExport({token,data:btoa(binary)});}
+  await api.finishExport({token,type:blob.type||'application/octet-stream'});return true; } catch(error) { await api.cancelExport({token}).catch(()=>{});throw error; }
+}
+/** Serialize saves and coalesce rapid edits without losing a revert while a write is in flight. */
+function createMobileSaver({read,write,status=()=>{}}){
+  let pending=null,draining=null,last='';
+  return {flush(){
+    let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
+    if(!draining&&text===last)return Promise.resolve();
+    pending={state,text};
+    if(draining)return draining;
+    draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
+    return draining;
+  }};
+}
+/** Optional adapter; ordinary web sessions keep the existing local-file workflow. */
+async function mountMobileProject({receive,getState,restoreState,onBackground=()=>{},onForeground=()=>{},root=document}){
+  const api=mobileProjects();if(!api)return null;
+  const id=new URL(root.location.href).searchParams.get('project');
+  if(!id){root.location.replace('assets/mobile/index.html');return null;}
+  const status=root.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');root.querySelector('header').append(status);
+  let ready=false,timer=null;
+  const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
+  const flush=()=>{clearTimeout(timer);timer=null;return ready?saver.flush():Promise.resolve();};
+  const schedule=()=>{if(!ready)return;clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
+  try{
+    const project=await api.getProject({id});status.textContent=t('正在恢复项目…');
+    const records=project.files.map(record=>({file:new NativeProjectFile(id,record),path:record.path}));await receive(records);
+    await restoreState(project.states?.[root.body.dataset.tool]||null,records);ready=true;await flush();
+    const pick=async()=>{try{await flush();status.textContent=t('正在导入…');const result=await api.pickFiles({id});if(!result.cancelled)root.location.reload();else status.textContent=t('已保存');}catch(error){status.textContent=error.message;}};
+    root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
+    const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
+    const home=root.querySelector('.back-home');home.href='assets/mobile/index.html';home.onclick=async event=>{event.preventDefault();try{await flush();root.location.href=home.href;}catch{}};
+    for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
+    const background=()=>{flush().catch(()=>{});onBackground();};
+    root.addEventListener('visibilitychange',()=>root.hidden?background():onForeground());
+    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',()=>{onForeground();flush().catch(()=>{});});globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
+    // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
+    const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});
+    return {flush,schedule};
+  }catch(error){status.textContent=t('项目恢复失败');status.title=error.message;const p=root.createElement('p');p.className='error-banner';p.textContent=error.message;root.querySelector('main').prepend(p);return null;}
+}
+function captureMobileInputs(root=document){
+  return [...root.querySelectorAll('#settings-panel-display input,#settings-panel-display select')].filter(el=>el.type!=='file'&&(el.id||el.dataset.mobileKey||el.getAttribute('aria-label'))).map(el=>({id:el.id,key:el.dataset.mobileKey,aria:el.getAttribute('aria-label'),value:el.type==='checkbox'?el.checked:el.value}));
+}
+function restoreMobileInputs(values,root=document){
+  for(const value of values||[]){const el=value.id?root.getElementById(value.id):value.key?[...root.querySelectorAll('[data-mobile-key]')].find(el=>el.dataset.mobileKey===value.key):[...root.querySelectorAll('#settings-panel-display [aria-label]')].find(el=>el.getAttribute('aria-label')===value.aria);if(!el)continue;
+    if(el.type==='checkbox')el.checked=Boolean(value.value);else el.value=String(value.value);
+    if(el.closest('.presentation-controls')||el.closest('.palette-panel'))el.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+}
+async function nativeExportWriter(name){
+  const api=mobileProjects(),{token}=await api.beginExport({name});
+  return {token,async write(chunk){const bytes=typeof chunk==='string'?new TextEncoder().encode(chunk):new Uint8Array(chunk.buffer||chunk,chunk.byteOffset||0,chunk.byteLength);for(let start=0;start<bytes.length;start+=262144){let binary='';const part=bytes.subarray(start,start+262144);for(let i=0;i<part.length;i+=8192)binary+=String.fromCharCode(...part.subarray(i,i+8192));await api.appendExport({token,data:btoa(binary)});}},async share(type){await api.finishExport({token,type});},async commit(id,path){return api.commitExport({token,id,path});},async abort(){await api.cancelExport({token});}};
+}
+
+
 // Source: src/shared/zip-import.js
 
 /** Bounded local ZIP reader. File slices avoid retaining a second complete archive buffer. */
@@ -1758,6 +1889,7 @@ function updateSceneGuides(viewer) {
 // Source: src/shared/image-export.js
 
 
+
 function validateImageSize(width,height,maxSide=8192) {
   if(!Number.isInteger(width)||!Number.isInteger(height)||width<16||height<16||width>maxSide||height>maxSide||width*height>32*1024*1024)throw Error(t('图片尺寸需为 16–{0} 的整数，总像素不超过 3200 万。',[maxSide]));
   return {width,height};
@@ -1809,7 +1941,8 @@ function wireframeSVG(viewer,width,height,{transparent=false}={}) {
   for(const [a,b] of segments){const p=projectImagePoint(a,viewer,width,height),q=projectImagePoint(b,viewer,width,height);if([...p,...q].every(Number.isFinite))parts.push(`<path d="M${p.map(n=>n.toFixed(3)).join(' ')}L${q.map(n=>n.toFixed(3)).join(' ')}"/>`);}
   parts.push('</g></svg>');return parts.join('\n');
 }
-function downloadImageBlob(blob,filename,doc=document) {
+async function downloadImageBlob(blob,filename,doc=document) {
+  if(isMobileApp()){await mobileShareBlob(blob,filename);return;}
   const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 function canvasImageBlob(canvas,format,quality=.92) {
@@ -1850,7 +1983,7 @@ function mountImageExport({root=document,getViewers,pauseSync=callback=>callback
     let w=Number(width.value),h=Number(height.value);
     if(quickMode){pauseSync(()=>list.forEach(v=>v.render()));w=list.reduce((sum,v)=>sum+v.canvas.width,0);h=Math.max(...list.map(v=>v.canvas.height));}
     validateImageSize(w,h);if(Math.floor(w/list.length)<16)throw Error(t('每个视窗宽度至少为 16 像素。'));
-    if(fmt==='svg'){if(list.length!==1)throw Error(t('SVG 请指定单个视窗。'));downloadImageBlob(new Blob([wireframeSVG(list[0],w,h,{transparent:transparency.checked})],{type:'image/svg+xml'}),'BuildingWebViewer.svg',doc);return;}
+    if(fmt==='svg'){if(list.length!==1)throw Error(t('SVG 请指定单个视窗。'));await downloadImageBlob(new Blob([wireframeSVG(list[0],w,h,{transparent:transparency.checked})],{type:'image/svg+xml'}),'BuildingWebViewer.svg',doc);return;}
     const q=Number(quality.value);if(!quickMode&&fmt!=='png'&&(!Number.isFinite(q)||q<1||q>100))throw Error(t('压缩质量需在 1–100 之间。'));
     const output=doc.createElement('canvas');output.width=w;output.height=h;const ctx=output.getContext('2d');
     const transparent=!quickMode&&transparency.checked&&fmt!=='jpeg';if(!transparent){ctx.fillStyle='#f3f5f6';ctx.fillRect(0,0,w,h);}
@@ -1863,7 +1996,7 @@ function mountImageExport({root=document,getViewers,pauseSync=callback=>callback
       }
       if(!quickMode&&guides.value==='overlays'){const scale=ph/Math.max(1,viewer.canvas.clientHeight);ctx.save();ctx.beginPath();ctx.rect(x,0,pw,ph);ctx.clip();ctx.translate(x,0);drawSceneGuides(ctx,viewer,Math.min(pw,420*scale),ph,scale);ctx.restore();}x+=pw;
     }
-    const blob=await canvasImageBlob(output,fmt,q/100);downloadImageBlob(blob,`BuildingWebViewer-${w}x${h}.${fmt==='jpeg'?'jpg':fmt}`,doc);
+    const blob=await canvasImageBlob(output,fmt,q/100);await downloadImageBlob(blob,`BuildingWebViewer-${w}x${h}.${fmt==='jpeg'?'jpg':fmt}`,doc);
   }
   const run=async quickMode=>{submit.disabled=true;if(quick)quick.disabled=true;status.textContent=t('正在导出…');try{await save(quickMode);status.textContent=t('图片已导出。');}catch(error){status.textContent=error.message;}finally{submit.disabled=false;if(quick)quick.disabled=!visible().some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0);}};
   submit.onclick=()=>run(false);if(quick)quick.onclick=()=>run(true);
@@ -1879,7 +2012,7 @@ function mountPresentationControls({root=document,getViewers,pauseSync=callback=
   const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
   section.append(el('h3','渲染样式'));const status=el('p');status.className='presentation-help';status.setAttribute('role','status');
   function field(name,label,kind,values){
-    const row=el('label',label),input=el(kind==='select'?'select':'input');input.setAttribute('aria-label',t(label));
+    const row=el('label',label),input=el(kind==='select'?'select':'input');input.setAttribute('aria-label',t(label));input.dataset.mobileKey='presentation:'+name;
     const initial=currentPresentation()[name];
     if(kind==='select'){for(const [value,text] of values){const o=el('option',text);o.value=value;input.append(o);}input.value=initial;}
     else if(kind==='checkbox'){input.type='checkbox';input.checked=initial;}
@@ -2790,6 +2923,7 @@ function parseLodIds(value, catalogById) {
 
 // Source: src/shared/camera-controls.js
 
+
 /** Shared orthographic camera snapshots and an optional, local-only control panel. */
 const CAMERA_FORMAT = 'BuildingWebViewer.camera';
 const CAMERA_BOOK_FORMAT = 'BuildingWebViewer.camera-bookmarks';
@@ -3167,12 +3301,13 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
     bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; bookmarkName.value = ''; updateBookmarks();
     if (persist()) message(t('书签已删除。'));
   });
-  exportButton.addEventListener('click', () => attempt(() => {
+  exportButton.addEventListener('click', async () => { try {
     syncStored();
     const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
+    if (isMobileApp()) { await mobileShareBlob(blob, `BuildingWebViewer-camera-${space}.json`); message(t('相机书签 JSON 已导出，不含模型数据。')); return; }
     const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
     win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message(t('相机书签 JSON 已导出，不含模型数据。'));
-  }));
+  } catch(error) { message(error.message, true); } });
   importButton.addEventListener('click', () => importInput.click());
   importInput.addEventListener('change', async () => {
     const file = importInput.files?.[0]; importInput.value = ''; if (!file) return;
@@ -3248,6 +3383,7 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
     message.hidden = true; state = {palette: select.value, reverse: reverse.checked, range: auto.checked ? null : {min: low.valueAsNumber, max: high.valueAsNumber}};
     refresh(); onChange({...state});
   };
+  [select,reverse,auto,low,high].forEach((input,index)=>{input.dataset.mobileKey='palette:'+index;});
   for (const input of [select, reverse, auto, low, high]) input.addEventListener('change', change);
   for (const input of [low, high]) input.addEventListener('input', change);
   refresh();
@@ -3272,13 +3408,14 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
 
 
 
+
 initializeLocale();
 const $ = (id) => document.getElementById(id);
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
 const modelProject = new ViewerProject();
-let modelTree = null;
+let modelTree = null,mobileSession=null,mobileKnownIds=[];
 let labelElements = new Map(), latestLabels = [];
 let localFiles = new Map(), cameraControls = null, paletteControls = null;
 let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
@@ -3417,7 +3554,7 @@ async function loadSelection() {
     if (failures.length) showError(t('部分模型读取失败。') + failures.join('；'), true);
     renderSelection(false);
   } catch (error) { showError(t("模型渲染失败：{0}", [error.message]), true); }
-  finally { $('loading').hidden = true; }
+  finally { $('loading').hidden = true;mobileSession?.schedule(); }
 }
 function updateHeightLegend() {
   const legend = $('height-legend'); if (!legend) return;
@@ -3545,6 +3682,11 @@ function init() {
     $('source-path').textContent = t('尚未选择文件夹。关闭或刷新网页后，请手动重新选择。');
     $('folder-status').textContent = t('选择含 OBJ 的目录 · 文件仅在本机读取');
     selectIds([]);
+    mountMobileProject({receive:importLodRecords,getState:()=>({tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length?cameraControls?.capture():null}),restoreState:async state=>{
+      mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...catalog.map(e=>e.id)])];
+      if(state){catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&currentModels.length)cameraControls.restore(state.camera,{checkScene:false});}
+      $('source-path').textContent=t('项目自动保存在此设备');
+    },onBackground:()=>{for(const id of cache.keys())if(!selected.has(id))cache.delete(id);}}).then(session=>{mobileSession=session;});
   } catch (error) {
     $('scene-stats').textContent = t('查看器暂时无法启动');
     $('loading').hidden = true;

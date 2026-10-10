@@ -64,3 +64,5 @@ python3 scripts/check.py  # 开发检查，需要 Node 18+
 实现细节与参考资料见 [设计说明](docs/DESIGN_NOTES.md)。
 
 **版本与发布**：以 `v1.0.0` 为正式基线。后续修改先验证、写[更新日志](CHANGELOG.md)并汇报，再按发布指令上传；正式 Release 才更新在线网站。[发布约定](docs/RELEASING.md)
+
+[Android 测试版、安装与构建](docs/ANDROID.md)

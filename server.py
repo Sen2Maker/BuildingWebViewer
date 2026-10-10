@@ -15,7 +15,7 @@ HERE = Path(__file__).resolve().parent
 from build import site_files
 
 MIME_TYPES = {'.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
-              '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml',
+              '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml',
               '.ico': 'image/vnd.microsoft.icon', '.png': 'image/png', '.xml': 'application/xml; charset=utf-8'}
 STATIC_FILES = {'/': ('index.html', MIME_TYPES['.html'])}
 for filename in site_files():
@@ -35,7 +35,7 @@ def make_handler():
             self.send_response(status)
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', str(len(body)))
-            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Cache-Control', 'no-store, max-age=0')
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.end_headers()
             if self.command != 'HEAD':

@@ -14,7 +14,7 @@ for f in sorted((ROOT/'assets/js').glob('*.js')):
 class Links(HTMLParser):
     def handle_starttag(self,tag,attrs):
         attrs=dict(attrs)
-        target=attrs.get('src') if tag in ['script','img'] else attrs.get('href') if tag in ['link','a'] else None
+        target=(attrs.get('src') or attrs.get('data-viewer-src')) if tag in ['script','img'] else attrs.get('href') if tag in ['link','a'] else None
         if target and not urlsplit(target).scheme and not target.startswith('#'):
             assert (ROOT/urlsplit(target).path).is_file(), 'Missing asset: '+target
 for page in ROOT.glob('*.html'): Links().feed(page.read_text(encoding='utf-8'))

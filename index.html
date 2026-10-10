@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BuildingWebViewer · 三维数据工具箱</title><!-- site-meta:start -->
+<meta name="application-build" content="b2a92f55902cd211">
 <meta name="description" content="在浏览器中查看 LOD 建筑模型、OBJ 线框与点云，支持属性映射、几何计算和导出，数据仅在本机处理。Browser-based LOD mesh, wireframe and point cloud viewers with attribute mapping, geometric processing and export. Files stay on your device.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.1.0">
+<meta name="application-version" content="1.2.0">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="BuildingWebViewer · 三维数据工具箱 / 3D Data Workspace">
@@ -53,7 +54,52 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   }, true);
 })();
 </script>
-<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=E2" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=E2"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=E2"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=E2"><link rel="stylesheet" href="assets/css/hub.css?v=9b0731e72172"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"></head>
+<script>/* Inlined startup freshness gate. No polling, update banner or manual check UI. */
+(() => {
+  const pages = new Set(['index.html', 'lod.html', 'wireframe.html', 'pointcloud.html']);
+  const current = document.querySelector('meta[name="application-build"]')?.content;
+  const base = new URL('./', location.href);
+  const networkUpdates = /^https?:$/.test(location.protocol) && !window.Capacitor?.isNativePlatform?.();
+  const startup = (async () => {
+    if (!networkUpdates || !current) return true;
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 2500);
+    try {
+      const manifest = new URL('version.json', base); manifest.searchParams.set('check', String(Date.now()));
+      const response = await fetch(manifest, {cache: 'no-store', signal: controller.signal, credentials: 'omit'});
+      if (!response.ok) return true;
+      const next = await response.json();
+      if (!/^[a-f0-9]{16}$/.test(next.build) || !/^\d+\.\d+\.\d+$/.test(next.version) || next.build === current) return true;
+      const url = new URL(location.href);
+      if (url.searchParams.get('_bwvRefresh') !== next.build) {
+        url.searchParams.set('build', next.build);
+        url.searchParams.set('_bwvRefresh', next.build);
+        url.searchParams.set('_fresh', String(Date.now()));
+        location.replace(url.href);
+      }
+      return false; // Do not run stale scripts, or loop if a deployment is incomplete.
+    } catch { return true; } // Offline or slow connection: the cached package remains usable.
+    finally { clearTimeout(timeout); }
+  })();
+  async function start() {
+    if (!(await startup)) { window.BuildingViewerBoot?.fail(); return; }
+    for (const placeholder of document.querySelectorAll('script[data-viewer-src]')) {
+      const script = document.createElement('script'); script.src = placeholder.getAttribute('data-viewer-src');
+      script.onerror = () => window.BuildingViewerBoot?.fail(); document.body.append(script);
+    }
+    if (!networkUpdates) return;
+    document.addEventListener('click', event => {
+      const anchor = event.target.closest?.('a[href]');
+      if (!anchor || anchor.hasAttribute('download') || anchor.getAttribute('href')?.startsWith('#')) return;
+      const url = new URL(anchor.href, location.href);
+      if (url.origin === base.origin && new URL('./', url).pathname === base.pathname && pages.has(url.pathname.split('/').pop() || 'index.html')) {
+        url.searchParams.set('build', current); anchor.href = url.href;
+      }
+    }, true);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once: true}); else start();
+})();
+</script>
+<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=9db3e16ad754" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=57fe6ee6fffe"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=6fa2af78d567"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=c5a7b3551b38"><link rel="stylesheet" href="assets/css/hub.css?v=9b0731e72172"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"></head>
 <body><!-- boot-body:start -->
 <div id="page-boot" role="status" aria-live="polite" data-no-i18n>
   <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
@@ -62,7 +108,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 </div>
 
 <!-- boot-body:end -->
-<header><a class="wordmark" href="index.html"><img class="brand" src="favicon.svg" width="34" height="34" alt=""> 三维数据工具箱</a><div class="header-actions"><span class="local"><i></i> 完全本地运行</span><button id="language-toggle" class="language-switch" type="button" role="switch" aria-checked="false" aria-label="Switch to English"><span lang="zh-CN">中文</span><span lang="en">EN</span></button></div></header>
+<header><a class="wordmark" href="index.html"><img class="brand" src="favicon.svg?v=6fa2af78d567" width="34" height="34" alt=""> 三维数据工具箱</a><div class="header-actions"><span class="local"><i></i> 完全本地运行</span><button id="language-toggle" class="language-switch" type="button" role="switch" aria-checked="false" aria-label="Switch to English"><span lang="zh-CN">中文</span><span lang="en">EN</span></button></div></header>
 <main>
   <div class="intro"><div><div class="eyebrow">3D DATA WORKSPACE</div><h1>为每一种三维数据，<br>找到合适的视角。</h1></div><p>在浏览器中查看 LOD 模型、线框与点云。<br class="mobile-break"> 支持属性编辑、几何计算与导出，数据始终留在本机。</p></div>
   <div class="tools" aria-label="查看工具">
@@ -90,7 +136,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <div class="how"><span class="how-title">开始使用</span><span><b>1</b> 选择查看工具</span><span class="step-arrow">→</span><span><b>2</b> 手动打开数据文件夹</span><span class="step-arrow">→</span><span><b>3</b> 选择需要预览的数据</span></div>
 </main>
 <footer><span>不上传文件 · 不预设目录 · 无需安装依赖</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.1.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.1.0</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.2.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.2.0</a></nav>
 
 <!-- site-footer:end --></footer>
-<script defer src="assets/js/hub.bundle.js?v=2fbec11e3fea"></script></body></html>
+<script data-viewer-src="assets/js/hub.bundle.js?v=8dfbbed18fed"></script></body></html>

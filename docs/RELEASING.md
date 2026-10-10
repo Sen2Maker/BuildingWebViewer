@@ -54,3 +54,17 @@ Use `package.json.version` as the single source of truth. PATCH covers fixes/doc
 Prepare changes locally, update the bilingual changelog, build/test, and report the version, scope, validation and limits **before uploading**. Publish only under the user's release instruction. Run the three commands above; commit source and generated output together, create/push the matching annotated tag, and publish a Release with its versioned ZIP and SHA-256 file. `--notes` prints release text; `--check-tag vX.Y.Z` verifies that the tag, checkout and version agree.
 
 Ordinary pushes run checks only. A published stable Release deploys Pages from its tag; the manual deployment input accepts a previously published stable tag for rollback. Repository visibility alone does not grant an open-source license: the maintainer should choose one explicitly.
+
+## 更新与缓存
+
+构建生成 `version.json` 和页面内相同的内容指纹。每次进入或普通刷新页面，先绕过缓存校验入口 HTML，再启动查看器；旧入口自动以唯一 URL 重新请求一次，防止跳转循环。脚本/样式和站内导航分别带内容哈希与构建标识。
+
+网页没有更新提示、检查按钮或定时轮询。无网络或检查超过 2.5 秒时使用现有版本；纯文件打开及 Android 内置网页跳过这套网页检查。首次升级旧版可能仍需强制刷新，因为旧缓存中不存在新代码。语言和相机书签保留；网页版文件选择随刷新重置。
+
+发布验证必须包括 Pages 部署成功、线上 `version.json` 与本地一致、四个 HTML 的构建标识正确，不能只以 Release 发布成功判断网站已更新。
+
+## Android 附件（v1.2.0 起）
+
+先运行 `npm --prefix mobile ci`、`python3 mobile/prepare.py`，构建/测试 APK。Release 除完整网页包、校验文件之外，附上 APK 以及 `dist/BuildingWebViewer-web-vX.Y.Z.zip`。后者是 App 更新资源，不能用完整源码 ZIP 替代。
+
+Pages 工作流会用锁定依赖重建 App 网页包，校验已上传附件的 SHA-256，确认一致后才提供 `mobile-update.json`。因此必须先上传附件再发布 Release。没有配套附件或校验失败时不部署，不发布无效更新地址。原生接口改变要同时更新代码、构建清单和 `nativeApi`，走 APK 升级。

@@ -12,7 +12,7 @@ import zipfile
 HERE = Path(__file__).resolve().parent
 PAGES = ('index.html', 'lod.html', 'wireframe.html', 'pointcloud.html')
 ICONS = ('favicon.svg', 'favicon.ico', 'favicon-32.png', 'apple-touch-icon.png')
-ENTRIES = {'hub': 'src/hub/hub.js', 'lod': 'src/lod/app.js', 'cloud': 'src/cloud/cloud-app.js'}
+ENTRIES = {'mobile': 'src/mobile/home.js', 'hub': 'src/hub/hub.js', 'lod': 'src/lod/app.js', 'cloud': 'src/cloud/cloud-app.js'}
 IMPORT = re.compile(r"^import\s+\{[^}]+\}\s+from\s+['\"]([^'\"]+)['\"];?\s*$", re.MULTILINE)
 
 
@@ -43,12 +43,13 @@ def bundle(entry):
 
 
 def site_files():
-    return [*PAGES, *ICONS, 'sitemap.xml', *[str(p.relative_to(HERE)) for p in sorted((HERE / 'assets').rglob('*')) if p.is_file()]]
+    return [*PAGES, *ICONS, 'sitemap.xml', 'version.json', *[str(p.relative_to(HERE)) for p in sorted((HERE / 'assets').rglob('*')) if p.is_file()]]
 
 
 def boot_page(source):
     """Generate critical startup UI from one shared source for all four entry pages."""
     head = '<style>' + (HERE / 'src/shared/page-boot.css').read_text(encoding='utf-8') + '</style>\n<script>' + (HERE / 'src/shared/page-boot.js').read_text(encoding='utf-8') + '</script>'
+    head += '\n<script>' + (HERE / 'src/shared/site-update.js').read_text(encoding='utf-8') + '</script>'
     body = (HERE / 'src/shared/page-boot.html').read_text(encoding='utf-8')
     for name, content in [('head',head), ('body',body)]:
         pattern = r'<!-- boot-' + name + r':start -->[\s\S]*?<!-- boot-' + name + r':end -->'
@@ -81,6 +82,7 @@ def site_page(source, name, config):
     url = config['homepage'] + ('' if name == 'index.html' else name)
     esc = lambda value: html.escape(value, quote=True)
     metadata = '\n'.join([
+        '<meta name="application-build" content="BUILD_PLACEHOLDER">',
         '<meta name="description" content="' + esc(info['description']) + '">',
         '<meta name="application-name" content="BuildingWebViewer">',
         '<meta name="application-version" content="' + config['version'] + '">',
@@ -128,6 +130,7 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(output, encoding='utf-8')
         print(f'{"Checked" if args.check else "Built"} {target.relative_to(HERE)}')
+    rendered_pages = {}
     for name in PAGES:
         path = HERE / name
         source = path.read_text(encoding='utf-8')
@@ -136,10 +139,26 @@ def main():
             name = match[2]
             digest = hashlib.sha256((HERE / name).read_bytes()).hexdigest()[:12]
             return match[1] + name + '?v=' + digest + match[3]
-        output = re.sub(r'(\b(?:src|href)=[\"\'])(assets/[^\"\'?]+)(?:\?[^\"\']*)?([\"\'])', asset_version, output)
+        output = re.sub(r'<script defer src=([\"\'])(assets/js/[^\"\']+)([\"\'])></script>', r'<script data-viewer-src=\1\2\3></script>', output)
+        output = re.sub(r'(\b(?:src|href)=[\"\'])(assets/[^\"\'?]+|favicon\.svg|favicon\.ico|favicon-32\.png|apple-touch-icon\.png)(?:\?[^\"\']*)?([\"\'])', asset_version, output)
+        rendered_pages[name] = output
+    # Hash complete generated pages and every shipped asset, including icons.
+    fingerprint = hashlib.sha256()
+    for name in sorted(set(site_files()) - set(PAGES) - {'version.json'}):
+        fingerprint.update(name.encode() + b'\0' + (HERE / name).read_bytes())
+    for name, output in rendered_pages.items():
+        fingerprint.update(name.encode() + b'\0' + output.encode())
+    build_id = fingerprint.hexdigest()[:16]
+    for name, output in rendered_pages.items():
+        output = output.replace('BUILD_PLACEHOLDER', build_id)
+        path = HERE / name
         if args.check:
-            if source != output: raise SystemExit(f'Stale startup shell: {name}; run python3 build.py')
+            if path.read_text(encoding='utf-8') != output: raise SystemExit(f'Stale startup shell: {name}; run python3 build.py')
         else: path.write_text(output, encoding='utf-8')
+    manifest = json.dumps({'version': config['version'], 'build': build_id}, indent=2) + '\n'
+    if args.check:
+        if not (HERE / 'version.json').exists() or (HERE / 'version.json').read_text() != manifest: raise SystemExit('Stale version.json; run python3 build.py')
+    else: (HERE / 'version.json').write_text(manifest, encoding='utf-8')
     if args.site:
         target = HERE / '_site'
         if target.is_symlink():
@@ -155,6 +174,11 @@ def main():
         files = site_files() + ['build.py','server.py','start.sh','package.json','README.md','README.en.md','CHANGELOG.md','AGENTS.md','.gitignore','.gitattributes']
         for folder in ['src','tests','scripts','docs','.github']:
             files.extend(str(f.relative_to(HERE)) for f in sorted((HERE / folder).rglob('*')) if f.is_file())
+        for f in sorted((HERE / 'mobile').rglob('*')):
+            rel = f.relative_to(HERE / 'mobile')
+            if not f.is_file() or any(part in {'node_modules','web','.gradle','build','.idea','capacitor-cordova-android-plugins','assets'} for part in rel.parts): continue
+            if f.name in {'local.properties'} or f.suffix in {'.apk','.jks','.keystore','.log'}: continue
+            files.append(str(f.relative_to(HERE)))
         target = HERE / 'dist' / ('BuildingWebViewer-v' + config['version'] + '.zip')
         target.parent.mkdir(exist_ok=True)
         with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
@@ -162,7 +186,7 @@ def main():
                 # Stable timestamps and modes make the download reproducible from its tag.
                 info = zipfile.ZipInfo('BuildingWebViewer/' + name, date_time=(2020,1,1,0,0,0))
                 info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = (0o100755 if name == 'start.sh' else 0o100644) << 16
+                info.external_attr = (0o100755 if name in {'start.sh','mobile/android/gradlew'} else 0o100644) << 16
                 archive.writestr(info, (HERE / name).read_bytes())
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
         (target.parent / 'SHA256SUMS.txt').write_text(digest + '  ' + target.name + '\n',encoding='utf-8')

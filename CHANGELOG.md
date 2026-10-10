@@ -6,6 +6,36 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.2.0] - 2026-10-10
+
+网页正式更新，附带 Android 预览测试版 / Stable website release with an Android preview attachment.
+
+- 新增 Capacitor Android App：离线内置三个查看器、分享/文件管理器导入、项目首页与历史记录。
+- 原生流式解压常见 ZIP、7z、RAR、TAR、GZ、BZ2、XZ、ZSTD 等格式；不支持密码、分卷或嵌套压缩包。RAR 变体以 libarchive 能力为准。
+- 原子保存项目清单、去重存储源文件；自动保存项目树、勾选、属性标签、颜色与相机，计算结果写入项目。导出/恢复项目备份，提供回收站与空间清理。
+- 返回后台暂停解压并取消计算；中断导入保留恢复记录。持续读取采用分块接口。恢复只覆盖已完成保存的操作。
+- App 检查网页版本；同主次版本且兼容原生接口的补丁自动安装网页资源，功能版本征求同意，原生变更引导安装 APK。校验官方 HTTPS 地址及 SHA-256，更新失败不替换旧版，启动失败可回退。
+- 包含普通刷新的缓存修复；网页不显示任何更新提示。
+- 预览 APK 使用独立应用标识与调试签名，尚未发布正式版；QQ 真机分享及设备后台行为需真机验收。
+
+- Offline Capacitor Android app with project history, file/share import and all three viewers.
+- Native streamed archive extraction, atomic project state, content deduplication, persistent computed results, project backup/restore and trash/cleanup.
+- Background extraction pauses; interrupted imports retain recovery receipts. Bounded bridge reads avoid copying entire text clouds to JavaScript.
+- Compatible patch web updates install automatically at project home; feature updates ask first, native changes require APK installation. Official-host and SHA-256 checks, staged activation and startup rollback.
+- Includes silent website refresh cache correction. Preview uses a separate package ID and debug signing; real-device QQ sharing remains to be validated.
+
+## [1.1.1] - 2026-10-10
+
+网页修复记录，合并入 v1.2.0，未单独发布 / Website fix record, included in v1.2.0; not separately published.
+
+- 修复普通刷新可能继续使用旧 HTML：启动时绕过缓存校验构建标识，旧入口自动重新请求，验证后才加载查看器脚本。
+- 增加内容构建指纹、站内导航版本标识；本地服务器响应使用 no-store。
+- 网页不添加更新提示、轮询或检查按钮。防止自动跳转循环；无网络或检查超过 2.5 秒时继续使用现有版本。保留语言和相机书签。
+- 第一次从没有此机制的旧版迁移可能仍需强制刷新。离线包需手动替换；普通刷新仍会重置网页版未保存的文件选择。
+- Fix stale HTML after ordinary refresh: validate an uncached build manifest before loading viewer scripts, automatically refetch outdated entry pages, and version internal navigation.
+- Content fingerprints and no-store local responses. No update banners, polling or check buttons on the website. Redirect-loop protection and bounded offline fallback preserve usability and stored preferences.
+- The first migration from older code may require a hard refresh. Offline packages need manual replacement; normal refresh still resets the web session's file selection.
+
 ## [1.1.0] - 2026-10-10
 
 网页正式更新 / Stable web release. Android App remains in development.

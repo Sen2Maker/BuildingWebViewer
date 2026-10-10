@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BuildingWebViewer Preview</string>
+    <string name="title_activity_main">BuildingWebViewer Preview</string>
+    <string name="package_name">io.github.sen2maker.buildingwebviewer.preview</string>
+    <string name="custom_url_scheme">io.github.sen2maker.buildingwebviewer.preview</string>
+</resources>

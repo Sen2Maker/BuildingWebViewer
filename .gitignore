@@ -27,3 +27,6 @@ models/
 *.npy
 *.npz
 *.zip
+
+# Local Android toolchain, licenses and caches
+.local-build/

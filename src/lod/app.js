@@ -1,3 +1,4 @@
+import { mountMobileProject, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs } from '../shared/mobile-project.js';
 import { archiveImportQueue } from '../shared/zip-import.js';
 import { ViewerProject } from '../shared/project-model.js';
 import { mountProjectTree } from '../shared/project-tree.js';
@@ -18,7 +19,7 @@ const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
 const modelProject = new ViewerProject();
-let modelTree = null;
+let modelTree = null,mobileSession=null,mobileKnownIds=[];
 let labelElements = new Map(), latestLabels = [];
 let localFiles = new Map(), cameraControls = null, paletteControls = null;
 let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
@@ -157,7 +158,7 @@ async function loadSelection() {
     if (failures.length) showError(t('部分模型读取失败。') + failures.join('；'), true);
     renderSelection(false);
   } catch (error) { showError(t("模型渲染失败：{0}", [error.message]), true); }
-  finally { $('loading').hidden = true; }
+  finally { $('loading').hidden = true;mobileSession?.schedule(); }
 }
 function updateHeightLegend() {
   const legend = $('height-legend'); if (!legend) return;
@@ -285,6 +286,11 @@ function init() {
     $('source-path').textContent = t('尚未选择文件夹。关闭或刷新网页后，请手动重新选择。');
     $('folder-status').textContent = t('选择含 OBJ 的目录 · 文件仅在本机读取');
     selectIds([]);
+    mountMobileProject({receive:importLodRecords,getState:()=>({tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length?cameraControls?.capture():null}),restoreState:async state=>{
+      mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...catalog.map(e=>e.id)])];
+      if(state){catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&currentModels.length)cameraControls.restore(state.camera,{checkScene:false});}
+      $('source-path').textContent=t('项目自动保存在此设备');
+    },onBackground:()=>{for(const id of cache.keys())if(!selected.has(id))cache.delete(id);}}).then(session=>{mobileSession=session;});
   } catch (error) {
     $('scene-stats').textContent = t('查看器暂时无法启动');
     $('loading').hidden = true;

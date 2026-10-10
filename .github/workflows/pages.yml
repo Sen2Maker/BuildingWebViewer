@@ -47,6 +47,18 @@ jobs:
           python3 scripts/check.py
           python3 build.py --site --zip
           python3 scripts/release.py --check-tag "$RELEASE_TAG"
+      - uses: actions/setup-node@v4
+        if: hashFiles('mobile/package-lock.json') != ''
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+      - name: Build and verify the Android web update payload
+        if: hashFiles('mobile/package-lock.json') != ''
+        run: |
+          npm --prefix mobile ci
+          python3 mobile/prepare.py
+          python3 mobile/publish-manifest.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

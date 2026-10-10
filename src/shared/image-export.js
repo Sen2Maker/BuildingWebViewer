@@ -1,3 +1,4 @@
+import { isMobileApp, mobileShareBlob } from './mobile-project.js';
 import { t } from './i18n.js';
 import { drawSceneGuides } from './scene-guides.js';
 export function validateImageSize(width,height,maxSide=8192) {
@@ -51,7 +52,8 @@ export function wireframeSVG(viewer,width,height,{transparent=false}={}) {
   for(const [a,b] of segments){const p=projectImagePoint(a,viewer,width,height),q=projectImagePoint(b,viewer,width,height);if([...p,...q].every(Number.isFinite))parts.push(`<path d="M${p.map(n=>n.toFixed(3)).join(' ')}L${q.map(n=>n.toFixed(3)).join(' ')}"/>`);}
   parts.push('</g></svg>');return parts.join('\n');
 }
-export function downloadImageBlob(blob,filename,doc=document) {
+export async function downloadImageBlob(blob,filename,doc=document) {
+  if(isMobileApp()){await mobileShareBlob(blob,filename);return;}
   const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 export function canvasImageBlob(canvas,format,quality=.92) {
@@ -92,7 +94,7 @@ export function mountImageExport({root=document,getViewers,pauseSync=callback=>c
     let w=Number(width.value),h=Number(height.value);
     if(quickMode){pauseSync(()=>list.forEach(v=>v.render()));w=list.reduce((sum,v)=>sum+v.canvas.width,0);h=Math.max(...list.map(v=>v.canvas.height));}
     validateImageSize(w,h);if(Math.floor(w/list.length)<16)throw Error(t('每个视窗宽度至少为 16 像素。'));
-    if(fmt==='svg'){if(list.length!==1)throw Error(t('SVG 请指定单个视窗。'));downloadImageBlob(new Blob([wireframeSVG(list[0],w,h,{transparent:transparency.checked})],{type:'image/svg+xml'}),'BuildingWebViewer.svg',doc);return;}
+    if(fmt==='svg'){if(list.length!==1)throw Error(t('SVG 请指定单个视窗。'));await downloadImageBlob(new Blob([wireframeSVG(list[0],w,h,{transparent:transparency.checked})],{type:'image/svg+xml'}),'BuildingWebViewer.svg',doc);return;}
     const q=Number(quality.value);if(!quickMode&&fmt!=='png'&&(!Number.isFinite(q)||q<1||q>100))throw Error(t('压缩质量需在 1–100 之间。'));
     const output=doc.createElement('canvas');output.width=w;output.height=h;const ctx=output.getContext('2d');
     const transparent=!quickMode&&transparency.checked&&fmt!=='jpeg';if(!transparent){ctx.fillStyle='#f3f5f6';ctx.fillRect(0,0,w,h);}
@@ -105,7 +107,7 @@ export function mountImageExport({root=document,getViewers,pauseSync=callback=>c
       }
       if(!quickMode&&guides.value==='overlays'){const scale=ph/Math.max(1,viewer.canvas.clientHeight);ctx.save();ctx.beginPath();ctx.rect(x,0,pw,ph);ctx.clip();ctx.translate(x,0);drawSceneGuides(ctx,viewer,Math.min(pw,420*scale),ph,scale);ctx.restore();}x+=pw;
     }
-    const blob=await canvasImageBlob(output,fmt,q/100);downloadImageBlob(blob,`BuildingWebViewer-${w}x${h}.${fmt==='jpeg'?'jpg':fmt}`,doc);
+    const blob=await canvasImageBlob(output,fmt,q/100);await downloadImageBlob(blob,`BuildingWebViewer-${w}x${h}.${fmt==='jpeg'?'jpg':fmt}`,doc);
   }
   const run=async quickMode=>{submit.disabled=true;if(quick)quick.disabled=true;status.textContent=t('正在导出…');try{await save(quickMode);status.textContent=t('图片已导出。');}catch(error){status.textContent=error.message;}finally{submit.disabled=false;if(quick)quick.disabled=!visible().some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0);}};
   submit.onclick=()=>run(false);if(quick)quick.onclick=()=>run(true);

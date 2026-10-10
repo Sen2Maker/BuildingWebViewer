@@ -36,6 +36,7 @@ export function mountPaletteControls({container, onChange = () => {}, getOptions
     message.hidden = true; state = {palette: select.value, reverse: reverse.checked, range: auto.checked ? null : {min: low.valueAsNumber, max: high.valueAsNumber}};
     refresh(); onChange({...state});
   };
+  [select,reverse,auto,low,high].forEach((input,index)=>{input.dataset.mobileKey='palette:'+index;});
   for (const input of [select, reverse, auto, low, high]) input.addEventListener('change', change);
   for (const input of [low, high]) input.addEventListener('input', change);
   refresh();

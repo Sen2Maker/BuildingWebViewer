@@ -6,7 +6,7 @@ export function mountPresentationControls({root=document,getViewers,pauseSync=ca
   const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
   section.append(el('h3','渲染样式'));const status=el('p');status.className='presentation-help';status.setAttribute('role','status');
   function field(name,label,kind,values){
-    const row=el('label',label),input=el(kind==='select'?'select':'input');input.setAttribute('aria-label',t(label));
+    const row=el('label',label),input=el(kind==='select'?'select':'input');input.setAttribute('aria-label',t(label));input.dataset.mobileKey='presentation:'+name;
     const initial=currentPresentation()[name];
     if(kind==='select'){for(const [value,text] of values){const o=el('option',text);o.value=value;input.append(o);}input.value=initial;}
     else if(kind==='checkbox'){input.type='checkbox';input.checked=initial;}

@@ -1,3 +1,5 @@
+import { mountMobileProject, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs, isMobileApp, nativeExportWriter, NativeProjectFile } from '../shared/mobile-project.js';
+import { writePointExport } from '../pointcloud/point-export.js';
 import { archiveImportQueue } from '../shared/zip-import.js';
 import { mountCloudColors } from '../shared/cloud-colors.js';
 import { initializeLocale } from '../shared/i18n.js';
@@ -33,6 +35,7 @@ initializeLocale();
   let currentPointName = '', messages = [], loadController = null;
   const cached = new CloudFileCache({readCloud: (file, options) => file.generatedCloud ? samplePointCloud(file.generatedCloud, options.maxPoints) : readPointCloud(file, options)}), selectedCloudEntries = new Set();
   let columnsControls = null, processingControls = null, displayedItems = [], resultSerial = 0;
+  let mobileSession=null,mobileKnownIds=[];
   let cameraControls = null, paletteControls = null, cloudColors = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
   const pointProject = new ViewerProject(); let projectControls = null;
@@ -192,7 +195,7 @@ initializeLocale();
       $('compare-mode').checked = false; $('compare-mode').disabled = entry.wires.length < 2; $('compare-count').value = '2';
       $('compare-count').querySelector('option[value="3"]').disabled = entry.wires.length < 3; setComparisonUI();
     }
-    list(); load();
+    list(); return load();
   }
   function selectFiles() {
     if (!active) return { cloud: null, wires: [] };
@@ -364,7 +367,7 @@ initializeLocale();
       $('empty-state').hidden = Boolean(loaded.cloud); $('screenshot').disabled = !loaded.cloud;
       if (failures.length) error(failures.join('；'));
     } catch (cause) { if (version === revision) error(t("显示失败：{0}", [cause.message])); }
-    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false); } }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false);mobileSession?.schedule(); } }
   }
 
   function normalizeBounds(value) {
@@ -457,7 +460,7 @@ initializeLocale();
       $('empty-state').hidden = hasLoaded; $('screenshot').disabled = !hasLoaded;
       if (failures.length) error(failures.join('；'));
     } catch (cause) { error(t("显示失败：{0}", [cause.message])); }
-    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false); } }
+    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false);mobileSession?.schedule(); } }
   }
   function columnFieldLabel(key) {
     if(isWire)return fieldLabel(key);
@@ -617,8 +620,13 @@ initializeLocale();
       addResults: async results => {
         selectedCloudEntries.clear();
         for (const result of results) {
-          const serial = ++resultSerial, file = {name: result.name, size: cached.bytes(result.cloud), generatedCloud: result.cloud};
-          const entry = {id: `${result.name} #${serial}`, key: `generated:${serial}`, file};
+          const serial = ++resultSerial;let file = {name: result.name, size: cached.bytes(result.cloud), generatedCloud: result.cloud},entryId=`${result.name} #${serial}`;
+          if(isMobileApp()){
+            const id=new URL(location.href).searchParams.get('project'),path=`Processed/${Date.now()}-${serial}.ply`,writer=await nativeExportWriter(path.split('/').at(-1));
+            try{await writePointExport([{name:result.name,cloud:result.cloud}],{format:'ply',sourceIds:false,write:writer.write});
+            const record=await writer.commit(id,path);file=new NativeProjectFile(id,record);entryId=path;mobileKnownIds.push(entryId);}catch(error){await writer.abort().catch(()=>{});throw error;}
+          }
+          const entry = {id:entryId,key:`generated:${serial}`,file};
           entry.group = result.source?.group || ''; entry.treeName = t("{0} · 特征 #{1}", [result.source?.treeName || result.name, serial]);
           if (entry.group) pointProject.groups.get(entry.group).collapsed = false;
           entries.push(entry); selectedCloudEntries.add(entry); lastCloudEntry = entry;
@@ -651,5 +659,19 @@ initializeLocale();
     }});
     if (isWire) mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name) || pointExtension.test(name), onFiles: importRecords});
     clear(); update();
+    mountMobileProject({receive:importRecords,getState:()=>({
+      tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...selectedCloudEntries].map(e=>e.id),active:active?.id,cloudMode,
+      inputs:captureMobileInputs(),wire:isWire?Object.fromEntries(['wire-file','wire-file-2','wire-file-3','cloud-file','compare-mode','compare-count'].map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value])):null,camera:(loaded.cloud||loaded.wire)?cameraControls?.capture():null,
+    }),restoreState:async state=>{
+      mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...entries.map(e=>e.id)])];
+      if(state){entries=restoreProjectTree(pointProject,entries,state.tree);cloudMode=state.cloudMode==='single'?'single':'multiple';
+        const limit=state.inputs?.find(x=>x.id==='point-limit');if(limit)$('point-limit').value=limit.value;
+        if(isWire){const entry=entries.find(e=>e.id===state.active);if(entry){await choose(entry);for(const [id,value] of Object.entries(state.wire||{})){if($(id).type==='checkbox')$(id).checked=Boolean(value);else $(id).value=String(value);}setComparisonUI();await load();}}else{
+          selectedCloudEntries.clear();for(const id of state.selected||[]){const entry=entries.find(e=>e.id===id);if(entry)selectedCloudEntries.add(entry);}if(selectedCloudEntries.size)await loadCloudSelection();
+        }
+        restoreMobileInputs(state.inputs);update();if(state.camera&&(loaded.cloud||loaded.wire))cameraControls.restore(state.camera,{checkScene:false});
+      }
+      list();$('source-note').textContent=t('项目自动保存在此设备');
+    },onBackground:()=>{processingControls?.cancel();for(const [file] of cached.records)if(!cached.active.has(file))cached.forget(file);}}).then(session=>{mobileSession=session;});
   } catch (cause) { error(cause.message); }
 })();

@@ -1,3 +1,4 @@
+import { isMobileApp, nativeExportWriter } from '../shared/mobile-project.js';
 import { t, localizeHTML } from '../shared/i18n.js';
 import { runPointFeatures, derivedPointCloud } from './point-operations.js';
 import { pointExportSchema, writePointExport } from './point-export.js';
@@ -66,7 +67,7 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
     }
     const format = el('process-format').value, sourceIds = el('process-source').checked;
     const job = new AbortController(); controller = job; busy(true); status(t('准备处理…'));
-    let stream = null;
+    let stream = null, nativeWriter = null;
     try {
       // The picker must be invoked during the original button gesture, before any reads.
       let handle = null;
@@ -86,23 +87,25 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
           job.signal.throwIfAborted();
           results.push({source: selected[index], name: t("{0} · 特征（{1}）", [item.name, scopeLabel]), cloud: derivedPointCloud(item.cloud, result, parameters, scopeLabel)});
         }
-        controller = null; busy(false);
         await addResults(results);
         status(t("完成：{0} 个独立结果，{1} 个有效邻域。已选中新结果，可调整着色并导出。", [results.length, results.reduce((n, r) => n + r.cloud.processing.valid, 0).toLocaleString()]));
       } else {
         const schema = pointExportSchema(items, {sourceIds}), limit = 256 * 1024 * 1024;
         // A Blob download needs all output bytes in memory. Bound it before allocating.
         const estimate = schema.count * schema.properties.length * (format === 'ply' ? 8 : 25);
-        if (!handle && estimate > limit) throw Error(t('预计导出文件较大。请在支持直接保存文件的 Chrome / Edge HTTPS 或 localhost 页面中导出，或选择“当前显示点”减小数据量。'));
-        if (handle) stream = await handle.createWritable();
+        if (!handle && !isMobileApp() && estimate > limit) throw Error(t('预计导出文件较大。请在支持直接保存文件的 Chrome / Edge HTTPS 或 localhost 页面中导出，或选择“当前显示点”减小数据量。'));
+        if (isMobileApp()) nativeWriter = await nativeExportWriter(filename);
+        else if (handle) stream = await handle.createWritable();
         job.signal.throwIfAborted();
         const chunks = []; let bytes = 0;
         await writePointExport(items, {format, sourceIds, signal: job.signal, write: async chunk => {
-          if (stream) await stream.write(chunk);
+          if (nativeWriter) await nativeWriter.write(chunk);
+          else if (stream) await stream.write(chunk);
           else { bytes += chunk.byteLength; if (bytes > limit) throw Error(t('下载缓冲超过 256 MB，请使用支持直接保存文件的浏览器。')); chunks.push(chunk); }
         }, onProgress: ({done, total}) => status(t("写出 {0} / {1} 点 · {2}", [done.toLocaleString(), total.toLocaleString(), scopeLabel]), done / total)});
         job.signal.throwIfAborted();
-        if (stream) { await stream.close(); stream = null; }
+        if (nativeWriter) { await nativeWriter.share(format === 'ply' ? 'application/octet-stream' : 'text/plain'); nativeWriter = null; }
+        else if (stream) { await stream.close(); stream = null; }
         else {
           const url = URL.createObjectURL(new Blob(chunks, {type: format === 'ply' ? 'application/octet-stream' : 'text/plain'}));
           const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
@@ -111,6 +114,7 @@ export function mountPointProcessing({container, getSelection, readCloud, addRes
         status(t("{0}：{1} · {2} 点 · {3} 个来源。", [handle ? t('已保存') : t('已发起下载'), filename, schema.count.toLocaleString(), items.length]));
       }
     } catch (error) {
+      if (nativeWriter) { try { await nativeWriter.abort(); } catch {} }
       if (stream) { try { await stream.abort(); } catch {} }
       if (controller === job) status(error.name === 'AbortError' ? t('操作已取消。') : t("操作失败：{0}", [error.message]));
     } finally { if (controller === job) { controller = null; busy(false); } }

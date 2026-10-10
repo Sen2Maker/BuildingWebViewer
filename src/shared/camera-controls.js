@@ -1,3 +1,4 @@
+import { isMobileApp, mobileShareBlob } from './mobile-project.js';
 import { t } from './i18n.js';
 /** Shared orthographic camera snapshots and an optional, local-only control panel. */
 const CAMERA_FORMAT = 'BuildingWebViewer.camera';
@@ -376,12 +377,13 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
     bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; bookmarkName.value = ''; updateBookmarks();
     if (persist()) message(t('书签已删除。'));
   });
-  exportButton.addEventListener('click', () => attempt(() => {
+  exportButton.addEventListener('click', async () => { try {
     syncStored();
     const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
+    if (isMobileApp()) { await mobileShareBlob(blob, `BuildingWebViewer-camera-${space}.json`); message(t('相机书签 JSON 已导出，不含模型数据。')); return; }
     const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
     win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message(t('相机书签 JSON 已导出，不含模型数据。'));
-  }));
+  } catch(error) { message(error.message, true); } });
   importButton.addEventListener('click', () => importInput.click());
   importInput.addEventListener('change', async () => {
     const file = importInput.files?.[0]; importInput.value = ''; if (!file) return;

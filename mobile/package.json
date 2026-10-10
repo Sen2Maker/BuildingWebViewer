@@ -1,0 +1,9 @@
+{
+  "name": "building-web-viewer-mobile",
+  "private": true,
+  "type": "module",
+  "scripts": {"sync": "cap sync android", "open": "cap open android"},
+  "dependencies": {"@capacitor/core": "8.5.3", "@capacitor/android": "8.5.3"},
+  "devDependencies": {"@capacitor/cli": "8.5.3"},
+  "engines": {"node": ">=22"}
+}

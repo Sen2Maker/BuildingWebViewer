@@ -64,3 +64,5 @@ This updates the browser bundles and creates `_site/` for static hosting and `di
 See [design notes](docs/DESIGN_NOTES.md) (Chinese) for implementation details and references.
 
 **Versioning**: `v1.0.0` is the first stable baseline. Future changes are tested, recorded in the [changelog](CHANGELOG.md) and reported before uploading under a release instruction. Only stable Releases update the live website. [Release guide](docs/RELEASING.md)
+
+[Android preview, installation and builds](docs/ANDROID.md)
