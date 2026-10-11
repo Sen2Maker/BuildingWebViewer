@@ -2,9 +2,34 @@
 (() => {
 'use strict';
 
+// Source: src/shared/autosave.js
+/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
+function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
+  let timer=null, suspended=false;
+  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
+  const flush=()=>{cancel();return Promise.resolve().then(save).then(result=>{if(timer!==null)onDirty();return result;});};
+  const schedule=()=>{if(suspended||timer!==null)return;onDirty();timer=setTimer(()=>{timer=null;flush().catch(()=>schedule());},delay);};
+  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;},dispose:cancel};
+}
+
+
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  "LOD 模型": "LOD models",
+  "建筑线框": "Wireframes",
+  "待自动保存": "Pending autosave",
+  "文件保存在本机": "Files stay on this device",
+  "帮助与维护": "Help & maintenance",
+  "启动诊断": "Diagnostics",
+  "项目管理": "Manage project",
+  "本地离线可用": "Available offline",
+  "支持常见压缩包；不支持分卷与密码。": "Common archives supported; no split or password archives.",
+  "卸载前请导出项目备份。": "Back up projects before uninstalling.",
+  "第三方声明": "Licenses",
+  "项目链接": "Project links",
+  "手机默认轻量查看；完整模式可调整球谐和显示数量。编辑与导出位于编辑标签。": "Mobile defaults to light viewing. Full mode enables SH and display count controls. Editing and export are in the Edit tab.",
+
   '浏览': 'Browse',
   'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',
   '发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。': 'Feature update v{0} is available. Download for next launch? Projects and data will be kept.',
@@ -1286,6 +1311,7 @@ function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
 // Source: src/shared/mobile-project.js
 
 
+
 let mobileProjectPlugin;
 function isMobileApp(){return Boolean(globalThis.Capacitor?.isNativePlatform?.());}
 function mobileProjects(){if(!isMobileApp())return null;return mobileProjectPlugin ||= globalThis.Capacitor.registerPlugin('BWVProjects');}
@@ -1324,7 +1350,7 @@ function createMobileSaver({read,write,status=()=>{}}){
   let pending=null,draining=null,last='';
   return {flush(){
     let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
-    if(!draining&&text===last)return Promise.resolve();
+    if(!draining&&text===last){status('saved');return Promise.resolve();}
     pending={state,text};
     if(draining)return draining;
     draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
@@ -1337,10 +1363,10 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
   const id=new URL(root.location.href).searchParams.get('project');
   if(!id){root.location.replace('assets/mobile/index.html');return null;}
   const status=root.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');root.querySelector('header').append(status);
-  let ready=false,timer=null;
+  let ready=false;
   const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
-  const flush=()=>{clearTimeout(timer);timer=null;return ready?saver.flush():Promise.resolve();};
-  const schedule=()=>{if(!ready)return;clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
+  const autosave=createAutosave({save:()=>ready?saver.flush():Promise.resolve(),onDirty:()=>{status.textContent=t('待自动保存');}});
+  const flush=autosave.flush, schedule=()=>{if(ready)autosave.schedule();};
   const goHome=createMobileHomeNavigation({flush,navigate:url=>root.location.replace(url),language:()=>root.documentElement.lang});
   const home=root.querySelector('.back-home');
   if(home){home.href='assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
@@ -1348,7 +1374,7 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     // Existing viewer Escape handlers close open settings/menus before leaving the project.
     const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});
     (root.activeElement||root).dispatchEvent(event);
-    if(!event.defaultPrevented)goHome().catch(()=>{});
+    if(!event.defaultPrevented)goHome().catch(()=>{});else flush().catch(()=>{});
   };
 
   try{
@@ -1359,9 +1385,10 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
-    const background=()=>{flush().catch(()=>{});onBackground();};
-    root.addEventListener('visibilitychange',()=>root.hidden?background():onForeground());
-    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',()=>{onForeground();flush().catch(()=>{});});globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    const background=()=>{autosave.pause().catch(()=>{});onBackground();};
+    const foreground=()=>{autosave.resume();onForeground();};
+    root.addEventListener('visibilitychange',()=>root.hidden?background():foreground());
+    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
     await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
     // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
     const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});
@@ -1386,24 +1413,25 @@ async function nativeExportWriter(name){
 // Source: src/shared/workspace-session.js
 
 
+
 /** Native project lifecycle for editors with binary snapshots. Browser sessions remain local. */
 async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
   const api=mobileProjects();if(!api)return null;
   const id=new URL(location.href).searchParams.get('project');
   if(!id){location.replace('assets/mobile/index.html');return {redirecting:true};}
   const status=document.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');document.querySelector('header').append(status);
-  const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':'保存失败');onStatus(kind,error);};
+  const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':kind==='dirty'?'Pending autosave':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':kind==='dirty'?'待自动保存':'保存失败');onStatus(kind,error);};
   const project=await api.getProject({id});
   const state=project.states?.[tool]||null;
   const snapshotRecord=project.files.find(f=>f.key===state?.snapshotKey&&f.path===`.bwv/${tool}.snapshot`);
   if(state?.snapshotKey&&!snapshotRecord)throw Error('项目快照丢失 / Project snapshot is missing');
   const records=project.files.filter(f=>!f.path.startsWith('.bwv/')).map(record=>({file:new NativeProjectFile(id,record),path:record.path}));
-  await restore({state,records,snapshot:snapshotRecord?new NativeProjectFile(id,snapshotRecord):null});
-  let savedRevision=null,snapshotKey=state?.snapshotKey||null,lastState='',draining=null,queued=false,timer=null;
-  // A newly imported workspace has no committed snapshot yet.
-  if(!snapshotKey)savedRevision=null;
+  const restored=await restore({state,records,snapshot:snapshotRecord?new NativeProjectFile(id,snapshotRecord):null});
+  let savedRevision=null,snapshotKey=state?.snapshotKey||null,lastState='',draining=null,queued=false;
+  // Restored snapshots already match the editor; reopening does not rewrite binary data.
+  if(snapshotKey&&restored?.snapshotUnchanged){savedRevision=capture().revision;const {snapshotKey:ignored,...previous}=state;lastState=JSON.stringify(previous);}
   async function flush(){
-    clearTimeout(timer);timer=null;queued=true;if(draining)return draining;
+    queued=true;if(draining)return draining;
     draining=Promise.resolve().then(async()=>{try{while(queued){queued=false;const current=capture(),stateText=JSON.stringify(current.state);
       if(current.revision!==savedRevision||!snapshotKey){
         report('saving');const blob=current.blob();const writer=await nativeExportWriter(`${tool}.snapshot`);
@@ -1413,15 +1441,17 @@ async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLea
       }else if(stateText!==lastState){report('saving');await api.saveState({id,tool,state:{...current.state,snapshotKey}});lastState=stateText;}
     }report('saved');}catch(error){report('error',error);throw error;}finally{draining=null;}});return draining;
   }
-  const schedule=()=>{clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
-  const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await flush();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
+  const autosave=createAutosave({save:flush,onDirty:()=>report('dirty')});
+  const schedule=autosave.schedule, saveNow=autosave.flush;
+  const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await saveNow();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
   const link=document.querySelector('.back-home');if(link){link.href='assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
-  globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});};
-  const background=()=>{flush().catch(()=>{});onBackground();};
-  document.addEventListener('visibilitychange',()=>document.hidden?background():onForeground());
-  globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',onForeground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
-  for(const event of ['pointerup','keyup','change','wheel'])document.addEventListener(event,schedule,{passive:true});
-  return {id,records,flush,schedule,async pick(){await flush();const result=await api.pickFiles({id});if(!result.cancelled)location.reload();},async home(){return home();}};
+  globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});else saveNow().catch(()=>{});};
+  const background=()=>{autosave.pause().catch(()=>{});onBackground();};
+  const foreground=()=>{autosave.resume();onForeground();};
+  document.addEventListener('visibilitychange',()=>document.hidden?background():foreground());
+  globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
+  for(const event of ['pointerdown','pointerup','keydown','keyup','input','change','wheel'])document.addEventListener(event,schedule,{passive:true});
+  return {id,records,flush:saveNow,schedule,async pick(){await saveNow();const result=await api.pickFiles({id});if(!result.cancelled)location.reload();},async home(){return home();}};
 }
 
 
@@ -1953,10 +1983,11 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
 
 
 // Source: src/gaussian/project-state.js
+function gsEntryFlags(entry){return entry.parsed?.preview?entry.savedFlags:(entry.parsed?.editFlags||entry.savedFlags);}
 /** Native Gaussian edits reference immutable original PLY files; only one flag byte per point is saved. */
 function gsProjectBlob(entries){
   const records=[],blocks=[];let offset=0;
-  for(const e of entries){const flags=e.parsed?.editFlags||e.savedFlags;if(!flags)continue;records.push({id:e.id,count:flags.length,offset});blocks.push(flags.slice());offset+=flags.length;}
+  for(const e of entries){const flags=gsEntryFlags(e);if(!flags)continue;records.push({id:e.id,count:flags.length,offset});blocks.push(flags.slice());offset+=flags.length;}
   const header=new TextEncoder().encode(JSON.stringify({format:'BuildingWebViewer.gaussian-edits',version:1,records}));const length=new Uint8Array(4);new DataView(length.buffer).setUint32(0,header.length,true);return new Blob([length,header,...blocks]);
 }
 async function gsReadProjectBlob(file){
@@ -2847,11 +2878,14 @@ class GaussianEdits {
   write(command,key){for(const c of command.changes)for(let j=0;j<c.ids.length;j++)c.model.editFlags[c.ids[j]]=c[key][j];}
   undo(){const c=this.undoStack.pop();if(!c)return;this.write(c,'before');this.redoStack.push(c);this.onChange();}
   redo(){const c=this.redoStack.pop();if(!c)return;this.write(c,'after');this.undoStack.push(c);this.onChange();}
+  // History only needs flags. Drop geometry references when switching to a light preview.
+  releaseGeometry(model){for(const command of [...this.undoStack,...this.redoStack])for(const c of command.changes)if(c.model===model)c.model={editFlags:model.editFlags};}
   clear(){this.undoStack=[];this.redoStack=[];this.bytes=0;}
 }
 function gsEditStats(models){const s={total:0,selected:0,hidden:0,deleted:0};for(const m of models){s.total+=m.count;for(const f of m.editFlags||[]){if(f&GS_DELETED)s.deleted++;else if(f&GS_HIDDEN)s.hidden++;else if(f&GS_SELECTED)s.selected++;}}return s;}
 // Keep the source property layout and raw values: no sigmoid/log/quaternion round-trip loss.
 function gsExportPly(model,{selectedOnly=false,includeHidden=false}={}) {
+  if(model.preview)throw Error('请先加载完整数据再编辑或导出 / Load full data before editing or exporting');
   if(!model.source)throw Error('Missing original PLY records');
   const {bytes,headerEnd,stride,header}=model.source, flags=model.editFlags||new Uint8Array(model.count);
   const ids=[];for(let i=0;i<model.count;i++){const f=flags[i];if(!(f&GS_DELETED)&&(includeHidden||!(f&GS_HIDDEN))&&(!selectedOnly||(f&GS_SELECTED)))ids.push(i);}
@@ -2870,11 +2904,22 @@ function gsExportPly(model,{selectedOnly=false,includeHidden=false}={}) {
 
 
 
-function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{}}) {
+function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{},loadFull=async()=>{}}) {
   const en=document.documentElement.lang==='en', text=(zh,eng)=>en?eng:zh;
   const make=(tag,label,cls)=>{const el=document.createElement(tag);if(label)el.textContent=label;if(cls)el.className=cls;return el;};
   const tools=make('div',null,'gs-edit-toolbar'),stats=make('span',null,'gs-edit-status');
-  document.querySelector('.viewer-toolbar').after(tools);
+  const section=make('section');section.id='settings-panel-edit';section.dataset.settingsPanel='edit';section.hidden=true;section.setAttribute('role','tabpanel');section.setAttribute('aria-labelledby','settings-tab-edit');
+  const tab=make('button',text('编辑','Edit'));tab.id='settings-tab-edit';tab.type='button';tab.dataset.settingsTab='edit';tab.setAttribute('role','tab');tab.setAttribute('aria-controls',section.id);tab.setAttribute('aria-selected','false');tab.tabIndex=-1;document.querySelector('.inspector-tabs').append(tab);
+  document.getElementById('settings-panel-data').parentElement.append(section);
+  const launch=make('button',text('编辑','Edit'));launch.type='button';launch.dataset.openSettings='edit';launch.setAttribute('aria-controls','viewer-inspector');launch.setAttribute('aria-expanded','false');document.querySelector('.inspector-shortcuts').append(launch);
+  const enable=make('button',text('加载完整数据以修订','Load full data to edit')),note=make('p',text('手机默认先查看。编辑将加载完整数据，可能需要更多时间和内存。','Mobile opens in viewing mode. Editing loads full data and needs more time and memory.'),'presentation-help');enable.type='button';enable.onclick=()=>loadFull().catch(e=>onError(e.message));
+  const fieldset=make('fieldset',null,'gs-edit-fields');section.append(note,enable,fieldset);fieldset.append(tools);
+  const activeTool=make('button',null,'gs-active-edit');activeTool.type='button';activeTool.hidden=true;document.querySelector('.viewer-toolbar').append(activeTool);
+  let loading=false;
+  const editable=()=>!loading&&!getModels().some(m=>m.preview);
+  const stopEditing=()=>{viewer.editMode='orbit';viewer.canvas.style.cursor='grab';activeTool.hidden=true;if(gesture&&viewer.canvas.hasPointerCapture(gesture.id))viewer.canvas.releasePointerCapture(gesture.id);gesture=null;for(const [m,b]of modeButtons){b.classList.toggle('active',m==='orbit');b.setAttribute('aria-pressed',String(m==='orbit'));}};
+  activeTool.onclick=stopEditing;
+  document.addEventListener('bwv-inspector-change',e=>{if(e.detail.open&&e.detail.tab!=='edit')stopEditing();});
   const statsLine=make('div',null,'gs-edit-stats');statsLine.append(stats);tools.after(statsLine);
   const edits=new GaussianEdits(()=>{viewer.syncFlags();refresh();onChange();});
   let busy=false,gesture=null,revision=0;
@@ -2882,7 +2927,7 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{}}
   const modes=make('div',null,'segmented');tools.append(modes);
   const modeButtons=[];
   for(const [mode,zh,eng]of[['orbit','浏览','Navigate'],['rectangle','框选','Rectangle'],['brush','画刷','Brush']]){
-    const b=button(modes,zh,eng,()=>{viewer.stopNavigation();viewer.editMode=mode;viewer.canvas.style.cursor=mode==='orbit'?'grab':'crosshair';for(const [m,el]of modeButtons){el.classList.toggle('active',m===mode);el.setAttribute('aria-pressed',String(m===mode));}});modeButtons.push([mode,b]);b.setAttribute('aria-pressed',String(mode==='orbit'));b.classList.toggle('active',mode==='orbit');
+    const b=button(modes,zh,eng,()=>{viewer.stopNavigation();viewer.editMode=mode;activeTool.hidden=mode==='orbit';activeTool.textContent=text(zh+'中 · 结束',eng+' · Done');viewer.canvas.style.cursor=mode==='orbit'?'grab':'crosshair';for(const [m,el]of modeButtons){el.classList.toggle('active',m===mode);el.setAttribute('aria-pressed',String(m===mode));}});modeButtons.push([mode,b]);b.setAttribute('aria-pressed',String(mode==='orbit'));b.classList.toggle('active',mode==='orbit');
   }
   const brushLabel=make('label',text('画刷半径','Brush radius'));const radius=make('input');radius.type='range';radius.min=5;radius.max=120;radius.value=30;radius.setAttribute('aria-label',text('画刷半径','Brush radius'));const radiusValue=make('output','30 px');radius.oninput=()=>radiusValue.textContent=radius.value+' px';brushLabel.append(radius,radiusValue);tools.append(brushLabel);
   button(tools,'全选','Select all',()=>act('all'));button(tools,'清空','Clear',()=>act('clear'));button(tools,'反选','Invert',()=>act('invert'));
@@ -2892,7 +2937,7 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{}}
   const hint=make('span',text('按高斯中心穿透选择 · Shift 添加 · Ctrl/Cmd 减选 · Alt 拖动浏览','Through-selection of Gaussian centers · Shift add · Ctrl/Cmd subtract · Alt drag to navigate'),'gs-edit-hint');statsLine.append(hint);
   const overlay=make('canvas',null,'gs-selection-overlay');viewer.canvas.parentElement.append(overlay);
   const ctx=overlay.getContext('2d');
-  function refresh(){const s=gsEditStats(getModels());stats.textContent=text(`选择 ${s.selected.toLocaleString()} · 隐藏 ${s.hidden.toLocaleString()} · 删除 ${s.deleted.toLocaleString()}`,`Selected ${s.selected.toLocaleString()} · Hidden ${s.hidden.toLocaleString()} · Deleted ${s.deleted.toLocaleString()}`);undo.disabled=!edits.undoStack.length||busy;redo.disabled=!edits.redoStack.length||busy;}
+  function refresh(){fieldset.disabled=!editable();enable.hidden=editable();enable.disabled=loading;const s=gsEditStats(getModels());stats.textContent=text(`选择 ${s.selected.toLocaleString()} · 隐藏 ${s.hidden.toLocaleString()} · 删除 ${s.deleted.toLocaleString()}`,`Selected ${s.selected.toLocaleString()} · Hidden ${s.hidden.toLocaleString()} · Deleted ${s.deleted.toLocaleString()}`);undo.disabled=!edits.undoStack.length||busy;redo.disabled=!edits.redoStack.length||busy;}
   function act(action){const f={all:a=>(a&6)?a:a|1,clear:a=>a&~1,invert:a=>(a&6)?a:a^1,hide:a=>(a&1)?(a|2)&~1:a,unhide:a=>a&~2,delete:a=>(a&1)?(a|4)&~1:a}[action];edits.apply(getModels(),f);}
   function local(event){const r=viewer.canvas.getBoundingClientRect();return [event.clientX-r.left,event.clientY-r.top];}
   function paint(){const r=viewer.canvas.getBoundingClientRect();overlay.width=r.width;overlay.height=r.height;ctx.clearRect(0,0,r.width,r.height);if(!gesture)return;ctx.strokeStyle='#f1b76b';ctx.fillStyle='#f1b76b22';ctx.lineWidth=1.5;const p=gesture.points;if(gesture.mode==='rectangle'){const a=p[0],b=p[p.length-1];ctx.fillRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);}else{ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#f1b76b44';ctx.lineWidth=gesture.radius*2;ctx.beginPath();p.forEach((v,i)=>i?ctx.lineTo(...v):ctx.moveTo(...v));if(p.length===1)ctx.lineTo(p[0][0]+.01,p[0][1]);ctx.stroke();ctx.lineWidth=1;ctx.strokeStyle='#e4a954';ctx.beginPath();ctx.arc(...p[p.length-1],gesture.radius,0,Math.PI*2);ctx.stroke();}}
@@ -2912,13 +2957,13 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{}}
     if(serial===revision)edits.apply(models,(a,i,m)=>{if(a&6)return a;const hit=hits.get(m)[i];return g.subtract?(hit?a&~1:a):g.add?(hit?a|1:a):(hit?a|1:a&~1);});
     }catch(e){onError(e.message);}finally{busy=false;onStatus('');refresh();}
   }
-  const down=e=>{if(viewer.fly?.active||!getModels().length||viewer.editMode==='orbit'||e.altKey||e.button!==0||busy)return;e.preventDefault();e.stopImmediatePropagation();viewer.canvas.setPointerCapture(e.pointerId);gesture={id:e.pointerId,mode:viewer.editMode,points:[local(e)],radius:Number(radius.value),add:e.shiftKey,subtract:e.ctrlKey||e.metaKey};paint();};
+  const down=e=>{if(!editable()||viewer.fly?.active||!getModels().length||viewer.editMode==='orbit'||e.altKey||e.button!==0||busy)return;e.preventDefault();e.stopImmediatePropagation();viewer.canvas.setPointerCapture(e.pointerId);gesture={id:e.pointerId,mode:viewer.editMode,points:[local(e)],radius:Number(radius.value),add:e.shiftKey,subtract:e.ctrlKey||e.metaKey};paint();};
   const move=e=>{if(!gesture||gesture.id!==e.pointerId)return;e.preventDefault();e.stopImmediatePropagation();const p=local(e),last=gesture.points[gesture.points.length-1];if(gesture.mode==='rectangle')gesture.points[1]=p;else if(Math.hypot(p[0]-last[0],p[1]-last[1])>4)gesture.points.push(p);paint();};
   const up=e=>{if(!gesture||gesture.id!==e.pointerId)return;e.preventDefault();e.stopImmediatePropagation();const g=gesture;gesture=null;paint();if(viewer.canvas.hasPointerCapture(e.pointerId))viewer.canvas.releasePointerCapture(e.pointerId);if(e.type==='pointerup')select(g);};
   viewer.canvas.addEventListener('pointerdown',down,true);viewer.canvas.addEventListener('pointermove',move,true);for(const name of['pointerup','pointercancel'])viewer.canvas.addEventListener(name,up,true);
-  document.addEventListener('keydown',e=>{if(viewer.fly?.active||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||busy)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?edits.redo():edits.undo();}else if(cmd&&e.key.toLowerCase()==='y'){e.preventDefault();edits.redo();}else if(e.key==='Delete'){e.preventDefault();act('delete');}else if(e.key==='Escape'){if(gesture&&viewer.canvas.hasPointerCapture(gesture.id))viewer.canvas.releasePointerCapture(gesture.id);gesture=null;paint();}});
+  document.addEventListener('keydown',e=>{if(!editable()||viewer.fly?.active||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||busy)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?edits.redo():edits.undo();}else if(cmd&&e.key.toLowerCase()==='y'){e.preventDefault();edits.redo();}else if(e.key==='Delete'){e.preventDefault();act('delete');}else if(e.key==='Escape'){if(gesture&&viewer.canvas.hasPointerCapture(gesture.id))viewer.canvas.releasePointerCapture(gesture.id);gesture=null;paint();if(viewer.editMode!=='orbit'){stopEditing();e.preventDefault();}}});
   // Explicit export choices: never silently export a reduced viewport sample.
-  const panel=document.querySelector('#settings-panel-data .inspector-section');
+  const panel=fieldset;
   const exportHeading=make('h3',text('高斯导出','Gaussian export'));panel.append(exportHeading);
   const scope=make('select');scope.setAttribute('aria-label',text('导出范围','Export scope'));
   for(const [value,zh,eng]of[['visible','可见且未删除的高斯','Visible, undeleted Gaussians'],['selected','仅选中的高斯','Selected Gaussians only'],['all','所有未删除高斯（含隐藏）','All undeleted, including hidden']]){const o=make('option',text(zh,eng));o.value=value;scope.append(o);}panel.append(scope);
@@ -2951,7 +2996,7 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{}}
   button(bookPanel,'保存当前视角','Save view',()=>{if(bookmarks.length>=50)throw Error('最多 50 个书签 / At most 50 bookmarks');bookmarks.push({name:bookName.value.trim()||text('视角 ','View ')+(bookmarks.length+1),camera:JSON.parse(JSON.stringify(viewer.camera)),projection:viewer.projection,orbitLens:viewer.orbitLens?{...viewer.orbitLens}:null,fov:viewer.fov,distance:viewer.distance,baseHeight:viewer.baseHeight,near:viewer.near,origin:[...viewer.origin],target:[...viewer.target],trainingPose:viewer.trainingPose?JSON.parse(JSON.stringify(viewer.trainingPose)):null});localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();bookList.value=bookmarks.length-1;});
   button(bookPanel,'加载视角','Load view',()=>{const b=bookmarks[Number(bookList.value)];if(!b)return;viewer.stopNavigation();const delta=b.origin.map((v,i)=>v-viewer.origin[i]);viewer.camera=JSON.parse(JSON.stringify(b.camera));viewer.orbitLens=b.orbitLens||null;viewer.projection=b.projection;viewer.fov=b.fov;viewer.distance=b.distance;viewer.baseHeight=b.baseHeight;viewer.near=b.near||.001;viewer.target=b.target.map((v,i)=>v+delta[i]);viewer.trainingPose=b.trainingPose?{...b.trainingPose,eye:b.trainingPose.eye.map((v,i)=>v+delta[i])}:null;viewer.sortDirty=true;viewer.requestRender();});
   button(bookPanel,'删除书签','Delete bookmark',()=>{bookmarks.splice(Number(bookList.value),1);localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();});listBooks();
-  refresh();return {edits,refresh,sceneChanged(){revision++;gesture=null;paint();const value=exportTarget.value;exportTarget.replaceChildren();getModels().forEach((m,i)=>{edits.attach(m);const o=make('option',m.name||`PLY ${i+1}`);o.value=i;exportTarget.append(o);});exportTarget.value=value!==''&&Number(value)<getModels().length?value:'0';refresh();},get busy(){return busy;}};
+  refresh();return {edits,refresh,setLoading(value){loading=value;if(value)stopEditing();refresh();},sceneChanged(){revision++;gesture=null;paint();const value=exportTarget.value;exportTarget.replaceChildren();getModels().forEach((m,i)=>{edits.attach(m);const o=make('option',m.name||`PLY ${i+1}`);o.value=i;exportTarget.append(o);});exportTarget.value=value!==''&&Number(value)<getModels().length?value:'0';refresh();},get busy(){return busy;}};
 }
 
 
@@ -3480,6 +3525,7 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     // the user has just asked to open. Standalone palette panels remain unchanged.
     const palette = panel.querySelector('.palette-panel');
     if (palette) palette.open = true;
+    root.dispatchEvent(new CustomEvent('bwv-inspector-change',{detail:{open:!panel.hidden,tab:current}}));
   }
   function close() {
     if (panel.hidden) return;
@@ -3517,17 +3563,16 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
 // Source: src/gaussian/sort-worker.js
 // Bundled worker code: no CDN or network dependency. A generation rejects stale results.
 const GS_SORT_WORKER = `
-let centers=null, generation=0;
+let centers=null, generation=0,keys,src,dst;const counts=new Uint32Array(256);
 const f=new Float32Array(1),u=new Uint32Array(f.buffer);
 onmessage=e=>{
  const m=e.data;
- if(m.type==='data'){centers=new Float32Array(m.centers);generation=m.generation;return;}
+ if(m.type==='data'){centers=new Float32Array(m.centers);generation=m.generation;const n=centers.length/3;keys=new Uint32Array(n);src=new Uint32Array(n);dst=new Uint32Array(n);return;}
  if(!centers||m.generation!==generation)return;
- const n=centers.length/3, keys=new Uint32Array(n),counts=new Uint32Array(256);
- let src=new Uint32Array(n),dst=new Uint32Array(n);
+ const n=centers.length/3;
  for(let i=0;i<n;i++){f[0]=centers[i*3]*m.forward[0]+centers[i*3+1]*m.forward[1]+centers[i*3+2]*m.forward[2];const b=u[0];keys[i]=(b&0x80000000?~b:b|0x80000000)>>>0;src[i]=i;}
  for(let s=0;s<32;s+=8){counts.fill(0);for(let i=0;i<n;i++)counts[(keys[src[i]]>>>s)&255]++;let sum=0;for(let b=0;b<256;b++){const c=counts[b];counts[b]=sum;sum+=c;}for(let i=0;i<n;i++){const id=src[i];dst[counts[(keys[id]>>>s)&255]++]=id;}const t=src;src=dst;dst=t;}
- postMessage({generation,forward:m.forward,order:src.buffer},[src.buffer]);
+ const order=src.slice();postMessage({generation,forward:m.forward,order:order.buffer},[order.buffer]);
 };`;
 
 
@@ -3624,6 +3669,8 @@ uniform float uCutoff;
 uniform int uWidth;
 uniform int uRestWidth;
 uniform int uDegree;
+uniform bool uPointPreview;
+uniform float uFar;
 out vec4 vColor;
 out vec2 vPos;
 float gsRest(int id, int channel, int band) {
@@ -3676,10 +3723,20 @@ void main() {
   vec4 centerA = texelFetch(uCenter, uv, 0);
   vec3 center = centerA.xyz;
   float opacity = centerA.w;
+  if(uFar>0.0)opacity*=clamp((uFar-length(center-uEye))/(uFar*.1),0.0,1.0);
   vPos = aCorner * 3.0;
   int flags = int(texelFetch(uFlags, uv, 0).r + 0.5);
   float depth = -dot(center - uEye, -uView);
-  if (opacity < uCutoff || (flags & 6) != 0 || (uPerspective && depth <= uNear)) { vColor = vec4(0.0); gl_Position = vec4(2.0, 2.0, 0.0, 1.0); return; }
+  if (opacity <= 0.0 || opacity < uCutoff || (flags & 6) != 0 || (uPerspective && depth <= uNear)) { vColor = vec4(0.0); gl_Position = vec4(2.0, 2.0, 0.0, 1.0); return; }
+  if (uPointPreview) {
+    vec3 rel = center - uEye;
+    float h = uBaseHeight / uZoom;
+    vec2 clip = vec2((dot(center-uTarget,uRight)-uPan.x)/(h*uViewport.x/uViewport.y), (dot(center-uTarget,uUp)-uPan.y)/h)*2.0;
+    if(uPerspective) clip=vec2(dot(rel,uRight),dot(rel,uUp))/depth*uFocal*2.0/uViewport;
+    gl_Position=vec4(clip+aCorner*4.0/uViewport,0.0,1.0);
+    vec3 rgb=clamp(texelFetch(uDc,uv,0).xyz*0.28209479177387814+0.5,0.0,1.0);
+    vColor=vec4(rgb*opacity,opacity);vPos=aCorner;return;
+  }
   vec3 scale = texelFetch(uScale, uv, 0).xyz * uScaleMul;
   vec4 quat = texelFetch(uQuat, uv, 0);
   float w = quat.x, x = quat.y, y = quat.z, z = quat.w;
@@ -3827,6 +3884,8 @@ class GaussianViewer {
     try {
       this.gl = canvas.getContext('webgl2', {antialias: false, alpha: false, preserveDrawingBuffer: true});
       if (!this.gl) throw Error(t('无法启用 WebGL2，请使用 Chrome 或 Edge，并打开硬件加速。'));
+      const rendererInfo=this.gl.getExtension('WEBGL_debug_renderer_info');
+      this.softwareRendering=Boolean(rendererInfo&&/swiftshader|llvmpipe|softpipe|software/i.test(this.gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL)||''));
       this.initGL();
     } catch (error) { this.onError(error.message); throw error; }
     this.installEvents();
@@ -3864,7 +3923,7 @@ class GaussianViewer {
     if (this.program) gl.deleteProgram(this.program);
     this.program = program;
     this.locations = {};
-    for (const name of ['uOrder','uCenter','uScale','uQuat','uDc','uRest','uRight','uUp','uView','uTarget','uPan','uViewport','uBaseHeight','uZoom','uScaleMul','uCutoff','uWidth','uRestWidth','uDegree','uEye','uFocal','uNear','uPerspective','uFlags']) {
+    for (const name of ['uOrder','uCenter','uScale','uQuat','uDc','uRest','uRight','uUp','uView','uTarget','uPan','uViewport','uBaseHeight','uZoom','uScaleMul','uCutoff','uWidth','uRestWidth','uDegree','uPointPreview','uFar','uEye','uFocal','uNear','uPerspective','uFlags']) {
       this.locations[name] = gl.getUniformLocation(program, name);
     }
     const corners = gl.createBuffer();
@@ -4092,7 +4151,9 @@ class GaussianViewer {
       dc.set(model.dc.subarray(index * 3, index * 3 + 3), write * 3);
       opacity[write] = model.opacity[index];
       const sx = model.scale[index * 3], sy = model.scale[index * 3 + 1], sz = model.scale[index * 3 + 2];
-      scale.set([sx, sy, sz], write * 3);
+      // Preserve approximate projected coverage after thinning: area scales with radius squared.
+      const coverage = model.preview ? Math.sqrt(model.sampleStep || 1) : 1;
+      scale.set([sx * coverage, sy * coverage, sz * coverage], write * 3);
       this.sourceMap.push([model, index]); flags[write] = model.editFlags?.[index] || 0;
       quat.set(model.quat.subarray(index * 4, index * 4 + 4), write * 4);
       if (rest && model.rest) rest.set(model.rest.subarray(index * 45, index * 45 + 45), write * 45);
@@ -4253,8 +4314,8 @@ class GaussianViewer {
     if (this.sortDirty || !this.sortForward) return true;
     const [,, forward] = this.basis();
     const alignment = GS_DOT(forward, this.sortForward);
-    const moved = this.sortTarget.some((value, axis) => value !== this.target[axis]);
-    return moved || alignment < (this.interacting ? 0.999 : 0.999999);
+    // Translating the camera adds the same depth offset to every splat.
+    return alignment < (this.interacting ? 0.999 : 0.999999);
   }
 
   requestRender() {
@@ -4263,14 +4324,14 @@ class GaussianViewer {
   }
 
   render() {
-    if (this.disposed || this.contextLost || !this.gl) return;
+    if (this.disposed || this.contextLost || !this.gl || (!this.exportTarget && globalThis.document?.hidden)) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     if (!this.exportTarget && this.navigation.active) {
       this.applyNavigation(this.navigation.step(performance.now()));
       if (this.navigation.active) this.requestRender();
     }
     const gl = this.gl, canvas = this.canvas, rect = canvas.getBoundingClientRect();
-    const dpr = this.exportTarget?.scale || Math.min(globalThis.devicePixelRatio || 1, 2);
+    const dpr = this.exportTarget?.scale || Math.min(globalThis.devicePixelRatio || 1, this.pixelRatioLimit || 2) * (!this.exportTarget && this.pixelRatioLimit<=1 && (this.interacting || this.navigation.active || this.fly?.active) ? .75 : 1);
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr));
     const height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
     if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
@@ -4280,9 +4341,8 @@ class GaussianViewer {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     if (this.count && this.packed && this.needsSort()) {
       this.sort(Boolean(this.exportTarget));
-      // Keep the last stable frame across a large camera jump until the worker
-      // supplies the new order. Drawing a new view with an old order causes fog.
-      if (!this.sortedReady || (!this.exportTarget && this.sortBusy && GS_DOT(this.basis()[2], this.sortForward || [0,0,0]) < .98)) return;
+      // Reproject the previous order immediately; the worker refines transparency next.
+      if (!this.sortedReady) return;
     }
     gl.clearColor(clear[0], clear[1], clear[2], clear[3]); gl.clear(gl.COLOR_BUFFER_BIT);
     if (this.count && this.packed) {
@@ -4300,6 +4360,8 @@ class GaussianViewer {
       gl.uniform1f(loc.uBaseHeight, this.baseHeight); gl.uniform1f(loc.uZoom, this.camera.zoom);
       gl.uniform1f(loc.uScaleMul, this.gauss.scale); gl.uniform1f(loc.uCutoff, this.gauss.opacityCutoff);
       gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? this.gauss.shDegree : 0);
+      gl.uniform1i(loc.uPointPreview, this.pointPreview?1:0);
+      gl.uniform1f(loc.uFar, this.viewDistance || 0);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.count);
     }
     if (this.exportTarget) return;
@@ -4492,7 +4554,44 @@ async function gsParseGaussianPly(buffer, {includeRest = true, vertexLimit = 0, 
 }
 
 
+// Source: src/gaussian/preview.js
+
+/** Read a bounded, evenly spaced preview. Never retain the complete source in JS memory. */
+async function gsReadPreview(file, {limit=20000, onProgress=()=>{}, cancelled=()=>false}={}) {
+  if(!Number.isSafeInteger(limit)||limit<1)throw Error('Invalid preview budget');
+  const header=gsPlyHeader(new Uint8Array(await file.slice(0,262144).arrayBuffer()));
+  const {count,stride,headerEnd}=header;
+  if(!count||!stride||!Number.isSafeInteger(count*stride)||headerEnd+count*stride>file.size)throw Error('高斯 PLY 文件不完整 / Incomplete Gaussian PLY');
+  const step=Math.max(1,Math.ceil(count/limit)), size=Math.ceil(count/step);
+  const head=new TextEncoder().encode(header.header.replace(/element vertex \d+/,`element vertex ${size}`));
+  const bytes=new Uint8Array(head.length+size*stride);bytes.set(head);
+  let cache=null,start=-1,end=-1;
+  for(let i=0;i<size;i++){
+    if(cancelled())throw Error('Preview cancelled');
+    const offset=headerEnd+i*step*stride;
+    if(offset<start||offset+stride>end){
+      start=offset;end=Math.min(file.size,start+Math.max(stride,1048576));
+      cache=new Uint8Array(await file.slice(start,end).arrayBuffer());
+      if(cache.length!==end-start)throw Error('Incomplete preview read');
+      onProgress(i,size);
+    }
+    bytes.set(cache.subarray(offset-start,offset-start+stride),head.length+i*stride);
+  }
+  const model=await gsParseGaussianPly(bytes,{includeRest:false,onProgress});
+  model.preview=true;model.sampleStep=step;model.sourceCount=count;
+  // A preview can never be accidentally exported as the full-resolution source.
+  model.source=null;
+  return model;
+}
+
+function gsViewingProfile(mode, mobile=false, software=false) {
+  if(mode==='auto')mode=(mobile||software)?'light':'full';
+  return mode==='points'?{limit:5000,dpr:.75,points:true}:mode==='light'?{limit:20000,dpr:software ? .65 : 1,points:false}:mode==='balanced'?{limit:100000,dpr:1,points:false}:{limit:0,dpr:2,points:false};
+}
+
+
 // Source: src/gaussian/app.js
+
 
 
 
@@ -4510,6 +4609,16 @@ async function gsParseGaussianPly(buffer, {includeRest = true, vertexLimit = 0, 
 async function gsBoot() {
   initializeLocale();
   const gs$ = id => document.getElementById(id);
+  const en=document.documentElement.lang==='en', label=(zh,english)=>en?english:zh;
+  const mobileView=isMobileApp()||matchMedia('(pointer: coarse)').matches;
+  const profileLabel=document.createElement('label'),profileSelect=document.createElement('select');
+  profileSelect.id='gs-profile';profileLabel.textContent=label('查看性能','Viewing performance');profileSelect.setAttribute('aria-label',profileLabel.textContent);
+  for(const [value,zh,english] of [['auto','自动 · 手机优先流畅','Auto · mobile friendly'],['light','轻量泼溅 · 2 万','Light splats · 20k'],['points','低配点预览 · 5 千','Low-power point preview · 5k'],['balanced','均衡泼溅 · 10 万','Balanced splats · 100k'],['full','完整数据 · 可编辑','Full data · editable']]){
+    const o=document.createElement('option');o.value=value;o.textContent=label(zh,english);profileSelect.append(o);
+  }
+  profileLabel.append(profileSelect);gs$('settings-panel-display').querySelector('.render-controls').prepend(profileLabel);
+  const performanceNote=document.createElement('p');performanceNote.className='presentation-help';performanceNote.textContent=label('轻量泼溅覆盖整个场景，简化颜色并补偿抽样覆盖，细节会变柔和。点预览仅作备用；完整数据用于精细查看和编辑。','Light splats span the scene, simplify color and compensate sample coverage; detail becomes softer. Point preview is a fallback; use full data for detailed viewing and edits.');profileLabel.after(performanceNote);
+  const profile=()=>gsViewingProfile(profileSelect.value,mobileView,gsViewer?.softwareRendering);
   const gsProject = new ViewerProject();
   const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
   let nativeSession=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
@@ -4519,6 +4628,19 @@ async function gsBoot() {
   const gsSay = message => { const note = gs$('data-notes'); note.textContent = message || ''; };
   const gsError = message => { const box = gs$('error'); box.hidden = !message; box.querySelector('span').textContent = message || ''; };
   const gsLoading = (message) => { const box = gs$('loading'); box.hidden = !message; if (message) box.querySelector('span').textContent = message; };
+
+  const distanceLabel=document.createElement('label'),distanceToggle=document.createElement('input'),distanceRange=document.createElement('input'),distanceValue=document.createElement('output');
+  distanceToggle.type='checkbox';distanceToggle.id='gs-distance-enabled';distanceToggle.setAttribute('aria-label',label('限制视距','Limit viewing distance'));
+  distanceRange.type='range';distanceRange.id='gs-distance';distanceRange.min=.25;distanceRange.max=10;distanceRange.step=.05;distanceRange.value=3;distanceRange.disabled=true;distanceRange.setAttribute('aria-label',label('视距范围','Viewing distance'));
+  distanceLabel.append(distanceToggle,document.createTextNode(label('限制视距','Limit viewing distance')),distanceRange,distanceValue);gs$('settings-panel-display').querySelector('.render-controls').append(distanceLabel);
+  const distanceHint=document.createElement('p');distanceHint.className='presentation-help';distanceHint.textContent=label('默认不裁切。视距以相机为中心，远处逐渐淡出；若看不到模型，请增大距离或关闭。只影响显示。','No clipping by default. Distant splats fade out around the camera. Increase the distance or disable if the model disappears. Display only.');distanceLabel.after(distanceHint);
+  function updateDistance(){
+    const bounds=gsViewer?.bounds,extent=bounds?Math.hypot(...bounds[0].map((v,i)=>bounds[1][i]-v)):1;
+    const distance=Math.max(.001,extent)*Number(distanceRange.value);distanceRange.disabled=!distanceToggle.checked;
+    distanceValue.value=distanceToggle.checked?distance.toFixed(2)+label(' 坐标单位',' coordinate units'):label('不限','Unlimited');
+    if(gsViewer){gsViewer.viewDistance=distanceToggle.checked?distance:0;gsViewer.requestRender();}
+  }
+  distanceToggle.onchange=distanceRange.oninput=updateDistance;updateDistance();
 
   function gsCatalogFor(entry) {
     const dir = (entry.path || '').split('/').slice(0, -1).join('/');
@@ -4571,41 +4693,52 @@ async function gsBoot() {
       gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
       gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
       gs$('geometry-note').textContent = t('未选择数据时保持空白');
-      gsViewer?.clearSplats(); gsEditor?.sceneChanged(); gsList(); return;
+      gsViewer?.clearSplats(); gsEditor?.setLoading(false);gsEditor?.sceneChanged(); gsList(); return;
     }
     gsLoading(t('正在读取文件…')); gs$('empty-state').hidden = true; gsError('');
-    const degree = Number(gs$('gs-sh').value), cap = Number(gs$('gs-cap').value);
+    const quality=profile(), budget=quality.limit?Math.max(1,Math.floor(quality.limit/selected.length)):0;
+    const degree = budget?0:Number(gs$('gs-sh').value), cap = quality.limit||Number(gs$('gs-cap').value);
+    gs$('gs-sh').disabled=gs$('gs-cap').disabled=Boolean(budget);
+    gsEditor?.setLoading(true);
     const models = [];
     let missingRest = false;
     try {
       for (const entry of selected) {
         if (serial !== gsSerial) return;
-        if (!entry.parsed) {
+        if (!entry.parsed || entry.budget!==budget) {
           gsLoading(t('正在读取 {0}…', [entry.treeName || entry.file.name]));
-          const buffer = await entry.file.arrayBuffer();
-          if (serial !== gsSerial) return;
-          entry.parsed = await gsParseGaussianPly(buffer, {includeRest: true, onProgress: (done, total) => gsLoading(t('正在解析 {0}（{1}%）', [entry.treeName || entry.file.name, Math.floor(done / total * 100)]))});
+          if(entry.parsed&&!entry.parsed.preview){entry.savedFlags=entry.parsed.editFlags;gsEditor?.edits.releaseGeometry(entry.parsed);}
+          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]));};
+          const parsed=budget?await gsReadPreview(entry.file,{limit:budget,onProgress,cancelled:()=>serial!==gsSerial}):await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true,onProgress});
+          if(serial!==gsSerial)return;
+          if(entry.savedFlags){
+            if(entry.savedFlags.length!==parsed.sourceCount)throw Error('Gaussian snapshot does not match source');
+            parsed.editFlags=parsed.preview?Uint8Array.from({length:parsed.count},(_,i)=>entry.savedFlags[i*parsed.sampleStep]):entry.savedFlags;
+          }
+          entry.parsed=parsed;entry.budget=budget;
         }
         if (!entry.parsed.hasRest) missingRest = true;
         entry.parsed.name = entry.treeName || entry.file.name;
-        gsEditor?.edits.attach(entry.parsed);if(entry.savedFlags){if(entry.savedFlags.length!==entry.parsed.count)throw Error('Gaussian snapshot does not match source');entry.parsed.editFlags=entry.savedFlags;entry.savedFlags=null;}
+        gsEditor?.edits.attach(entry.parsed);
         models.push(entry.parsed);
       }
       if (serial !== gsSerial) return;
       const useDegree = degree;
-      gsViewer.setModels(models, {preserveView, maxSplats: cap, shDegree: useDegree});
+      gsViewer.pixelRatioLimit=quality.dpr;gsViewer.pointPreview=quality.points;
+      gsViewer.setModels(models, {preserveView, maxSplats: cap, shDegree: useDegree});updateDistance();
       gsEditor?.sceneChanged();
       gsViewer.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value, shDegree: useDegree});
       const shown = gsViewer.count, source = gsViewer.pointCount;
       gs$('current-title').textContent = selected.map(entry => entry.treeName || entry.id).join('、');
       gs$('scene-stats').textContent = t('已显示 {0} / {1} 个高斯', [shown.toLocaleString('zh-CN'), source.toLocaleString('zh-CN')]);
-      gs$('geometry-note').textContent = t('原始尺度 · 可撤销编辑 · 本地处理');
+      gs$('geometry-note').textContent = budget?label('轻量预览 · 原文件未修改','Light preview · source unchanged'):t('原始尺度 · 可撤销编辑 · 本地处理');
       gs$('screenshot').disabled = false; gsLoading('');
       gsSay(missingRest ? t('此文件没有球谐系数，已保持 0 阶。') : '');
     } catch (error) {
       if (serial !== gsSerial) return;
       gsLoading(''); gsError(error.message); gs$('screenshot').disabled = !gsViewer?.count;
     }
+    if(serial===gsSerial)gsEditor?.setLoading(false);
     gsList();
   }
 
@@ -4677,6 +4810,7 @@ async function gsBoot() {
     gsApply({preserveView: true});
   };
   gs$('dismiss-error').onclick = () => gsError('');
+  profileSelect.onchange=()=>gsApply({preserveView:true});
   gs$('gs-sh').onchange = () => gsApply({preserveView: true});
   gs$('gs-cap').onchange = () => gsApply({preserveView: true});
   const gsAppearance = () => gsViewer?.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value});
@@ -4701,10 +4835,10 @@ async function gsBoot() {
   });
   try {
     gsViewer = new GaussianViewer(gs$('scene'), {onError: gsError});
-    gsEditor = mountGaussianEditor({viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
+    gsEditor = mountGaussianEditor({loadFull:async()=>{profileSelect.value='full';await gsApply({preserveView:true});},viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }
-  window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>e.parsed?.editFlags?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
+  window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>gsEntryFlags(e)?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
   if(nativeApp&&gsViewer)try{
     nativeSession=await openWorkspaceSession({tool:'gaussian',restore:async({state,records,snapshot})=>{
       await gsReceive(records);knownIds=[...new Set([...(state?.tree?.knownIds||[]),...gsEntries.map(e=>e.id)])];
@@ -4712,8 +4846,9 @@ async function gsBoot() {
       const flags=snapshot?await gsReadProjectBlob(snapshot):new Map();for(const entry of gsEntries)entry.savedFlags=flags.get(entry.id)||null;
       gsMode=state?.mode==='single'?'single':'multiple';gsSelected.clear();for(const id of state?.selected||[]){const entry=gsEntries.find(e=>e.id===id);if(entry)gsSelected.add(entry);}
       restoreMobileInputs(state?.display);await gsApply();if(state?.camera&&gsViewer.count)applyCameraSnapshot([gsViewer],state.camera,{space:'raw-world',checkScene:false});
+      return {snapshotUnchanged:Boolean(snapshot)};
     },capture:()=>({revision:editRevision,blob:()=>gsProjectBlob(gsEntries),state:{schemaVersion:1,tree:{...snapshotProjectTree(gsProject,gsEntries),knownIds},selected:[...gsSelected].map(e=>e.id),mode:gsMode,display:captureMobileInputs(),camera:gsViewer.count?captureCameraSnapshot(gsViewer,{space:'raw-world'}):null}}),
-    onStatus:(kind,e)=>{if(e)gsError(e.message);else gs$('source-note').textContent=t(kind==='saved'?'项目自动保存在此设备':'保存中…');},onBackground:()=>{gsViewer.fly?.leave();gsViewer.stopNavigation();},onForeground:()=>gsViewer.requestRender()});
+    onStatus:(kind,e)=>{if(e)gsError(e.message);else gs$('source-note').textContent=t(kind==='saved'?'项目自动保存在此设备':kind==='dirty'?'待自动保存':'保存中…');},onBackground:()=>{gsViewer.fly?.leave();gsViewer.stopNavigation();},onForeground:()=>gsViewer.requestRender()});
     if(nativeSession?.redirecting)return;await nativeSession.flush();
     for(const id of ['choose-file','choose-folder'])gs$(id).onclick=()=>nativeSession.pick().catch(e=>gsError(e.message));
   }catch(e){gsError(e.message);}

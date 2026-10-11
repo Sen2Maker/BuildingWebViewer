@@ -4,11 +4,22 @@ import { mountCameraNavigationControls } from '../shared/camera-navigation-contr
 import { GaussianEdits, gsEditStats, gsExportPly } from './edit-state.js';
 import { gsProjectPosition, gsViewSpec } from '../shared/camera-geometry.js';
 
-export function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{}}) {
+export function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{},loadFull=async()=>{}}) {
   const en=document.documentElement.lang==='en', text=(zh,eng)=>en?eng:zh;
   const make=(tag,label,cls)=>{const el=document.createElement(tag);if(label)el.textContent=label;if(cls)el.className=cls;return el;};
   const tools=make('div',null,'gs-edit-toolbar'),stats=make('span',null,'gs-edit-status');
-  document.querySelector('.viewer-toolbar').after(tools);
+  const section=make('section');section.id='settings-panel-edit';section.dataset.settingsPanel='edit';section.hidden=true;section.setAttribute('role','tabpanel');section.setAttribute('aria-labelledby','settings-tab-edit');
+  const tab=make('button',text('编辑','Edit'));tab.id='settings-tab-edit';tab.type='button';tab.dataset.settingsTab='edit';tab.setAttribute('role','tab');tab.setAttribute('aria-controls',section.id);tab.setAttribute('aria-selected','false');tab.tabIndex=-1;document.querySelector('.inspector-tabs').append(tab);
+  document.getElementById('settings-panel-data').parentElement.append(section);
+  const launch=make('button',text('编辑','Edit'));launch.type='button';launch.dataset.openSettings='edit';launch.setAttribute('aria-controls','viewer-inspector');launch.setAttribute('aria-expanded','false');document.querySelector('.inspector-shortcuts').append(launch);
+  const enable=make('button',text('加载完整数据以修订','Load full data to edit')),note=make('p',text('手机默认先查看。编辑将加载完整数据，可能需要更多时间和内存。','Mobile opens in viewing mode. Editing loads full data and needs more time and memory.'),'presentation-help');enable.type='button';enable.onclick=()=>loadFull().catch(e=>onError(e.message));
+  const fieldset=make('fieldset',null,'gs-edit-fields');section.append(note,enable,fieldset);fieldset.append(tools);
+  const activeTool=make('button',null,'gs-active-edit');activeTool.type='button';activeTool.hidden=true;document.querySelector('.viewer-toolbar').append(activeTool);
+  let loading=false;
+  const editable=()=>!loading&&!getModels().some(m=>m.preview);
+  const stopEditing=()=>{viewer.editMode='orbit';viewer.canvas.style.cursor='grab';activeTool.hidden=true;if(gesture&&viewer.canvas.hasPointerCapture(gesture.id))viewer.canvas.releasePointerCapture(gesture.id);gesture=null;for(const [m,b]of modeButtons){b.classList.toggle('active',m==='orbit');b.setAttribute('aria-pressed',String(m==='orbit'));}};
+  activeTool.onclick=stopEditing;
+  document.addEventListener('bwv-inspector-change',e=>{if(e.detail.open&&e.detail.tab!=='edit')stopEditing();});
   const statsLine=make('div',null,'gs-edit-stats');statsLine.append(stats);tools.after(statsLine);
   const edits=new GaussianEdits(()=>{viewer.syncFlags();refresh();onChange();});
   let busy=false,gesture=null,revision=0;
@@ -16,7 +27,7 @@ export function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=
   const modes=make('div',null,'segmented');tools.append(modes);
   const modeButtons=[];
   for(const [mode,zh,eng]of[['orbit','浏览','Navigate'],['rectangle','框选','Rectangle'],['brush','画刷','Brush']]){
-    const b=button(modes,zh,eng,()=>{viewer.stopNavigation();viewer.editMode=mode;viewer.canvas.style.cursor=mode==='orbit'?'grab':'crosshair';for(const [m,el]of modeButtons){el.classList.toggle('active',m===mode);el.setAttribute('aria-pressed',String(m===mode));}});modeButtons.push([mode,b]);b.setAttribute('aria-pressed',String(mode==='orbit'));b.classList.toggle('active',mode==='orbit');
+    const b=button(modes,zh,eng,()=>{viewer.stopNavigation();viewer.editMode=mode;activeTool.hidden=mode==='orbit';activeTool.textContent=text(zh+'中 · 结束',eng+' · Done');viewer.canvas.style.cursor=mode==='orbit'?'grab':'crosshair';for(const [m,el]of modeButtons){el.classList.toggle('active',m===mode);el.setAttribute('aria-pressed',String(m===mode));}});modeButtons.push([mode,b]);b.setAttribute('aria-pressed',String(mode==='orbit'));b.classList.toggle('active',mode==='orbit');
   }
   const brushLabel=make('label',text('画刷半径','Brush radius'));const radius=make('input');radius.type='range';radius.min=5;radius.max=120;radius.value=30;radius.setAttribute('aria-label',text('画刷半径','Brush radius'));const radiusValue=make('output','30 px');radius.oninput=()=>radiusValue.textContent=radius.value+' px';brushLabel.append(radius,radiusValue);tools.append(brushLabel);
   button(tools,'全选','Select all',()=>act('all'));button(tools,'清空','Clear',()=>act('clear'));button(tools,'反选','Invert',()=>act('invert'));
@@ -26,7 +37,7 @@ export function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=
   const hint=make('span',text('按高斯中心穿透选择 · Shift 添加 · Ctrl/Cmd 减选 · Alt 拖动浏览','Through-selection of Gaussian centers · Shift add · Ctrl/Cmd subtract · Alt drag to navigate'),'gs-edit-hint');statsLine.append(hint);
   const overlay=make('canvas',null,'gs-selection-overlay');viewer.canvas.parentElement.append(overlay);
   const ctx=overlay.getContext('2d');
-  function refresh(){const s=gsEditStats(getModels());stats.textContent=text(`选择 ${s.selected.toLocaleString()} · 隐藏 ${s.hidden.toLocaleString()} · 删除 ${s.deleted.toLocaleString()}`,`Selected ${s.selected.toLocaleString()} · Hidden ${s.hidden.toLocaleString()} · Deleted ${s.deleted.toLocaleString()}`);undo.disabled=!edits.undoStack.length||busy;redo.disabled=!edits.redoStack.length||busy;}
+  function refresh(){fieldset.disabled=!editable();enable.hidden=editable();enable.disabled=loading;const s=gsEditStats(getModels());stats.textContent=text(`选择 ${s.selected.toLocaleString()} · 隐藏 ${s.hidden.toLocaleString()} · 删除 ${s.deleted.toLocaleString()}`,`Selected ${s.selected.toLocaleString()} · Hidden ${s.hidden.toLocaleString()} · Deleted ${s.deleted.toLocaleString()}`);undo.disabled=!edits.undoStack.length||busy;redo.disabled=!edits.redoStack.length||busy;}
   function act(action){const f={all:a=>(a&6)?a:a|1,clear:a=>a&~1,invert:a=>(a&6)?a:a^1,hide:a=>(a&1)?(a|2)&~1:a,unhide:a=>a&~2,delete:a=>(a&1)?(a|4)&~1:a}[action];edits.apply(getModels(),f);}
   function local(event){const r=viewer.canvas.getBoundingClientRect();return [event.clientX-r.left,event.clientY-r.top];}
   function paint(){const r=viewer.canvas.getBoundingClientRect();overlay.width=r.width;overlay.height=r.height;ctx.clearRect(0,0,r.width,r.height);if(!gesture)return;ctx.strokeStyle='#f1b76b';ctx.fillStyle='#f1b76b22';ctx.lineWidth=1.5;const p=gesture.points;if(gesture.mode==='rectangle'){const a=p[0],b=p[p.length-1];ctx.fillRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);}else{ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#f1b76b44';ctx.lineWidth=gesture.radius*2;ctx.beginPath();p.forEach((v,i)=>i?ctx.lineTo(...v):ctx.moveTo(...v));if(p.length===1)ctx.lineTo(p[0][0]+.01,p[0][1]);ctx.stroke();ctx.lineWidth=1;ctx.strokeStyle='#e4a954';ctx.beginPath();ctx.arc(...p[p.length-1],gesture.radius,0,Math.PI*2);ctx.stroke();}}
@@ -46,13 +57,13 @@ export function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=
     if(serial===revision)edits.apply(models,(a,i,m)=>{if(a&6)return a;const hit=hits.get(m)[i];return g.subtract?(hit?a&~1:a):g.add?(hit?a|1:a):(hit?a|1:a&~1);});
     }catch(e){onError(e.message);}finally{busy=false;onStatus('');refresh();}
   }
-  const down=e=>{if(viewer.fly?.active||!getModels().length||viewer.editMode==='orbit'||e.altKey||e.button!==0||busy)return;e.preventDefault();e.stopImmediatePropagation();viewer.canvas.setPointerCapture(e.pointerId);gesture={id:e.pointerId,mode:viewer.editMode,points:[local(e)],radius:Number(radius.value),add:e.shiftKey,subtract:e.ctrlKey||e.metaKey};paint();};
+  const down=e=>{if(!editable()||viewer.fly?.active||!getModels().length||viewer.editMode==='orbit'||e.altKey||e.button!==0||busy)return;e.preventDefault();e.stopImmediatePropagation();viewer.canvas.setPointerCapture(e.pointerId);gesture={id:e.pointerId,mode:viewer.editMode,points:[local(e)],radius:Number(radius.value),add:e.shiftKey,subtract:e.ctrlKey||e.metaKey};paint();};
   const move=e=>{if(!gesture||gesture.id!==e.pointerId)return;e.preventDefault();e.stopImmediatePropagation();const p=local(e),last=gesture.points[gesture.points.length-1];if(gesture.mode==='rectangle')gesture.points[1]=p;else if(Math.hypot(p[0]-last[0],p[1]-last[1])>4)gesture.points.push(p);paint();};
   const up=e=>{if(!gesture||gesture.id!==e.pointerId)return;e.preventDefault();e.stopImmediatePropagation();const g=gesture;gesture=null;paint();if(viewer.canvas.hasPointerCapture(e.pointerId))viewer.canvas.releasePointerCapture(e.pointerId);if(e.type==='pointerup')select(g);};
   viewer.canvas.addEventListener('pointerdown',down,true);viewer.canvas.addEventListener('pointermove',move,true);for(const name of['pointerup','pointercancel'])viewer.canvas.addEventListener(name,up,true);
-  document.addEventListener('keydown',e=>{if(viewer.fly?.active||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||busy)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?edits.redo():edits.undo();}else if(cmd&&e.key.toLowerCase()==='y'){e.preventDefault();edits.redo();}else if(e.key==='Delete'){e.preventDefault();act('delete');}else if(e.key==='Escape'){if(gesture&&viewer.canvas.hasPointerCapture(gesture.id))viewer.canvas.releasePointerCapture(gesture.id);gesture=null;paint();}});
+  document.addEventListener('keydown',e=>{if(!editable()||viewer.fly?.active||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||busy)return;const cmd=e.ctrlKey||e.metaKey;if(cmd&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?edits.redo():edits.undo();}else if(cmd&&e.key.toLowerCase()==='y'){e.preventDefault();edits.redo();}else if(e.key==='Delete'){e.preventDefault();act('delete');}else if(e.key==='Escape'){if(gesture&&viewer.canvas.hasPointerCapture(gesture.id))viewer.canvas.releasePointerCapture(gesture.id);gesture=null;paint();if(viewer.editMode!=='orbit'){stopEditing();e.preventDefault();}}});
   // Explicit export choices: never silently export a reduced viewport sample.
-  const panel=document.querySelector('#settings-panel-data .inspector-section');
+  const panel=fieldset;
   const exportHeading=make('h3',text('高斯导出','Gaussian export'));panel.append(exportHeading);
   const scope=make('select');scope.setAttribute('aria-label',text('导出范围','Export scope'));
   for(const [value,zh,eng]of[['visible','可见且未删除的高斯','Visible, undeleted Gaussians'],['selected','仅选中的高斯','Selected Gaussians only'],['all','所有未删除高斯（含隐藏）','All undeleted, including hidden']]){const o=make('option',text(zh,eng));o.value=value;scope.append(o);}panel.append(scope);
@@ -85,5 +96,5 @@ export function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=
   button(bookPanel,'保存当前视角','Save view',()=>{if(bookmarks.length>=50)throw Error('最多 50 个书签 / At most 50 bookmarks');bookmarks.push({name:bookName.value.trim()||text('视角 ','View ')+(bookmarks.length+1),camera:JSON.parse(JSON.stringify(viewer.camera)),projection:viewer.projection,orbitLens:viewer.orbitLens?{...viewer.orbitLens}:null,fov:viewer.fov,distance:viewer.distance,baseHeight:viewer.baseHeight,near:viewer.near,origin:[...viewer.origin],target:[...viewer.target],trainingPose:viewer.trainingPose?JSON.parse(JSON.stringify(viewer.trainingPose)):null});localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();bookList.value=bookmarks.length-1;});
   button(bookPanel,'加载视角','Load view',()=>{const b=bookmarks[Number(bookList.value)];if(!b)return;viewer.stopNavigation();const delta=b.origin.map((v,i)=>v-viewer.origin[i]);viewer.camera=JSON.parse(JSON.stringify(b.camera));viewer.orbitLens=b.orbitLens||null;viewer.projection=b.projection;viewer.fov=b.fov;viewer.distance=b.distance;viewer.baseHeight=b.baseHeight;viewer.near=b.near||.001;viewer.target=b.target.map((v,i)=>v+delta[i]);viewer.trainingPose=b.trainingPose?{...b.trainingPose,eye:b.trainingPose.eye.map((v,i)=>v+delta[i])}:null;viewer.sortDirty=true;viewer.requestRender();});
   button(bookPanel,'删除书签','Delete bookmark',()=>{bookmarks.splice(Number(bookList.value),1);localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();});listBooks();
-  refresh();return {edits,refresh,sceneChanged(){revision++;gesture=null;paint();const value=exportTarget.value;exportTarget.replaceChildren();getModels().forEach((m,i)=>{edits.attach(m);const o=make('option',m.name||`PLY ${i+1}`);o.value=i;exportTarget.append(o);});exportTarget.value=value!==''&&Number(value)<getModels().length?value:'0';refresh();},get busy(){return busy;}};
+  refresh();return {edits,refresh,setLoading(value){loading=value;if(value)stopEditing();refresh();},sceneChanged(){revision++;gesture=null;paint();const value=exportTarget.value;exportTarget.replaceChildren();getModels().forEach((m,i)=>{edits.attach(m);const o=make('option',m.name||`PLY ${i+1}`);o.value=i;exportTarget.append(o);});exportTarget.value=value!==''&&Number(value)<getModels().length?value:'0';refresh();},get busy(){return busy;}};
 }

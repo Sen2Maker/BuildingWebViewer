@@ -10,3 +10,6 @@
 #camera-controls select,#bookmark-controls input,#bookmark-controls select,#settings-panel-data select{width:100%;margin:6px 0;max-width:100%}
 #bookmark-controls button,#settings-panel-data button{margin:6px 5px 0 0}.gs-draft{font-size:10px;color:#85613e;border:1px solid #e4d1b5;border-radius:4px;padding:3px 6px;margin-left:8px}
 @media(max-width:700px){.gs-edit-toolbar{gap:4px;padding:4px 0}.gs-edit-toolbar button{padding:5px 7px}.gs-edit-hint{display:none}.gs-edit-stats{padding:3px 0}.gs-edit-toolbar label{display:none}}
+
+.gs-edit-fields{border:0;padding:0;min-width:0;margin:12px 0}.gs-edit-fields:disabled{opacity:.45}.gs-edit-fields select{width:100%;margin:6px 0}#settings-panel-edit{padding:14px}.gs-edit-fields .gs-edit-hint{display:block}.gs-edit-fields .gs-edit-toolbar label{display:flex}.gs-edit-fields .gs-edit-toolbar button{min-height:40px}.gs-edit-fields>button{margin:8px 0}.inspector-tabs{overflow-x:auto;flex-shrink:0}
+.gs-active-edit{border-color:#c39154!important;color:#805c32!important;background:#fff6e9!important}

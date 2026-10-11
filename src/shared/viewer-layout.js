@@ -77,6 +77,7 @@ export function mountViewerLayout({root = document, getViewers = () => [], pause
     // the user has just asked to open. Standalone palette panels remain unchanged.
     const palette = panel.querySelector('.palette-panel');
     if (palette) palette.open = true;
+    root.dispatchEvent(new CustomEvent('bwv-inspector-change',{detail:{open:!panel.hidden,tab:current}}));
   }
   function close() {
     if (panel.hidden) return;

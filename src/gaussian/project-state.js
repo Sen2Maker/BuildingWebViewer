@@ -1,7 +1,8 @@
+export function gsEntryFlags(entry){return entry.parsed?.preview?entry.savedFlags:(entry.parsed?.editFlags||entry.savedFlags);}
 /** Native Gaussian edits reference immutable original PLY files; only one flag byte per point is saved. */
 export function gsProjectBlob(entries){
   const records=[],blocks=[];let offset=0;
-  for(const e of entries){const flags=e.parsed?.editFlags||e.savedFlags;if(!flags)continue;records.push({id:e.id,count:flags.length,offset});blocks.push(flags.slice());offset+=flags.length;}
+  for(const e of entries){const flags=gsEntryFlags(e);if(!flags)continue;records.push({id:e.id,count:flags.length,offset});blocks.push(flags.slice());offset+=flags.length;}
   const header=new TextEncoder().encode(JSON.stringify({format:'BuildingWebViewer.gaussian-edits',version:1,records}));const length=new Uint8Array(4);new DataView(length.buffer).setUint32(0,header.length,true);return new Blob([length,header,...blocks]);
 }
 export async function gsReadProjectBlob(file){

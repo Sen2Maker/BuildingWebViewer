@@ -6,6 +6,16 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.1] - 2026-10-11
+
+- App 自动保存改为有变更时每 5 分钟一次；系统返回、进入后台及显式导入前立即保存。共用调度器，停止每次转动相机后写入。
+- 手机高斯默认分段抽样读取 2 万个、底色渲染，补偿抽样覆盖并限制屏幕像素倍率，操作中进一步降低分辨率；另提供 5 千个中心点低配预览。完整数据与编辑按需启用，源文件和完整编辑标记不受抽样影响。
+- 可选视距限制与边界淡出，默认关闭以避免裁掉整个模型；仅影响显示，不改变源数据。
+- 相机平移不再触发无意义重排；转动时继续显示，后台排序完成后修正透明层次；排序缓存复用。
+- 高斯编辑与导出收进独立标签；App 首页精简说明，项目管理和维护收起，底部添加 Sen2Maker 与仓库链接。
+- Five-minute dirty autosave with Back/background flush; bounded mobile Gaussian previews, responsive asynchronous sorting, an optional Edit tab, and a simpler project home.
+- nativeApi 6 不变，可经签名网页热更新，无需重新安装 APK。完全不支持 WebGL 2 的设备仍不能渲染；预览抽样会减少细节，完整模式仍取决于设备性能。
+
 ## [1.4.0] - 2026-10-11
 
 三维创作与跨端项目 / 3D creation and cross-platform projects. Android remains Preview.

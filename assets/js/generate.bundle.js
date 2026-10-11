@@ -2,9 +2,34 @@
 (() => {
 'use strict';
 
+// Source: src/shared/autosave.js
+/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
+function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
+  let timer=null, suspended=false;
+  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
+  const flush=()=>{cancel();return Promise.resolve().then(save).then(result=>{if(timer!==null)onDirty();return result;});};
+  const schedule=()=>{if(suspended||timer!==null)return;onDirty();timer=setTimer(()=>{timer=null;flush().catch(()=>schedule());},delay);};
+  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;},dispose:cancel};
+}
+
+
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  "LOD 模型": "LOD models",
+  "建筑线框": "Wireframes",
+  "待自动保存": "Pending autosave",
+  "文件保存在本机": "Files stay on this device",
+  "帮助与维护": "Help & maintenance",
+  "启动诊断": "Diagnostics",
+  "项目管理": "Manage project",
+  "本地离线可用": "Available offline",
+  "支持常见压缩包；不支持分卷与密码。": "Common archives supported; no split or password archives.",
+  "卸载前请导出项目备份。": "Back up projects before uninstalling.",
+  "第三方声明": "Licenses",
+  "项目链接": "Project links",
+  "手机默认轻量查看；完整模式可调整球谐和显示数量。编辑与导出位于编辑标签。": "Mobile defaults to light viewing. Full mode enables SH and display count controls. Editing and export are in the Edit tab.",
+
   '浏览': 'Browse',
   'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',
   '发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。': 'Feature update v{0} is available. Download for next launch? Projects and data will be kept.',
@@ -1286,6 +1311,7 @@ function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
 // Source: src/shared/mobile-project.js
 
 
+
 let mobileProjectPlugin;
 function isMobileApp(){return Boolean(globalThis.Capacitor?.isNativePlatform?.());}
 function mobileProjects(){if(!isMobileApp())return null;return mobileProjectPlugin ||= globalThis.Capacitor.registerPlugin('BWVProjects');}
@@ -1324,7 +1350,7 @@ function createMobileSaver({read,write,status=()=>{}}){
   let pending=null,draining=null,last='';
   return {flush(){
     let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
-    if(!draining&&text===last)return Promise.resolve();
+    if(!draining&&text===last){status('saved');return Promise.resolve();}
     pending={state,text};
     if(draining)return draining;
     draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
@@ -1337,10 +1363,10 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
   const id=new URL(root.location.href).searchParams.get('project');
   if(!id){root.location.replace('assets/mobile/index.html');return null;}
   const status=root.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');root.querySelector('header').append(status);
-  let ready=false,timer=null;
+  let ready=false;
   const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
-  const flush=()=>{clearTimeout(timer);timer=null;return ready?saver.flush():Promise.resolve();};
-  const schedule=()=>{if(!ready)return;clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
+  const autosave=createAutosave({save:()=>ready?saver.flush():Promise.resolve(),onDirty:()=>{status.textContent=t('待自动保存');}});
+  const flush=autosave.flush, schedule=()=>{if(ready)autosave.schedule();};
   const goHome=createMobileHomeNavigation({flush,navigate:url=>root.location.replace(url),language:()=>root.documentElement.lang});
   const home=root.querySelector('.back-home');
   if(home){home.href='assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
@@ -1348,7 +1374,7 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     // Existing viewer Escape handlers close open settings/menus before leaving the project.
     const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});
     (root.activeElement||root).dispatchEvent(event);
-    if(!event.defaultPrevented)goHome().catch(()=>{});
+    if(!event.defaultPrevented)goHome().catch(()=>{});else flush().catch(()=>{});
   };
 
   try{
@@ -1359,9 +1385,10 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
-    const background=()=>{flush().catch(()=>{});onBackground();};
-    root.addEventListener('visibilitychange',()=>root.hidden?background():onForeground());
-    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',()=>{onForeground();flush().catch(()=>{});});globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    const background=()=>{autosave.pause().catch(()=>{});onBackground();};
+    const foreground=()=>{autosave.resume();onForeground();};
+    root.addEventListener('visibilitychange',()=>root.hidden?background():foreground());
+    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
     await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
     // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
     const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});
@@ -1386,24 +1413,25 @@ async function nativeExportWriter(name){
 // Source: src/shared/workspace-session.js
 
 
+
 /** Native project lifecycle for editors with binary snapshots. Browser sessions remain local. */
 async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
   const api=mobileProjects();if(!api)return null;
   const id=new URL(location.href).searchParams.get('project');
   if(!id){location.replace('assets/mobile/index.html');return {redirecting:true};}
   const status=document.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');document.querySelector('header').append(status);
-  const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':'保存失败');onStatus(kind,error);};
+  const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':kind==='dirty'?'Pending autosave':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':kind==='dirty'?'待自动保存':'保存失败');onStatus(kind,error);};
   const project=await api.getProject({id});
   const state=project.states?.[tool]||null;
   const snapshotRecord=project.files.find(f=>f.key===state?.snapshotKey&&f.path===`.bwv/${tool}.snapshot`);
   if(state?.snapshotKey&&!snapshotRecord)throw Error('项目快照丢失 / Project snapshot is missing');
   const records=project.files.filter(f=>!f.path.startsWith('.bwv/')).map(record=>({file:new NativeProjectFile(id,record),path:record.path}));
-  await restore({state,records,snapshot:snapshotRecord?new NativeProjectFile(id,snapshotRecord):null});
-  let savedRevision=null,snapshotKey=state?.snapshotKey||null,lastState='',draining=null,queued=false,timer=null;
-  // A newly imported workspace has no committed snapshot yet.
-  if(!snapshotKey)savedRevision=null;
+  const restored=await restore({state,records,snapshot:snapshotRecord?new NativeProjectFile(id,snapshotRecord):null});
+  let savedRevision=null,snapshotKey=state?.snapshotKey||null,lastState='',draining=null,queued=false;
+  // Restored snapshots already match the editor; reopening does not rewrite binary data.
+  if(snapshotKey&&restored?.snapshotUnchanged){savedRevision=capture().revision;const {snapshotKey:ignored,...previous}=state;lastState=JSON.stringify(previous);}
   async function flush(){
-    clearTimeout(timer);timer=null;queued=true;if(draining)return draining;
+    queued=true;if(draining)return draining;
     draining=Promise.resolve().then(async()=>{try{while(queued){queued=false;const current=capture(),stateText=JSON.stringify(current.state);
       if(current.revision!==savedRevision||!snapshotKey){
         report('saving');const blob=current.blob();const writer=await nativeExportWriter(`${tool}.snapshot`);
@@ -1413,15 +1441,17 @@ async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLea
       }else if(stateText!==lastState){report('saving');await api.saveState({id,tool,state:{...current.state,snapshotKey}});lastState=stateText;}
     }report('saved');}catch(error){report('error',error);throw error;}finally{draining=null;}});return draining;
   }
-  const schedule=()=>{clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
-  const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await flush();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
+  const autosave=createAutosave({save:flush,onDirty:()=>report('dirty')});
+  const schedule=autosave.schedule, saveNow=autosave.flush;
+  const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await saveNow();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
   const link=document.querySelector('.back-home');if(link){link.href='assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
-  globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});};
-  const background=()=>{flush().catch(()=>{});onBackground();};
-  document.addEventListener('visibilitychange',()=>document.hidden?background():onForeground());
-  globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',onForeground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
-  for(const event of ['pointerup','keyup','change','wheel'])document.addEventListener(event,schedule,{passive:true});
-  return {id,records,flush,schedule,async pick(){await flush();const result=await api.pickFiles({id});if(!result.cancelled)location.reload();},async home(){return home();}};
+  globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});else saveNow().catch(()=>{});};
+  const background=()=>{autosave.pause().catch(()=>{});onBackground();};
+  const foreground=()=>{autosave.resume();onForeground();};
+  document.addEventListener('visibilitychange',()=>document.hidden?background():foreground());
+  globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
+  for(const event of ['pointerdown','pointerup','keydown','keyup','input','change','wheel'])document.addEventListener(event,schedule,{passive:true});
+  return {id,records,flush:saveNow,schedule,async pick(){await saveNow();const result=await api.pickFiles({id});if(!result.cancelled)location.reload();},async home(){return home();}};
 }
 
 
@@ -2239,6 +2269,7 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     // the user has just asked to open. Standalone palette panels remain unchanged.
     const palette = panel.querySelector('.palette-panel');
     if (palette) palette.open = true;
+    root.dispatchEvent(new CustomEvent('bwv-inspector-change',{detail:{open:!panel.hidden,tab:current}}));
   }
   function close() {
     if (panel.hidden) return;
@@ -5155,8 +5186,8 @@ async function editorBoot(){
  const draftGuard=()=>{if(drawing?.hasDraft()){error(tr('先完成或取消当前绘制草稿。','Finish or cancel the drawing draft first.'));return true;}return false;};
  function getLive(entity){if(!entity.deleted)return entity.cloud;return editSubset(entity.cloud,editIndices(entity));}
  function preview(entity){if(cache.has(entity))return cache.get(entity);const indices=editIndices(entity),stride=Math.max(1,Math.ceil(indices.length/120000));const cloud=!entity.deleted&&stride===1?entity.cloud:editSubset(entity.cloud,indices.filter((_,i)=>i%stride===0));const item={key:`editor-${++serial}`,name:entity.name,cloud,color:entity.color||palette[entity.id%palette.length]};cache.set(entity,item);return item;}
- async function autosave(){if(nativeApp){if(nativeSession)try{await nativeSession.flush();unsaved=false;}catch{}return;}if(saving){saveAgain=true;return;}saving=true;const snapshot=model.entities;try{await editorSaveLocal(snapshot);if(snapshot===model.entities)unsaved=false;$('editor-save-status').textContent=tr('已保存到本机浏览器','Saved in this browser');}catch{$('editor-save-status').textContent=tr('自动保存失败，请保存项目文件','Autosave unavailable — save a project file');}finally{saving=false;if(saveAgain){saveAgain=false;autosave();}}}
- function checkpoint(){unsaved=true;$('editor-save-status').textContent=tr('正在保存…','Saving…');autosave();}
+ async function autosave(){if(nativeApp){nativeSession?.schedule();return;}if(saving){saveAgain=true;return;}saving=true;const snapshot=model.entities;try{await editorSaveLocal(snapshot);if(snapshot===model.entities)unsaved=false;$('editor-save-status').textContent=tr('已保存到本机浏览器','Saved in this browser');}catch{$('editor-save-status').textContent=tr('自动保存失败，请保存项目文件','Autosave unavailable — save a project file');}finally{saving=false;if(saveAgain){saveAgain=false;autosave();}}}
+ function checkpoint(){unsaved=true;$('editor-save-status').textContent=nativeApp?tr('待自动保存','Pending autosave'):tr('正在保存…','Saving…');autosave();}
  function buttons(){document.querySelectorAll('[data-workflow],.gs-fly-entry').forEach(b=>b.disabled=blocked());const n=model.selectedCount();for(const id of ['edit-delete','edit-keep','edit-extract','edit-paint'])if($(id))$(id).disabled=blocked()||!n;for(const id of ['editor-export','editor-handoff'])$(id).disabled=blocked()||!model.entities.some(e=>e.visible&&editLiveCount(e));$('editor-undo').disabled=blocked()||!model.past.length;$('editor-redo').disabled=blocked()||!model.future.length;const s=$('editor-selection-count');if(s)s.textContent=tr(`已选 ${n.toLocaleString()} 点`,`Selected ${n.toLocaleString()} points`);}
  function projectList(){const list=$('editor-objects');list.replaceChildren();for(const e of model.entities){const row=el('div',null,'editor-object');row.classList.toggle('active',e.id===model.active);row.setAttribute('role','listitem');const check=el('input');check.type='checkbox';check.checked=e.visible;check.setAttribute('aria-label',tr(`显示 ${e.name}`,`Show ${e.name}`));check.onchange=()=>{if(blocked()){check.checked=e.visible;return;}model.update(e.id,{visible:check.checked});changed();};const choose=el('button');choose.className='editor-object-name';choose.setAttribute('aria-pressed',String(e.id===model.active));choose.append(el('strong',e.name),el('small',`${editLiveCount(e).toLocaleString()} ${tr('点','points')} · ${e.recipe?tr(e.frozen?'已修订':'绘制','Drawn'):tr('导入 / 提取','Imported / extracted')}`));choose.onclick=()=>{if(blocked())return;model.active=e.id;model.clearSelection();projectList();properties();buttons();selection.paint();$('current-title').textContent=e.name;};row.append(check,choose);list.append(row);}if(!model.entities.length)list.append(el('p',tr('还没有对象。导入文件，或从绘制开始。','No objects yet. Import files or start drawing.'),'tool-help'));$('item-count').textContent=String(model.entities.length);}
  function refresh({fit=false}={}){const items=model.entities.filter(e=>e.visible&&editLiveCount(e)).map(preview);viewer.setClouds(items,{preserveView:seen&&!fit});seen=items.length>0;const total=model.entities.filter(e=>e.visible).reduce((n,e)=>n+editLiveCount(e),0),shown=items.reduce((n,i)=>n+i.cloud.count,0);$('scene-stats').textContent=tr(`${model.entities.length} 个对象 · ${total.toLocaleString()} 点${shown<total?` · 预览 ${shown.toLocaleString()} 点`:''}`,`${model.entities.length} objects · ${total.toLocaleString()} points${shown<total?` · Preview ${shown.toLocaleString()}`:''}`);$('current-title').textContent=model.entities.find(e=>e.id===model.active)?.name||tr('点云工作台','Point-cloud workspace');$('empty-state').hidden=items.length>0||workflow==='create';$('screenshot').disabled=!total;projectList();properties();buttons();drawing?.paint();selection?.paint();}
@@ -5214,9 +5245,10 @@ async function editorBoot(){
      if(model.entities.length>200)throw Error('项目最多 200 个对象 / At most 200 objects');
      model.active=model.entities.some(e=>e.id===state?.active)?state.active:model.entities[0]?.id??null;model.past=[];model.future=[];refresh();
      if(state?.camera&&viewer.pointCount)applyCameraSnapshot([viewer],state.camera,{space:'raw-world',checkScene:false});restoreMobileInputs(state?.display);
+     return {snapshotUnchanged:Boolean(snapshot)&&[...nativeSources].every(key=>(state?.sources||[]).includes(key))};
     },
     capture:()=>{const entities=model.entities;return {revision:entities,blob:()=>editorProjectBlob(entities),state:{schemaVersion:1,sources:[...nativeSources],active:model.active,camera:viewer.pointCount?captureCameraSnapshot(viewer,{space:'raw-world'}):null,display:captureMobileInputs()}};},
-    onStatus:(kind,e)=>{$('editor-save-status').textContent=tr(kind==='saved'?'已保存到 App 项目':kind==='saving'?'正在保存…':'保存失败，请重试',kind==='saved'?'Saved in app project':kind==='saving'?'Saving…':'Save failed — retry');if(kind==='saved')unsaved=false;if(e)error(e.message);},
+    onStatus:(kind,e)=>{$('editor-save-status').textContent=tr(kind==='saved'?'已保存到 App 项目':kind==='saving'?'正在保存…':kind==='dirty'?'待自动保存':'保存失败，请重试',kind==='saved'?'Saved in app project':kind==='saving'?'Saving…':kind==='dirty'?'Pending autosave':'Save failed — retry');if(kind==='saved')unsaved=false;if(e)error(e.message);},
     beforeLeave:()=>{if(draftGuard())throw Error(tr('先完成或取消绘制','Finish or cancel drawing first'));},
     onBackground:()=>{selection.cancel();viewer.fly?.leave();viewer.stopNavigation();},onForeground:()=>viewer.requestRender()
    });

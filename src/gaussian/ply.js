@@ -53,7 +53,7 @@ function gsPlyBytes(buffer) {
   throw Error(t('只支持二进制小端、float 属性的高斯 PLY。'));
 }
 
-function gsPlyHeader(bytes) {
+export function gsPlyHeader(bytes) {
   const probe = Math.min(bytes.length, 262144);
   const head = new TextDecoder('latin1').decode(bytes.subarray(0, probe));
   const marker = head.indexOf('end_header');

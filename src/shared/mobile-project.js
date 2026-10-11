@@ -1,3 +1,4 @@
+import { createAutosave } from './autosave.js';
 import { t } from './i18n.js';
 import { createMobileHomeNavigation } from './mobile-navigation.js';
 let mobileProjectPlugin;
@@ -38,7 +39,7 @@ export function createMobileSaver({read,write,status=()=>{}}){
   let pending=null,draining=null,last='';
   return {flush(){
     let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
-    if(!draining&&text===last)return Promise.resolve();
+    if(!draining&&text===last){status('saved');return Promise.resolve();}
     pending={state,text};
     if(draining)return draining;
     draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
@@ -51,10 +52,10 @@ export async function mountMobileProject({receive,getState,restoreState,onBackgr
   const id=new URL(root.location.href).searchParams.get('project');
   if(!id){root.location.replace('assets/mobile/index.html');return null;}
   const status=root.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');root.querySelector('header').append(status);
-  let ready=false,timer=null;
+  let ready=false;
   const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
-  const flush=()=>{clearTimeout(timer);timer=null;return ready?saver.flush():Promise.resolve();};
-  const schedule=()=>{if(!ready)return;clearTimeout(timer);timer=setTimeout(()=>flush().catch(()=>{}),300);};
+  const autosave=createAutosave({save:()=>ready?saver.flush():Promise.resolve(),onDirty:()=>{status.textContent=t('待自动保存');}});
+  const flush=autosave.flush, schedule=()=>{if(ready)autosave.schedule();};
   const goHome=createMobileHomeNavigation({flush,navigate:url=>root.location.replace(url),language:()=>root.documentElement.lang});
   const home=root.querySelector('.back-home');
   if(home){home.href='assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
@@ -62,7 +63,7 @@ export async function mountMobileProject({receive,getState,restoreState,onBackgr
     // Existing viewer Escape handlers close open settings/menus before leaving the project.
     const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});
     (root.activeElement||root).dispatchEvent(event);
-    if(!event.defaultPrevented)goHome().catch(()=>{});
+    if(!event.defaultPrevented)goHome().catch(()=>{});else flush().catch(()=>{});
   };
 
   try{
@@ -73,9 +74,10 @@ export async function mountMobileProject({receive,getState,restoreState,onBackgr
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
-    const background=()=>{flush().catch(()=>{});onBackground();};
-    root.addEventListener('visibilitychange',()=>root.hidden?background():onForeground());
-    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',()=>{onForeground();flush().catch(()=>{});});globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    const background=()=>{autosave.pause().catch(()=>{});onBackground();};
+    const foreground=()=>{autosave.resume();onForeground();};
+    root.addEventListener('visibilitychange',()=>root.hidden?background():foreground());
+    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
     await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
     // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
     const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});

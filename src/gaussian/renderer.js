@@ -44,6 +44,8 @@ uniform float uCutoff;
 uniform int uWidth;
 uniform int uRestWidth;
 uniform int uDegree;
+uniform bool uPointPreview;
+uniform float uFar;
 out vec4 vColor;
 out vec2 vPos;
 float gsRest(int id, int channel, int band) {
@@ -96,10 +98,20 @@ void main() {
   vec4 centerA = texelFetch(uCenter, uv, 0);
   vec3 center = centerA.xyz;
   float opacity = centerA.w;
+  if(uFar>0.0)opacity*=clamp((uFar-length(center-uEye))/(uFar*.1),0.0,1.0);
   vPos = aCorner * 3.0;
   int flags = int(texelFetch(uFlags, uv, 0).r + 0.5);
   float depth = -dot(center - uEye, -uView);
-  if (opacity < uCutoff || (flags & 6) != 0 || (uPerspective && depth <= uNear)) { vColor = vec4(0.0); gl_Position = vec4(2.0, 2.0, 0.0, 1.0); return; }
+  if (opacity <= 0.0 || opacity < uCutoff || (flags & 6) != 0 || (uPerspective && depth <= uNear)) { vColor = vec4(0.0); gl_Position = vec4(2.0, 2.0, 0.0, 1.0); return; }
+  if (uPointPreview) {
+    vec3 rel = center - uEye;
+    float h = uBaseHeight / uZoom;
+    vec2 clip = vec2((dot(center-uTarget,uRight)-uPan.x)/(h*uViewport.x/uViewport.y), (dot(center-uTarget,uUp)-uPan.y)/h)*2.0;
+    if(uPerspective) clip=vec2(dot(rel,uRight),dot(rel,uUp))/depth*uFocal*2.0/uViewport;
+    gl_Position=vec4(clip+aCorner*4.0/uViewport,0.0,1.0);
+    vec3 rgb=clamp(texelFetch(uDc,uv,0).xyz*0.28209479177387814+0.5,0.0,1.0);
+    vColor=vec4(rgb*opacity,opacity);vPos=aCorner;return;
+  }
   vec3 scale = texelFetch(uScale, uv, 0).xyz * uScaleMul;
   vec4 quat = texelFetch(uQuat, uv, 0);
   float w = quat.x, x = quat.y, y = quat.z, z = quat.w;
@@ -247,6 +259,8 @@ export class GaussianViewer {
     try {
       this.gl = canvas.getContext('webgl2', {antialias: false, alpha: false, preserveDrawingBuffer: true});
       if (!this.gl) throw Error(t('无法启用 WebGL2，请使用 Chrome 或 Edge，并打开硬件加速。'));
+      const rendererInfo=this.gl.getExtension('WEBGL_debug_renderer_info');
+      this.softwareRendering=Boolean(rendererInfo&&/swiftshader|llvmpipe|softpipe|software/i.test(this.gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL)||''));
       this.initGL();
     } catch (error) { this.onError(error.message); throw error; }
     this.installEvents();
@@ -284,7 +298,7 @@ export class GaussianViewer {
     if (this.program) gl.deleteProgram(this.program);
     this.program = program;
     this.locations = {};
-    for (const name of ['uOrder','uCenter','uScale','uQuat','uDc','uRest','uRight','uUp','uView','uTarget','uPan','uViewport','uBaseHeight','uZoom','uScaleMul','uCutoff','uWidth','uRestWidth','uDegree','uEye','uFocal','uNear','uPerspective','uFlags']) {
+    for (const name of ['uOrder','uCenter','uScale','uQuat','uDc','uRest','uRight','uUp','uView','uTarget','uPan','uViewport','uBaseHeight','uZoom','uScaleMul','uCutoff','uWidth','uRestWidth','uDegree','uPointPreview','uFar','uEye','uFocal','uNear','uPerspective','uFlags']) {
       this.locations[name] = gl.getUniformLocation(program, name);
     }
     const corners = gl.createBuffer();
@@ -512,7 +526,9 @@ export class GaussianViewer {
       dc.set(model.dc.subarray(index * 3, index * 3 + 3), write * 3);
       opacity[write] = model.opacity[index];
       const sx = model.scale[index * 3], sy = model.scale[index * 3 + 1], sz = model.scale[index * 3 + 2];
-      scale.set([sx, sy, sz], write * 3);
+      // Preserve approximate projected coverage after thinning: area scales with radius squared.
+      const coverage = model.preview ? Math.sqrt(model.sampleStep || 1) : 1;
+      scale.set([sx * coverage, sy * coverage, sz * coverage], write * 3);
       this.sourceMap.push([model, index]); flags[write] = model.editFlags?.[index] || 0;
       quat.set(model.quat.subarray(index * 4, index * 4 + 4), write * 4);
       if (rest && model.rest) rest.set(model.rest.subarray(index * 45, index * 45 + 45), write * 45);
@@ -673,8 +689,8 @@ export class GaussianViewer {
     if (this.sortDirty || !this.sortForward) return true;
     const [,, forward] = this.basis();
     const alignment = GS_DOT(forward, this.sortForward);
-    const moved = this.sortTarget.some((value, axis) => value !== this.target[axis]);
-    return moved || alignment < (this.interacting ? 0.999 : 0.999999);
+    // Translating the camera adds the same depth offset to every splat.
+    return alignment < (this.interacting ? 0.999 : 0.999999);
   }
 
   requestRender() {
@@ -683,14 +699,14 @@ export class GaussianViewer {
   }
 
   render() {
-    if (this.disposed || this.contextLost || !this.gl) return;
+    if (this.disposed || this.contextLost || !this.gl || (!this.exportTarget && globalThis.document?.hidden)) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     if (!this.exportTarget && this.navigation.active) {
       this.applyNavigation(this.navigation.step(performance.now()));
       if (this.navigation.active) this.requestRender();
     }
     const gl = this.gl, canvas = this.canvas, rect = canvas.getBoundingClientRect();
-    const dpr = this.exportTarget?.scale || Math.min(globalThis.devicePixelRatio || 1, 2);
+    const dpr = this.exportTarget?.scale || Math.min(globalThis.devicePixelRatio || 1, this.pixelRatioLimit || 2) * (!this.exportTarget && this.pixelRatioLimit<=1 && (this.interacting || this.navigation.active || this.fly?.active) ? .75 : 1);
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr));
     const height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
     if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
@@ -700,9 +716,8 @@ export class GaussianViewer {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     if (this.count && this.packed && this.needsSort()) {
       this.sort(Boolean(this.exportTarget));
-      // Keep the last stable frame across a large camera jump until the worker
-      // supplies the new order. Drawing a new view with an old order causes fog.
-      if (!this.sortedReady || (!this.exportTarget && this.sortBusy && GS_DOT(this.basis()[2], this.sortForward || [0,0,0]) < .98)) return;
+      // Reproject the previous order immediately; the worker refines transparency next.
+      if (!this.sortedReady) return;
     }
     gl.clearColor(clear[0], clear[1], clear[2], clear[3]); gl.clear(gl.COLOR_BUFFER_BIT);
     if (this.count && this.packed) {
@@ -720,6 +735,8 @@ export class GaussianViewer {
       gl.uniform1f(loc.uBaseHeight, this.baseHeight); gl.uniform1f(loc.uZoom, this.camera.zoom);
       gl.uniform1f(loc.uScaleMul, this.gauss.scale); gl.uniform1f(loc.uCutoff, this.gauss.opacityCutoff);
       gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? this.gauss.shDegree : 0);
+      gl.uniform1i(loc.uPointPreview, this.pointPreview?1:0);
+      gl.uniform1f(loc.uFar, this.viewDistance || 0);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.count);
     }
     if (this.exportTarget) return;

@@ -21,11 +21,14 @@ export class GaussianEdits {
   write(command,key){for(const c of command.changes)for(let j=0;j<c.ids.length;j++)c.model.editFlags[c.ids[j]]=c[key][j];}
   undo(){const c=this.undoStack.pop();if(!c)return;this.write(c,'before');this.redoStack.push(c);this.onChange();}
   redo(){const c=this.redoStack.pop();if(!c)return;this.write(c,'after');this.undoStack.push(c);this.onChange();}
+  // History only needs flags. Drop geometry references when switching to a light preview.
+  releaseGeometry(model){for(const command of [...this.undoStack,...this.redoStack])for(const c of command.changes)if(c.model===model)c.model={editFlags:model.editFlags};}
   clear(){this.undoStack=[];this.redoStack=[];this.bytes=0;}
 }
 export function gsEditStats(models){const s={total:0,selected:0,hidden:0,deleted:0};for(const m of models){s.total+=m.count;for(const f of m.editFlags||[]){if(f&GS_DELETED)s.deleted++;else if(f&GS_HIDDEN)s.hidden++;else if(f&GS_SELECTED)s.selected++;}}return s;}
 // Keep the source property layout and raw values: no sigmoid/log/quaternion round-trip loss.
 export function gsExportPly(model,{selectedOnly=false,includeHidden=false}={}) {
+  if(model.preview)throw Error('请先加载完整数据再编辑或导出 / Load full data before editing or exporting');
   if(!model.source)throw Error('Missing original PLY records');
   const {bytes,headerEnd,stride,header}=model.source, flags=model.editFlags||new Uint8Array(model.count);
   const ids=[];for(let i=0;i<model.count;i++){const f=flags[i];if(!(f&GS_DELETED)&&(includeHidden||!(f&GS_HIDDEN))&&(!selectedOnly||(f&GS_SELECTED)))ids.push(i);}

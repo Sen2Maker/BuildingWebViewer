@@ -1,5 +1,19 @@
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 export const EN_MESSAGES = {
+  "LOD 模型": "LOD models",
+  "建筑线框": "Wireframes",
+  "待自动保存": "Pending autosave",
+  "文件保存在本机": "Files stay on this device",
+  "帮助与维护": "Help & maintenance",
+  "启动诊断": "Diagnostics",
+  "项目管理": "Manage project",
+  "本地离线可用": "Available offline",
+  "支持常见压缩包；不支持分卷与密码。": "Common archives supported; no split or password archives.",
+  "卸载前请导出项目备份。": "Back up projects before uninstalling.",
+  "第三方声明": "Licenses",
+  "项目链接": "Project links",
+  "手机默认轻量查看；完整模式可调整球谐和显示数量。编辑与导出位于编辑标签。": "Mobile defaults to light viewing. Full mode enables SH and display count controls. Editing and export are in the Edit tab.",
+
   '浏览': 'Browse',
   'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',
   '发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。': 'Feature update v{0} is available. Download for next launch? Projects and data will be kept.',

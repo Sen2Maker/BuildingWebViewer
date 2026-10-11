@@ -10,3 +10,10 @@ assert(restored);await session.flush();assert.deepEqual(writes,[['A','A']]);awai
 let release;hold=new Promise(r=>release=r);revision={};blobText='B';value='B';const pending=session.flush();await new Promise(r=>setTimeout(r,0));revision={};blobText='C';value='C';session.flush();release();hold=null;await pending;assert.deepEqual(writes.slice(-2),[['B','B'],['C','C']]);
 revision={};blobText='D';value='D';fail=true;await assert.rejects(session.flush(),/disk full/);assert.equal(project.states.generate.value,'C');fail=false;await session.flush();assert.deepEqual(writes.at(-1),['D','D']);await session.flush();value='E';await session.flush();assert.equal(project.states.generate.value,'E');
 assert(status.includes('error'));assert.equal(status.at(-1),'saved');console.log('PASS native workspace atomic snapshot adapter, coalesced edits, metadata-only saves and failure retry');
+
+const restoredCapture=()=>({revision,state:{value},blob:()=>new Blob([blobText])});
+const countBefore=writes.length;
+const unchanged=await openWorkspaceSession({tool:'generate',restore:async()=>({snapshotUnchanged:true}),capture:restoredCapture,onStatus:()=>{}});await unchanged.flush();assert.equal(writes.length,countBefore);
+revision={};blobText='new imported points';value='new source';
+const imported=await openWorkspaceSession({tool:'generate',restore:async()=>({snapshotUnchanged:false}),capture:restoredCapture,onStatus:()=>{}});await imported.flush();assert.deepEqual(writes.at(-1),['new imported points','new source']);
+console.log('PASS unchanged snapshot reuse and newly imported data snapshot commit');

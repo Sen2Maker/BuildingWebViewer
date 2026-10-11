@@ -1,7 +1,7 @@
 import { openWorkspaceSession } from '../shared/workspace-session.js';
 import { isMobileApp, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs } from '../shared/mobile-project.js';
 import { captureCameraSnapshot, applyCameraSnapshot } from '../shared/camera-controls.js';
-import { gsProjectBlob, gsReadProjectBlob } from './project-state.js';
+import { gsProjectBlob, gsReadProjectBlob, gsEntryFlags } from './project-state.js';
 import { initializeLocale, t } from '../shared/i18n.js';
 import { ViewerProject } from '../shared/project-model.js';
 import { mountProjectTree } from '../shared/project-tree.js';
@@ -12,10 +12,21 @@ import { mountGaussianEditor } from './editor-controls.js';
 import { mountViewerLayout } from '../shared/viewer-layout.js';
 import { GaussianViewer } from './renderer.js';
 import { gsParseCameras, gsParseGaussianPly } from './ply.js';
+import { gsReadPreview, gsViewingProfile } from './preview.js';
 
 async function gsBoot() {
   initializeLocale();
   const gs$ = id => document.getElementById(id);
+  const en=document.documentElement.lang==='en', label=(zh,english)=>en?english:zh;
+  const mobileView=isMobileApp()||matchMedia('(pointer: coarse)').matches;
+  const profileLabel=document.createElement('label'),profileSelect=document.createElement('select');
+  profileSelect.id='gs-profile';profileLabel.textContent=label('查看性能','Viewing performance');profileSelect.setAttribute('aria-label',profileLabel.textContent);
+  for(const [value,zh,english] of [['auto','自动 · 手机优先流畅','Auto · mobile friendly'],['light','轻量泼溅 · 2 万','Light splats · 20k'],['points','低配点预览 · 5 千','Low-power point preview · 5k'],['balanced','均衡泼溅 · 10 万','Balanced splats · 100k'],['full','完整数据 · 可编辑','Full data · editable']]){
+    const o=document.createElement('option');o.value=value;o.textContent=label(zh,english);profileSelect.append(o);
+  }
+  profileLabel.append(profileSelect);gs$('settings-panel-display').querySelector('.render-controls').prepend(profileLabel);
+  const performanceNote=document.createElement('p');performanceNote.className='presentation-help';performanceNote.textContent=label('轻量泼溅覆盖整个场景，简化颜色并补偿抽样覆盖，细节会变柔和。点预览仅作备用；完整数据用于精细查看和编辑。','Light splats span the scene, simplify color and compensate sample coverage; detail becomes softer. Point preview is a fallback; use full data for detailed viewing and edits.');profileLabel.after(performanceNote);
+  const profile=()=>gsViewingProfile(profileSelect.value,mobileView,gsViewer?.softwareRendering);
   const gsProject = new ViewerProject();
   const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
   let nativeSession=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
@@ -25,6 +36,19 @@ async function gsBoot() {
   const gsSay = message => { const note = gs$('data-notes'); note.textContent = message || ''; };
   const gsError = message => { const box = gs$('error'); box.hidden = !message; box.querySelector('span').textContent = message || ''; };
   const gsLoading = (message) => { const box = gs$('loading'); box.hidden = !message; if (message) box.querySelector('span').textContent = message; };
+
+  const distanceLabel=document.createElement('label'),distanceToggle=document.createElement('input'),distanceRange=document.createElement('input'),distanceValue=document.createElement('output');
+  distanceToggle.type='checkbox';distanceToggle.id='gs-distance-enabled';distanceToggle.setAttribute('aria-label',label('限制视距','Limit viewing distance'));
+  distanceRange.type='range';distanceRange.id='gs-distance';distanceRange.min=.25;distanceRange.max=10;distanceRange.step=.05;distanceRange.value=3;distanceRange.disabled=true;distanceRange.setAttribute('aria-label',label('视距范围','Viewing distance'));
+  distanceLabel.append(distanceToggle,document.createTextNode(label('限制视距','Limit viewing distance')),distanceRange,distanceValue);gs$('settings-panel-display').querySelector('.render-controls').append(distanceLabel);
+  const distanceHint=document.createElement('p');distanceHint.className='presentation-help';distanceHint.textContent=label('默认不裁切。视距以相机为中心，远处逐渐淡出；若看不到模型，请增大距离或关闭。只影响显示。','No clipping by default. Distant splats fade out around the camera. Increase the distance or disable if the model disappears. Display only.');distanceLabel.after(distanceHint);
+  function updateDistance(){
+    const bounds=gsViewer?.bounds,extent=bounds?Math.hypot(...bounds[0].map((v,i)=>bounds[1][i]-v)):1;
+    const distance=Math.max(.001,extent)*Number(distanceRange.value);distanceRange.disabled=!distanceToggle.checked;
+    distanceValue.value=distanceToggle.checked?distance.toFixed(2)+label(' 坐标单位',' coordinate units'):label('不限','Unlimited');
+    if(gsViewer){gsViewer.viewDistance=distanceToggle.checked?distance:0;gsViewer.requestRender();}
+  }
+  distanceToggle.onchange=distanceRange.oninput=updateDistance;updateDistance();
 
   function gsCatalogFor(entry) {
     const dir = (entry.path || '').split('/').slice(0, -1).join('/');
@@ -77,41 +101,52 @@ async function gsBoot() {
       gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
       gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
       gs$('geometry-note').textContent = t('未选择数据时保持空白');
-      gsViewer?.clearSplats(); gsEditor?.sceneChanged(); gsList(); return;
+      gsViewer?.clearSplats(); gsEditor?.setLoading(false);gsEditor?.sceneChanged(); gsList(); return;
     }
     gsLoading(t('正在读取文件…')); gs$('empty-state').hidden = true; gsError('');
-    const degree = Number(gs$('gs-sh').value), cap = Number(gs$('gs-cap').value);
+    const quality=profile(), budget=quality.limit?Math.max(1,Math.floor(quality.limit/selected.length)):0;
+    const degree = budget?0:Number(gs$('gs-sh').value), cap = quality.limit||Number(gs$('gs-cap').value);
+    gs$('gs-sh').disabled=gs$('gs-cap').disabled=Boolean(budget);
+    gsEditor?.setLoading(true);
     const models = [];
     let missingRest = false;
     try {
       for (const entry of selected) {
         if (serial !== gsSerial) return;
-        if (!entry.parsed) {
+        if (!entry.parsed || entry.budget!==budget) {
           gsLoading(t('正在读取 {0}…', [entry.treeName || entry.file.name]));
-          const buffer = await entry.file.arrayBuffer();
-          if (serial !== gsSerial) return;
-          entry.parsed = await gsParseGaussianPly(buffer, {includeRest: true, onProgress: (done, total) => gsLoading(t('正在解析 {0}（{1}%）', [entry.treeName || entry.file.name, Math.floor(done / total * 100)]))});
+          if(entry.parsed&&!entry.parsed.preview){entry.savedFlags=entry.parsed.editFlags;gsEditor?.edits.releaseGeometry(entry.parsed);}
+          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]));};
+          const parsed=budget?await gsReadPreview(entry.file,{limit:budget,onProgress,cancelled:()=>serial!==gsSerial}):await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true,onProgress});
+          if(serial!==gsSerial)return;
+          if(entry.savedFlags){
+            if(entry.savedFlags.length!==parsed.sourceCount)throw Error('Gaussian snapshot does not match source');
+            parsed.editFlags=parsed.preview?Uint8Array.from({length:parsed.count},(_,i)=>entry.savedFlags[i*parsed.sampleStep]):entry.savedFlags;
+          }
+          entry.parsed=parsed;entry.budget=budget;
         }
         if (!entry.parsed.hasRest) missingRest = true;
         entry.parsed.name = entry.treeName || entry.file.name;
-        gsEditor?.edits.attach(entry.parsed);if(entry.savedFlags){if(entry.savedFlags.length!==entry.parsed.count)throw Error('Gaussian snapshot does not match source');entry.parsed.editFlags=entry.savedFlags;entry.savedFlags=null;}
+        gsEditor?.edits.attach(entry.parsed);
         models.push(entry.parsed);
       }
       if (serial !== gsSerial) return;
       const useDegree = degree;
-      gsViewer.setModels(models, {preserveView, maxSplats: cap, shDegree: useDegree});
+      gsViewer.pixelRatioLimit=quality.dpr;gsViewer.pointPreview=quality.points;
+      gsViewer.setModels(models, {preserveView, maxSplats: cap, shDegree: useDegree});updateDistance();
       gsEditor?.sceneChanged();
       gsViewer.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value, shDegree: useDegree});
       const shown = gsViewer.count, source = gsViewer.pointCount;
       gs$('current-title').textContent = selected.map(entry => entry.treeName || entry.id).join('、');
       gs$('scene-stats').textContent = t('已显示 {0} / {1} 个高斯', [shown.toLocaleString('zh-CN'), source.toLocaleString('zh-CN')]);
-      gs$('geometry-note').textContent = t('原始尺度 · 可撤销编辑 · 本地处理');
+      gs$('geometry-note').textContent = budget?label('轻量预览 · 原文件未修改','Light preview · source unchanged'):t('原始尺度 · 可撤销编辑 · 本地处理');
       gs$('screenshot').disabled = false; gsLoading('');
       gsSay(missingRest ? t('此文件没有球谐系数，已保持 0 阶。') : '');
     } catch (error) {
       if (serial !== gsSerial) return;
       gsLoading(''); gsError(error.message); gs$('screenshot').disabled = !gsViewer?.count;
     }
+    if(serial===gsSerial)gsEditor?.setLoading(false);
     gsList();
   }
 
@@ -183,6 +218,7 @@ async function gsBoot() {
     gsApply({preserveView: true});
   };
   gs$('dismiss-error').onclick = () => gsError('');
+  profileSelect.onchange=()=>gsApply({preserveView:true});
   gs$('gs-sh').onchange = () => gsApply({preserveView: true});
   gs$('gs-cap').onchange = () => gsApply({preserveView: true});
   const gsAppearance = () => gsViewer?.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value});
@@ -207,10 +243,10 @@ async function gsBoot() {
   });
   try {
     gsViewer = new GaussianViewer(gs$('scene'), {onError: gsError});
-    gsEditor = mountGaussianEditor({viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
+    gsEditor = mountGaussianEditor({loadFull:async()=>{profileSelect.value='full';await gsApply({preserveView:true});},viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }
-  window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>e.parsed?.editFlags?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
+  window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>gsEntryFlags(e)?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
   if(nativeApp&&gsViewer)try{
     nativeSession=await openWorkspaceSession({tool:'gaussian',restore:async({state,records,snapshot})=>{
       await gsReceive(records);knownIds=[...new Set([...(state?.tree?.knownIds||[]),...gsEntries.map(e=>e.id)])];
@@ -218,8 +254,9 @@ async function gsBoot() {
       const flags=snapshot?await gsReadProjectBlob(snapshot):new Map();for(const entry of gsEntries)entry.savedFlags=flags.get(entry.id)||null;
       gsMode=state?.mode==='single'?'single':'multiple';gsSelected.clear();for(const id of state?.selected||[]){const entry=gsEntries.find(e=>e.id===id);if(entry)gsSelected.add(entry);}
       restoreMobileInputs(state?.display);await gsApply();if(state?.camera&&gsViewer.count)applyCameraSnapshot([gsViewer],state.camera,{space:'raw-world',checkScene:false});
+      return {snapshotUnchanged:Boolean(snapshot)};
     },capture:()=>({revision:editRevision,blob:()=>gsProjectBlob(gsEntries),state:{schemaVersion:1,tree:{...snapshotProjectTree(gsProject,gsEntries),knownIds},selected:[...gsSelected].map(e=>e.id),mode:gsMode,display:captureMobileInputs(),camera:gsViewer.count?captureCameraSnapshot(gsViewer,{space:'raw-world'}):null}}),
-    onStatus:(kind,e)=>{if(e)gsError(e.message);else gs$('source-note').textContent=t(kind==='saved'?'项目自动保存在此设备':'保存中…');},onBackground:()=>{gsViewer.fly?.leave();gsViewer.stopNavigation();},onForeground:()=>gsViewer.requestRender()});
+    onStatus:(kind,e)=>{if(e)gsError(e.message);else gs$('source-note').textContent=t(kind==='saved'?'项目自动保存在此设备':kind==='dirty'?'待自动保存':'保存中…');},onBackground:()=>{gsViewer.fly?.leave();gsViewer.stopNavigation();},onForeground:()=>gsViewer.requestRender()});
     if(nativeSession?.redirecting)return;await nativeSession.flush();
     for(const id of ['choose-file','choose-folder'])gs$(id).onclick=()=>nativeSession.pick().catch(e=>gsError(e.message));
   }catch(e){gsError(e.message);}

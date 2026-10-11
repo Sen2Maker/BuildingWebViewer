@@ -1,11 +1,11 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 2,
-  "issuedAt": 1791676800,
-  "expiresAt": 1807228800,
+  "sequence": 3,
+  "issuedAt": 1791715996,
+  "expiresAt": 1807267996,
   "notes": {
-    "zh": "新增高斯泼溅查看与基础修订、点云创作与修订工作台。\n共享漫游与相机旋转设置，支持手机触控。\nApp 新增两个工具的本地项目快照、返回保存与分享导出；.bwvproject 可在电脑网页、手机网页和 App 间转移。\n本次升级原生接口至 6，需要安装新版 APK；已有项目保留。Android 仍为 Preview。",
-    "en": "Gaussian splat viewing/editing and the point cloud creation/refinement studio.\nShared fly/orbit navigation with mobile touch controls.\nNative editor snapshots, save-aware Back and share/export; transfer .bwvproject files between desktop web, mobile web and Android.\nNative API 6 requires the new APK. Existing projects are retained. Android remains Preview."
+    "zh": "降低 App 自动保存频率：有改动时每五分钟保存，系统返回或进入后台立即保存。\n手机高斯优先显示整个场景的轻量泼溅，简化颜色与分辨率并补偿抽样覆盖；编辑按需加载完整数据。\n精简项目首页，管理与维护折叠，底部提供 Sen2Maker 和项目链接。\n兼容 nativeApi 6，可热更新，无需重新安装 App。",
+    "en": "Dirty projects save every five minutes, plus immediately on Back or background.\nMobile Gaussian viewing uses lightweight scene-wide splats with reduced color/resolution and sample coverage compensation. Full editing loads on demand.\nA simpler project home with collapsed management, maintenance and author/project links.\nCompatible with native API 6: web update only, no APK reinstall."
   }
 }
