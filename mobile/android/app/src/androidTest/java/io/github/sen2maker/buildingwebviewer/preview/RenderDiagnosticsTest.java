@@ -31,7 +31,7 @@ public class RenderDiagnosticsTest {
    waitFor(scenario,"document.getElementById('scene-stats').textContent.includes('1,000')&&document.getElementById('loading').hidden");
    assertTrue(js(scenario,"document.getElementById('gs-diagnostics').click();true"));
    waitFor(scenario,"!!document.querySelector('#render-diagnostic-dialog textarea')");
-   assertTrue(js(scenario,"window.report=JSON.parse(document.querySelector('#render-diagnostic-dialog textarea').value);report.webVersion==='1.4.2'&&report.scene.sourceSplats===1000&&report.graphics.webgl.includes('WebGL 2')&&report.native.apkVersion.length>0"));
+   assertTrue(js(scenario,"window.report=JSON.parse(document.querySelector('#render-diagnostic-dialog textarea').value);report.webVersion==='1.4.3'&&report.scene.sourceSplats===1000&&report.graphics.webgl.includes('WebGL 2')&&report.native.apkVersion.length>0"));
    assertTrue(js(scenario,"Array.from(document.querySelectorAll('#render-diagnostic-dialog button')).find(b=>b.textContent==='Sample for 10 seconds').click();document.querySelector('[data-view=top]').click();true"));
    SystemClock.sleep(11000);
    assertTrue(js(scenario,"window.saved=JSON.parse(localStorage.getItem('bwv-render-diagnostic-v1'));saved.measurement.durationMs>=9000&&saved.measurement.cpuDrawSubmission.samples>0"));

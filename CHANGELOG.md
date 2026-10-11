@@ -6,6 +6,13 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.3] - 2026-10-11
+
+- 修复共享依赖目录通过符号链接参与构建时，兼容脚本包含本机路径、导致热更新包无法与 CI 重建产物一致的问题；固定依赖路径表示，保留原有签名及字节校验。
+- 包含 v1.4.2 的全部诊断功能。v1.4.2 的 App 更新清单被部署校验拦截，未通过 Pages 发布；本版递增序号重新发布，不覆盖历史附件。
+- Fix reproducible compatibility bundles when dependencies are symlinked. Retains v1.4.2 diagnostics and all signature/hash checks. The v1.4.2 update was blocked by deployment verification; this patch supersedes it without replacing published artifacts.
+- nativeApi 6 不变，继续复用 v1.4.0 APK，无需重新安装。
+
 ## [1.4.2] - 2026-10-11
 
 - 高斯查看器新增“诊断”：实际 WebGL 渲染器与厂商、上下文状态、原始/提交高斯数量、显示模式和分辨率。

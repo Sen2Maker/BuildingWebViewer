@@ -22,7 +22,7 @@ for(const file of await walk(web)){
  }
  if(text!==undefined)await writeFile(file,text);
 }
-await build({entryPoints:[path.join(root,'src/mobile/compatibility.js')],outfile:path.join(web,'assets/js/compatibility.js'),bundle:true,format:'iife',target,nodePaths:[path.join(mobile,'node_modules')],charset:'utf8',legalComments:'inline'});
+await build({entryPoints:[path.join(root,'src/mobile/compatibility.js')],outfile:path.join(web,'assets/js/compatibility.js'),bundle:true,preserveSymlinks:true,format:'iife',target,nodePaths:[path.join(mobile,'node_modules')],charset:'utf8',legalComments:'inline'});
 await writeFile(path.join(web,'assets/mobile/compatibility.css'),await readFile(path.join(root,'src/mobile/compatibility.css')));
 for(const file of (await walk(web)).filter(p=>p.endsWith('.html'))){const prefix=file.includes(path.join('assets','mobile'))?'../../':'';await writeFile(file,(await readFile(file,'utf8')).replace('</head>','<link rel="stylesheet" href="'+prefix+'assets/mobile/compatibility.css"></head>'));}
 console.log('Android JavaScript, inline boot scripts and CSS compiled for WebView 60; offline compatibility layer included.');
