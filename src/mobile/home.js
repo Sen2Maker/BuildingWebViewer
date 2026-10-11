@@ -1,3 +1,4 @@
+import { showRenderDiagnostics } from '../shared/render-diagnostics.js';
 import { initializeLocale, t } from '../shared/i18n.js';
 import { mobileProjects } from '../shared/mobile-project.js';
 import { initializeMobileUpdates } from './mobile-updates.js';
@@ -33,7 +34,7 @@ if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobile
 
 document.getElementById('clean-storage').onclick=async()=>{try{const {freed}=await mobileHomeAPI.cleanupStorage();mobileHomeSay(t('已清理 {0} MB 未引用文件',[(freed/1048576).toFixed(1)]));}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('empty-trash').onclick=async()=>{if(!confirm(t('永久删除回收站内的项目？请先导出需要的项目备份。')))return;try{await mobileHomeAPI.emptyTrash();await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
-document.getElementById('show-diagnostics').onclick=()=>mobileHomeAPI?.showDiagnostics().catch(()=>{});
+document.getElementById('show-diagnostics').onclick=()=>showRenderDiagnostics();
 // Local projects render independently; update failure is intentionally silent.
 if(mobileHomeAPI){
   mobileHomeAPI.runtimeInfo().then(info=>{

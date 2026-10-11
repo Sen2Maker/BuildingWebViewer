@@ -1,3 +1,4 @@
+import { mountRenderDiagnostics } from '../shared/render-diagnostics.js';
 import { openWorkspaceSession } from '../shared/workspace-session.js';
 import { isMobileApp, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs } from '../shared/mobile-project.js';
 import { captureCameraSnapshot, applyCameraSnapshot } from '../shared/camera-controls.js';
@@ -243,6 +244,8 @@ async function gsBoot() {
   });
   try {
     gsViewer = new GaussianViewer(gs$('scene'), {onError: gsError});
+    mountRenderDiagnostics(gsViewer, gs$('settings-panel-display').querySelector('.render-controls'));
+    const quickDiagnostic=document.createElement('button');quickDiagnostic.type='button';quickDiagnostic.textContent=label('诊断','Diagnostics');quickDiagnostic.onclick=()=>gs$('gs-diagnostics').click();document.querySelector('.inspector-shortcuts').append(quickDiagnostic);
     gsEditor = mountGaussianEditor({loadFull:async()=>{profileSelect.value='full';await gsApply({preserveView:true});},viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }

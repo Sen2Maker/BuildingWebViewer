@@ -1410,6 +1410,58 @@ async function nativeExportWriter(name){
 }
 
 
+// Source: src/shared/render-diagnostics.js
+
+const RENDER_DIAGNOSTIC_KEY='bwv-render-diagnostic-v1';
+function classifyRenderer(name) {
+  if(!name)return 'unknown (renderer identity unavailable)';
+  if(/swiftshader|llvmpipe|softpipe|software|lavapipe/i.test(name))return 'software renderer reported';
+  if(/adreno|mali|powervr|apple|nvidia|radeon|intel|geforce|vivante|tegra/i.test(name))return 'hardware renderer reported (not a utilization measurement)';
+  return 'unknown (unrecognized renderer)';
+}
+function diagnosticSummary(values) {
+  const sorted=values.filter(Number.isFinite).sort((a,b)=>a-b);
+  return sorted.length?{samples:sorted.length,medianMs:+sorted[Math.floor(sorted.length*.5)].toFixed(2),p95Ms:+sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))].toFixed(2)}:null;
+}
+/** Queries run asynchronously only while a user-requested sample is active. */
+class RenderDiagnosticProbe {
+  constructor(viewer){this.viewer=viewer;this.active=false;this.queries=[];this.samples={gpu:[],submit:[],sort:[],roundTrip:[]};this.contextLosses=0;this.onLost=()=>{this.contextLosses++;this.active=false;this.queries=[];};viewer.canvas.addEventListener('webglcontextlost',this.onLost);}
+  start(){this.stop();this.samples={gpu:[],submit:[],sort:[],roundTrip:[]};this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
+  poll(){const gl=this.viewer.gl,ext=this.ext;if(!ext||gl.isContextLost())return;const disjoint=gl.getParameter(ext.GPU_DISJOINT_EXT);if(disjoint)this.disjoint=true;while(this.queries.length&&(disjoint||gl.getQueryParameter(this.queries[0],gl.QUERY_RESULT_AVAILABLE))){const q=this.queries.shift();if(!disjoint)this.add('gpu',gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6);gl.deleteQuery(q);}}
+  add(key,value){if(Number.isFinite(value)&&this.samples[key].length<600)this.samples[key].push(value);}
+  begin(){if(!this.active)return;this.poll();this.cpuStart=performance.now();const gl=this.viewer.gl;if(this.ext&&this.queries.length<3){this.query=gl.createQuery();gl.beginQuery(this.ext.TIME_ELAPSED_EXT,this.query);}}
+  end(){if(this.cpuStart==null)return;const gl=this.viewer.gl;if(this.query){gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queries.push(this.query);this.query=null;}this.add('submit',performance.now()-this.cpuStart);this.cpuStart=null;}
+  sort(ms,roundTrip){if(this.active){this.add('sort',ms);this.add('roundTrip',roundTrip);}}
+  stop(){if(this.active)this.duration=performance.now()-this.started;this.active=false;clearTimeout(this.timer);clearInterval(this.pollTimer);this.poll();for(const q of this.queries)this.viewer.gl.deleteQuery(q);this.queries=[];}
+  snapshot(){const v=this.viewer,gl=v.gl;let info={contextLost:gl.isContextLost(),contextLosses:this.contextLosses};if(!gl.isContextLost()){const ext=gl.getExtension('WEBGL_debug_renderer_info');const renderer=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null;info={...info,renderer,classification:classifyRenderer(renderer),vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,maskedRenderer:gl.getParameter(gl.RENDERER),webgl:gl.getParameter(gl.VERSION),shadingLanguage:gl.getParameter(gl.SHADING_LANGUAGE_VERSION),attributes:gl.getContextAttributes(),maxTextureSize:gl.getParameter(gl.MAX_TEXTURE_SIZE),gpuTimerSupported:Boolean(gl.getExtension('EXT_disjoint_timer_query_webgl2'))};}
+    return {schema:1,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy},measurement:{startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint)},limits:'CPU draw submission is not GPU time or FPS. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
+}
+function saveRenderDiagnostic(report){try{localStorage.setItem(RENDER_DIAGNOSTIC_KEY,JSON.stringify(report));}catch{}}
+function readRenderDiagnostic(){try{return JSON.parse(localStorage.getItem(RENDER_DIAGNOSTIC_KEY)||'null');}catch{return null;}}
+function showRenderDiagnostics(probe=null){
+  if(document.getElementById('render-diagnostic-dialog'))return;
+  const en=document.documentElement.lang==='en',word=(zh,eng)=>en?eng:zh;
+  const overlay=document.createElement('div');overlay.id='render-diagnostic-dialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',word('渲染诊断','Rendering diagnostics'));overlay.style.cssText='position:fixed;inset:0;z-index:100000;background:#173b3688;display:flex;align-items:center;justify-content:center;padding:12px';
+  const box=document.createElement('section');box.style.cssText='background:#f6faf8;color:#203c38;border-radius:16px;padding:18px;width:680px;max-width:100%;max-height:90vh;overflow:auto;box-sizing:border-box;box-shadow:0 16px 70px #0004';
+  const title=document.createElement('h2');title.textContent=word('渲染诊断','Rendering diagnostics');title.style.margin='0 0 12px';
+  const help=document.createElement('p');help.textContent=word('加载模型后，点击“采集 10 秒”，关闭面板并像平时一样转动视角。完成后重新打开并复制报告。报告仅保存在本机，不含文件名或点坐标。','Load a model, start a 10-second sample, then move the camera as usual. Reopen and copy the report afterward. Reports stay local and exclude filenames and coordinates.');
+  const status=document.createElement('p'),text=document.createElement('textarea');text.readOnly=true;text.setAttribute('aria-label',word('诊断报告','Diagnostic report'));text.style.cssText='width:100%;height:36vh;box-sizing:border-box;font:12px monospace;white-space:pre';
+  let report=probe?.snapshot()||readRenderDiagnostic();
+  const update=()=>{text.value=report?JSON.stringify(report,null,2):word('暂无渲染报告。请进入高斯查看器，加载模型后采集。','No rendering report. Open the Gaussian viewer and collect a sample.');status.textContent=report?word('报告时间：','Captured: ')+report.capturedAt:'';};update();
+  const buttons=document.createElement('div');buttons.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:12px';
+  const button=(zh,eng,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=word(zh,eng);b.style.cssText='padding:10px 14px;border:1px solid #bfd4cb;border-radius:8px;background:white;color:#244c42;cursor:pointer';b.onclick=async()=>{try{await fn();}catch(e){status.textContent=String(e.message||e);}};buttons.append(b);return b;};
+  const previousFocus=document.activeElement;const close=()=>{overlay.remove();document.removeEventListener('keydown',key,true);previousFocus?.focus();};const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}if(e.key==='Tab'){const list=[...box.querySelectorAll('button,textarea')].filter(x=>!x.disabled);if(e.shiftKey&&document.activeElement===list[0]){e.preventDefault();list.at(-1).focus();}else if(!e.shiftKey&&document.activeElement===list.at(-1)){e.preventDefault();list[0].focus();}}};document.addEventListener('keydown',key,true);
+  if(probe){button('刷新报告','Refresh report',async()=>{report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);update();});button('采集 10 秒','Sample for 10 seconds',()=>{if(probe.active){status.textContent=word('正在采集，请稍后再试','Sampling in progress');return;}probe.start();close();const toast=document.createElement('div');toast.setAttribute('role','status');toast.textContent=word('诊断采集中：请转动视角（10 秒）','Sampling: move the camera (10 seconds)');toast.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;padding:12px;border-radius:8px;background:#214b43;color:white;pointer-events:none';document.body.append(toast);setTimeout(async()=>{probe.stop();report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);toast.textContent=word('采集完成：打开“诊断”复制报告','Sample saved: open Diagnostics to copy');setTimeout(()=>toast.remove(),4000);},10100);});}
+  button('复制报告','Copy report',async()=>{if(!report)return;saveRenderDiagnostic(report);try{await navigator.clipboard.writeText(text.value);}catch{text.focus();text.select();if(!document.execCommand('copy'))throw Error(word('请长按报告手动复制','Select the report and copy manually'));}status.textContent=word('已复制','Copied');});
+  button('导出报告','Export report',async()=>{if(!report)return;const blob=new Blob([text.value],{type:'text/plain'}),name='BuildingWebViewer-diagnostics.txt';if(mobileProjects())await mobileShareBlob(blob,name);else{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}});
+  if(mobileProjects())button('启动诊断','Startup diagnostics',()=>mobileProjects().showDiagnostics());
+  button('关闭','Close',close);box.append(title,help,status,text,buttons);overlay.append(box);document.body.append(overlay);buttons.lastElementChild.focus();
+  runtime().then(info=>{if(report){report.native=info;saveRenderDiagnostic(report);update();}});
+}
+async function runtime(){try{return await mobileProjects()?.runtimeInfo()||null;}catch{return {available:false};}}
+function mountRenderDiagnostics(viewer,container){const probe=new RenderDiagnosticProbe(viewer);viewer.diagnosticProbe=probe;const button=document.createElement('button');button.type='button';button.id='gs-diagnostics';button.textContent=document.documentElement.lang==='en'?'Diagnostics':'诊断';button.onclick=()=>showRenderDiagnostics(probe);container.append(button);return probe;}
+
+
 // Source: src/shared/workspace-session.js
 
 
@@ -3569,10 +3621,10 @@ onmessage=e=>{
  const m=e.data;
  if(m.type==='data'){centers=new Float32Array(m.centers);generation=m.generation;const n=centers.length/3;keys=new Uint32Array(n);src=new Uint32Array(n);dst=new Uint32Array(n);return;}
  if(!centers||m.generation!==generation)return;
- const n=centers.length/3;
+ const started=performance.now(), n=centers.length/3;
  for(let i=0;i<n;i++){f[0]=centers[i*3]*m.forward[0]+centers[i*3+1]*m.forward[1]+centers[i*3+2]*m.forward[2];const b=u[0];keys[i]=(b&0x80000000?~b:b|0x80000000)>>>0;src[i]=i;}
  for(let s=0;s<32;s+=8){counts.fill(0);for(let i=0;i<n;i++)counts[(keys[src[i]]>>>s)&255]++;let sum=0;for(let b=0;b<256;b++){const c=counts[b];counts[b]=sum;sum+=c;}for(let i=0;i<n;i++){const id=src[i];dst[counts[(keys[id]>>>s)&255]++]=id;}const t=src;src=dst;dst=t;}
- const order=src.slice();postMessage({generation,forward:m.forward,order:order.buffer},[order.buffer]);
+ const order=src.slice();postMessage({generation,forward:m.forward,sortMs:performance.now()-started,order:order.buffer},[order.buffer]);
 };`;
 
 
@@ -4222,6 +4274,7 @@ class GaussianViewer {
   receiveSort(message) {
     if(message.generation!==this.generation)return;
     this.sortBusy=false;
+    this.diagnosticProbe?.sort(message.sortMs,performance.now()-this.diagnosticSortStart);
     if(!this.packed || this.contextLost)return;
     const gl=this.gl,{width,height}=this.textureSize;
     const data=new Uint32Array(width*height);data.set(new Uint32Array(message.order));
@@ -4267,6 +4320,7 @@ class GaussianViewer {
   dispose() {
     this.fly?.dispose();
     this.stopNavigation(); document.removeEventListener('visibilitychange', this.onNavVisibility);
+    this.diagnosticProbe?.stop();
     this.disposed=true;this.sortWorker?.terminate();URL.revokeObjectURL(this.workerUrl);this.resizeObserver.disconnect();
     for(const [name,fn,options] of this.listeners)this.canvas.removeEventListener(name,fn,options);
     if(this.frame!==null)cancelAnimationFrame(this.frame);
@@ -4285,7 +4339,7 @@ class GaussianViewer {
   }
 
   sort(forceSync = false) {
-    if(this.sortWorker && !forceSync){if(this.sortBusy)return;this.sortBusy=true;this.sortWorker.postMessage({type:'sort',generation:this.generation,forward:this.basis()[2]});return;}
+    if(this.sortWorker && !forceSync){if(this.sortBusy)return;this.sortBusy=true;this.diagnosticSortStart=performance.now();this.sortWorker.postMessage({type:'sort',generation:this.generation,forward:this.basis()[2]});return;}
     const count = this.count;
     if (!count || !this.packed) return;
     if (!this.sortKeys || this.sortKeys.length !== count) {
@@ -4362,7 +4416,9 @@ class GaussianViewer {
       gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? this.gauss.shDegree : 0);
       gl.uniform1i(loc.uPointPreview, this.pointPreview?1:0);
       gl.uniform1f(loc.uFar, this.viewDistance || 0);
+      if(!this.exportTarget)this.diagnosticProbe?.begin();
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.count);
+      if(!this.exportTarget)this.diagnosticProbe?.end();
     }
     if (this.exportTarget) return;
     updateSceneGuides(this);
@@ -4591,6 +4647,7 @@ function gsViewingProfile(mode, mobile=false, software=false) {
 
 
 // Source: src/gaussian/app.js
+
 
 
 
@@ -4835,6 +4892,8 @@ async function gsBoot() {
   });
   try {
     gsViewer = new GaussianViewer(gs$('scene'), {onError: gsError});
+    mountRenderDiagnostics(gsViewer, gs$('settings-panel-display').querySelector('.render-controls'));
+    const quickDiagnostic=document.createElement('button');quickDiagnostic.type='button';quickDiagnostic.textContent=label('诊断','Diagnostics');quickDiagnostic.onclick=()=>gs$('gs-diagnostics').click();document.querySelector('.inspector-shortcuts').append(quickDiagnostic);
     gsEditor = mountGaussianEditor({loadFull:async()=>{profileSelect.value='full';await gsApply({preserveView:true});},viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }

@@ -1,11 +1,11 @@
 {
-  "version": "1.4.1",
+  "version": "1.4.2",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 3,
-  "issuedAt": 1791715996,
-  "expiresAt": 1807267996,
+  "sequence": 4,
+  "issuedAt": 1791718792,
+  "expiresAt": 1807270792,
   "notes": {
-    "zh": "降低 App 自动保存频率：有改动时每五分钟保存，系统返回或进入后台立即保存。\n手机高斯优先显示整个场景的轻量泼溅，简化颜色与分辨率并补偿抽样覆盖；编辑按需加载完整数据。\n精简项目首页，管理与维护折叠，底部提供 Sen2Maker 和项目链接。\n兼容 nativeApi 6，可热更新，无需重新安装 App。",
-    "en": "Dirty projects save every five minutes, plus immediately on Back or background.\nMobile Gaussian viewing uses lightweight scene-wide splats with reduced color/resolution and sample coverage compensation. Full editing loads on demand.\nA simpler project home with collapsed management, maintenance and author/project links.\nCompatible with native API 6: web update only, no APK reinstall."
+    "zh": "新增高斯渲染诊断：GPU/WebGL 信息、实际显示数量、分辨率及手动 10 秒排序和绘制耗时采集。报告可复制、导出，App 首页可查看最近报告。\n此版本专注定位真机性能，不包含尚未验证的渲染优化和下降按钮修复。\n兼容 nativeApi 6，网页热更新，无需重装 App。",
+    "en": "Gaussian rendering diagnostics: GPU/WebGL identity, submitted counts, resolution and a manual 10-second sort/draw sample. Copy or export the report; the App home retains the latest report.\nDiagnostic release only; experimental rendering and descend-control fixes are excluded.\nNative API 6 web hot update; no APK reinstall required."
   }
 }

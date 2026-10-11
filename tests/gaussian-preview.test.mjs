@@ -31,7 +31,7 @@ test('camera translation never requires reordering; rotation does',()=>{
  assert.equal(GaussianViewer.prototype.needsSort.call(viewer),false);viewer.basis=()=>[[1,0,0],[0,0,1],[0,1,0]];assert.equal(GaussianViewer.prototype.needsSort.call(viewer),true);
 });
 test('reused worker scratch buffers sort correctly for consecutive views and generations',()=>{
- const results=[],ctx=vm.createContext({Float32Array,Uint32Array,postMessage:m=>results.push(m)});vm.runInContext(GS_SORT_WORKER,ctx);
+ const results=[],ctx=vm.createContext({performance,Float32Array,Uint32Array,postMessage:m=>results.push(m)});vm.runInContext(GS_SORT_WORKER,ctx);
  const centers=new Float32Array([1,2,3,-1,1,0,3,5,-2]);ctx.onmessage({data:{type:'data',generation:1,centers:centers.buffer}});
  for(const forward of [[0,0,1],[1,0,0],[0,-1,0]]){ctx.onmessage({data:{type:'sort',generation:1,forward}});const depths=Array.from({length:3},(_,i)=>forward.reduce((n,v,j)=>n+v*centers[i*3+j],0));assert.deepEqual([...new Uint32Array(results.at(-1).order)],[...gsSortedOrder(depths)]);}
  ctx.onmessage({data:{type:'sort',generation:0,forward:[0,0,1]}});assert.equal(results.length,3);

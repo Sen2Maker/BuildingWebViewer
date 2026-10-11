@@ -597,6 +597,7 @@ export class GaussianViewer {
   receiveSort(message) {
     if(message.generation!==this.generation)return;
     this.sortBusy=false;
+    this.diagnosticProbe?.sort(message.sortMs,performance.now()-this.diagnosticSortStart);
     if(!this.packed || this.contextLost)return;
     const gl=this.gl,{width,height}=this.textureSize;
     const data=new Uint32Array(width*height);data.set(new Uint32Array(message.order));
@@ -642,6 +643,7 @@ export class GaussianViewer {
   dispose() {
     this.fly?.dispose();
     this.stopNavigation(); document.removeEventListener('visibilitychange', this.onNavVisibility);
+    this.diagnosticProbe?.stop();
     this.disposed=true;this.sortWorker?.terminate();URL.revokeObjectURL(this.workerUrl);this.resizeObserver.disconnect();
     for(const [name,fn,options] of this.listeners)this.canvas.removeEventListener(name,fn,options);
     if(this.frame!==null)cancelAnimationFrame(this.frame);
@@ -660,7 +662,7 @@ export class GaussianViewer {
   }
 
   sort(forceSync = false) {
-    if(this.sortWorker && !forceSync){if(this.sortBusy)return;this.sortBusy=true;this.sortWorker.postMessage({type:'sort',generation:this.generation,forward:this.basis()[2]});return;}
+    if(this.sortWorker && !forceSync){if(this.sortBusy)return;this.sortBusy=true;this.diagnosticSortStart=performance.now();this.sortWorker.postMessage({type:'sort',generation:this.generation,forward:this.basis()[2]});return;}
     const count = this.count;
     if (!count || !this.packed) return;
     if (!this.sortKeys || this.sortKeys.length !== count) {
@@ -737,7 +739,9 @@ export class GaussianViewer {
       gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? this.gauss.shDegree : 0);
       gl.uniform1i(loc.uPointPreview, this.pointPreview?1:0);
       gl.uniform1f(loc.uFar, this.viewDistance || 0);
+      if(!this.exportTarget)this.diagnosticProbe?.begin();
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.count);
+      if(!this.exportTarget)this.diagnosticProbe?.end();
     }
     if (this.exportTarget) return;
     updateSceneGuides(this);

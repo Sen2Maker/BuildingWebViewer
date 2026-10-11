@@ -6,6 +6,14 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.2] - 2026-10-11
+
+- 高斯查看器新增“诊断”：实际 WebGL 渲染器与厂商、上下文状态、原始/提交高斯数量、显示模式和分辨率。
+- 手动采集 10 秒，记录后台排序、排序往返、CPU 提交与可用时的 GPU 绘制耗时；缺失数据明确为空，不以 CPU 提交时间冒充 GPU 时间或 FPS。
+- 报告可复制或导出；App 首页“诊断”显示最近报告，仍可进入原生启动诊断。报告仅保存在本机，不包含文件名、点坐标或项目内容。
+- Gaussian GPU diagnostics, optional ten-second timing samples, copy/export and the latest report accessible from App home. Unknown renderer identity is never reported as confirmed software rendering.
+- nativeApi 6 不变，通过签名网页热更新，无需重新安装。此诊断版保留 v1.4.1 显示策略；未验证的全量渲染优化与下降按钮修复不在本次发布范围。真实手机性能仍需用户报告确认。
+
 ## [1.4.1] - 2026-10-11
 
 - App 自动保存改为有变更时每 5 分钟一次；系统返回、进入后台及显式导入前立即保存。共用调度器，停止每次转动相机后写入。

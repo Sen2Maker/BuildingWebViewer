@@ -2,6 +2,17 @@
 (() => {
 'use strict';
 
+// Source: src/shared/autosave.js
+/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
+function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
+  let timer=null, suspended=false;
+  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
+  const flush=()=>{cancel();return Promise.resolve().then(save).then(result=>{if(timer!==null)onDirty();return result;});};
+  const schedule=()=>{if(suspended||timer!==null)return;onDirty();timer=setTimer(()=>{timer=null;flush().catch(()=>schedule());},delay);};
+  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;},dispose:cancel};
+}
+
+
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
@@ -1285,17 +1296,6 @@ function initializeLocale(doc = document) {
 }
 
 
-// Source: src/shared/autosave.js
-/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
-function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
-  let timer=null, suspended=false;
-  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
-  const flush=()=>{cancel();return Promise.resolve().then(save).then(result=>{if(timer!==null)onDirty();return result;});};
-  const schedule=()=>{if(suspended||timer!==null)return;onDirty();timer=setTimer(()=>{timer=null;flush().catch(()=>schedule());},delay);};
-  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;},dispose:cancel};
-}
-
-
 // Source: src/shared/mobile-navigation.js
 /** One save-aware route home, shared by the toolbar and Android system Back. */
 function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
@@ -1410,6 +1410,58 @@ async function nativeExportWriter(name){
 }
 
 
+// Source: src/shared/render-diagnostics.js
+
+const RENDER_DIAGNOSTIC_KEY='bwv-render-diagnostic-v1';
+function classifyRenderer(name) {
+  if(!name)return 'unknown (renderer identity unavailable)';
+  if(/swiftshader|llvmpipe|softpipe|software|lavapipe/i.test(name))return 'software renderer reported';
+  if(/adreno|mali|powervr|apple|nvidia|radeon|intel|geforce|vivante|tegra/i.test(name))return 'hardware renderer reported (not a utilization measurement)';
+  return 'unknown (unrecognized renderer)';
+}
+function diagnosticSummary(values) {
+  const sorted=values.filter(Number.isFinite).sort((a,b)=>a-b);
+  return sorted.length?{samples:sorted.length,medianMs:+sorted[Math.floor(sorted.length*.5)].toFixed(2),p95Ms:+sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))].toFixed(2)}:null;
+}
+/** Queries run asynchronously only while a user-requested sample is active. */
+class RenderDiagnosticProbe {
+  constructor(viewer){this.viewer=viewer;this.active=false;this.queries=[];this.samples={gpu:[],submit:[],sort:[],roundTrip:[]};this.contextLosses=0;this.onLost=()=>{this.contextLosses++;this.active=false;this.queries=[];};viewer.canvas.addEventListener('webglcontextlost',this.onLost);}
+  start(){this.stop();this.samples={gpu:[],submit:[],sort:[],roundTrip:[]};this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
+  poll(){const gl=this.viewer.gl,ext=this.ext;if(!ext||gl.isContextLost())return;const disjoint=gl.getParameter(ext.GPU_DISJOINT_EXT);if(disjoint)this.disjoint=true;while(this.queries.length&&(disjoint||gl.getQueryParameter(this.queries[0],gl.QUERY_RESULT_AVAILABLE))){const q=this.queries.shift();if(!disjoint)this.add('gpu',gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6);gl.deleteQuery(q);}}
+  add(key,value){if(Number.isFinite(value)&&this.samples[key].length<600)this.samples[key].push(value);}
+  begin(){if(!this.active)return;this.poll();this.cpuStart=performance.now();const gl=this.viewer.gl;if(this.ext&&this.queries.length<3){this.query=gl.createQuery();gl.beginQuery(this.ext.TIME_ELAPSED_EXT,this.query);}}
+  end(){if(this.cpuStart==null)return;const gl=this.viewer.gl;if(this.query){gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queries.push(this.query);this.query=null;}this.add('submit',performance.now()-this.cpuStart);this.cpuStart=null;}
+  sort(ms,roundTrip){if(this.active){this.add('sort',ms);this.add('roundTrip',roundTrip);}}
+  stop(){if(this.active)this.duration=performance.now()-this.started;this.active=false;clearTimeout(this.timer);clearInterval(this.pollTimer);this.poll();for(const q of this.queries)this.viewer.gl.deleteQuery(q);this.queries=[];}
+  snapshot(){const v=this.viewer,gl=v.gl;let info={contextLost:gl.isContextLost(),contextLosses:this.contextLosses};if(!gl.isContextLost()){const ext=gl.getExtension('WEBGL_debug_renderer_info');const renderer=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null;info={...info,renderer,classification:classifyRenderer(renderer),vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,maskedRenderer:gl.getParameter(gl.RENDERER),webgl:gl.getParameter(gl.VERSION),shadingLanguage:gl.getParameter(gl.SHADING_LANGUAGE_VERSION),attributes:gl.getContextAttributes(),maxTextureSize:gl.getParameter(gl.MAX_TEXTURE_SIZE),gpuTimerSupported:Boolean(gl.getExtension('EXT_disjoint_timer_query_webgl2'))};}
+    return {schema:1,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy},measurement:{startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint)},limits:'CPU draw submission is not GPU time or FPS. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
+}
+function saveRenderDiagnostic(report){try{localStorage.setItem(RENDER_DIAGNOSTIC_KEY,JSON.stringify(report));}catch{}}
+function readRenderDiagnostic(){try{return JSON.parse(localStorage.getItem(RENDER_DIAGNOSTIC_KEY)||'null');}catch{return null;}}
+function showRenderDiagnostics(probe=null){
+  if(document.getElementById('render-diagnostic-dialog'))return;
+  const en=document.documentElement.lang==='en',word=(zh,eng)=>en?eng:zh;
+  const overlay=document.createElement('div');overlay.id='render-diagnostic-dialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',word('渲染诊断','Rendering diagnostics'));overlay.style.cssText='position:fixed;inset:0;z-index:100000;background:#173b3688;display:flex;align-items:center;justify-content:center;padding:12px';
+  const box=document.createElement('section');box.style.cssText='background:#f6faf8;color:#203c38;border-radius:16px;padding:18px;width:680px;max-width:100%;max-height:90vh;overflow:auto;box-sizing:border-box;box-shadow:0 16px 70px #0004';
+  const title=document.createElement('h2');title.textContent=word('渲染诊断','Rendering diagnostics');title.style.margin='0 0 12px';
+  const help=document.createElement('p');help.textContent=word('加载模型后，点击“采集 10 秒”，关闭面板并像平时一样转动视角。完成后重新打开并复制报告。报告仅保存在本机，不含文件名或点坐标。','Load a model, start a 10-second sample, then move the camera as usual. Reopen and copy the report afterward. Reports stay local and exclude filenames and coordinates.');
+  const status=document.createElement('p'),text=document.createElement('textarea');text.readOnly=true;text.setAttribute('aria-label',word('诊断报告','Diagnostic report'));text.style.cssText='width:100%;height:36vh;box-sizing:border-box;font:12px monospace;white-space:pre';
+  let report=probe?.snapshot()||readRenderDiagnostic();
+  const update=()=>{text.value=report?JSON.stringify(report,null,2):word('暂无渲染报告。请进入高斯查看器，加载模型后采集。','No rendering report. Open the Gaussian viewer and collect a sample.');status.textContent=report?word('报告时间：','Captured: ')+report.capturedAt:'';};update();
+  const buttons=document.createElement('div');buttons.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:12px';
+  const button=(zh,eng,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=word(zh,eng);b.style.cssText='padding:10px 14px;border:1px solid #bfd4cb;border-radius:8px;background:white;color:#244c42;cursor:pointer';b.onclick=async()=>{try{await fn();}catch(e){status.textContent=String(e.message||e);}};buttons.append(b);return b;};
+  const previousFocus=document.activeElement;const close=()=>{overlay.remove();document.removeEventListener('keydown',key,true);previousFocus?.focus();};const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}if(e.key==='Tab'){const list=[...box.querySelectorAll('button,textarea')].filter(x=>!x.disabled);if(e.shiftKey&&document.activeElement===list[0]){e.preventDefault();list.at(-1).focus();}else if(!e.shiftKey&&document.activeElement===list.at(-1)){e.preventDefault();list[0].focus();}}};document.addEventListener('keydown',key,true);
+  if(probe){button('刷新报告','Refresh report',async()=>{report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);update();});button('采集 10 秒','Sample for 10 seconds',()=>{if(probe.active){status.textContent=word('正在采集，请稍后再试','Sampling in progress');return;}probe.start();close();const toast=document.createElement('div');toast.setAttribute('role','status');toast.textContent=word('诊断采集中：请转动视角（10 秒）','Sampling: move the camera (10 seconds)');toast.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;padding:12px;border-radius:8px;background:#214b43;color:white;pointer-events:none';document.body.append(toast);setTimeout(async()=>{probe.stop();report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);toast.textContent=word('采集完成：打开“诊断”复制报告','Sample saved: open Diagnostics to copy');setTimeout(()=>toast.remove(),4000);},10100);});}
+  button('复制报告','Copy report',async()=>{if(!report)return;saveRenderDiagnostic(report);try{await navigator.clipboard.writeText(text.value);}catch{text.focus();text.select();if(!document.execCommand('copy'))throw Error(word('请长按报告手动复制','Select the report and copy manually'));}status.textContent=word('已复制','Copied');});
+  button('导出报告','Export report',async()=>{if(!report)return;const blob=new Blob([text.value],{type:'text/plain'}),name='BuildingWebViewer-diagnostics.txt';if(mobileProjects())await mobileShareBlob(blob,name);else{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}});
+  if(mobileProjects())button('启动诊断','Startup diagnostics',()=>mobileProjects().showDiagnostics());
+  button('关闭','Close',close);box.append(title,help,status,text,buttons);overlay.append(box);document.body.append(overlay);buttons.lastElementChild.focus();
+  runtime().then(info=>{if(report){report.native=info;saveRenderDiagnostic(report);update();}});
+}
+async function runtime(){try{return await mobileProjects()?.runtimeInfo()||null;}catch{return {available:false};}}
+function mountRenderDiagnostics(viewer,container){const probe=new RenderDiagnosticProbe(viewer);viewer.diagnosticProbe=probe;const button=document.createElement('button');button.type='button';button.id='gs-diagnostics';button.textContent=document.documentElement.lang==='en'?'Diagnostics':'诊断';button.onclick=()=>showRenderDiagnostics(probe);container.append(button);return probe;}
+
+
 // Source: src/mobile/update-check.js
 /** Optional network work must never gate local project startup or reload a live page. */
 function mobileDeadline(work, milliseconds = 3000) {
@@ -1486,6 +1538,7 @@ function initializeMobileUpdates(api) {
 
 
 
+
 initializeLocale();
 document.getElementById('mobile-language').href='?lang='+(document.documentElement.lang==='en'?'zh':'en');
 const mobileHomeAPI=mobileProjects(),mobileHomeList=document.getElementById('projects'),mobileHomeStatus=document.getElementById('status');
@@ -1518,7 +1571,7 @@ if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobile
 
 document.getElementById('clean-storage').onclick=async()=>{try{const {freed}=await mobileHomeAPI.cleanupStorage();mobileHomeSay(t('已清理 {0} MB 未引用文件',[(freed/1048576).toFixed(1)]));}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('empty-trash').onclick=async()=>{if(!confirm(t('永久删除回收站内的项目？请先导出需要的项目备份。')))return;try{await mobileHomeAPI.emptyTrash();await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
-document.getElementById('show-diagnostics').onclick=()=>mobileHomeAPI?.showDiagnostics().catch(()=>{});
+document.getElementById('show-diagnostics').onclick=()=>showRenderDiagnostics();
 // Local projects render independently; update failure is intentionally silent.
 if(mobileHomeAPI){
   mobileHomeAPI.runtimeInfo().then(info=>{
