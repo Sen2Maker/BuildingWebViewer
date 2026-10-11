@@ -1,3 +1,4 @@
+import { installCameraNavigation, navigationBasis, navigationMatrix, pickMeshNavigationDepth } from '../shared/navigation-adapter.js';
 import { currentPresentation } from '../shared/render-style.js';
 import { updateSceneGuides } from '../shared/scene-guides.js';
 import { StyledLineRenderer } from '../shared/line-renderer.js';
@@ -86,6 +87,8 @@ export class MeshViewer {
       this.onError(error.message);
       throw error;
     }
+    installCameraNavigation(this);
+    this.pickOrbitDepth=(...args)=>pickMeshNavigationDepth(this,...args);
     this.installEvents();
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
     this.resizeObserver.observe(canvas);
@@ -143,28 +146,22 @@ export class MeshViewer {
     listen('contextmenu', event => event.preventDefault());
     mountTouchCamera(this, listen, {minElevation: 0});
     listen('pointerdown', event => {
-      if (event.pointerType === 'touch') return;
+      if (this.fly?.active || event.pointerType === 'touch') return;
       if (event.button !== 0 && event.button !== 2 && event.button !== 1) return;
       event.preventDefault();
       this.canvas.setPointerCapture(event.pointerId);
+      this.beginOrbit(event.button!==0||event.shiftKey);
       this.drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
         pan: event.button !== 0 || event.shiftKey };
       this.canvas.style.cursor = 'grabbing';
     });
     listen('pointermove', event => {
-      if (event.pointerType === 'touch') return;
+      if (this.fly?.active || event.pointerType === 'touch') return;
       if (!this.drag || this.drag.pointerId !== event.pointerId) return;
       const dx = event.clientX - this.drag.x, dy = event.clientY - this.drag.y;
       this.drag.x = event.clientX;
       this.drag.y = event.clientY;
-      if (this.drag.pan || event.shiftKey) {
-        const pixelSize = this.baseHeight / this.camera.zoom / Math.max(1, this.canvas.clientHeight);
-        this.camera.pan[0] -= dx * pixelSize;
-        this.camera.pan[1] += dy * pixelSize;
-      } else {
-        this.camera.azimuth = (this.camera.azimuth - dx * .35) % 360;
-        this.camera.elevation = clamp(this.camera.elevation + dy * .3, 0, 90);
-      }
+      this.navigatePixels(dx,dy,this.drag.pan||event.shiftKey,event.ctrlKey||event.metaKey);
       this.requestRender();
     });
     const finish = event => {
@@ -176,6 +173,7 @@ export class MeshViewer {
     listen('pointerup', finish);
     listen('pointercancel', finish);
     listen('lostpointercapture', finish);
+    listen('dblclick',event=>{if(this.fly?.active||event.button!==0)return;const rect=this.canvas.getBoundingClientRect();this.focusOrbit(event.clientX-rect.left,event.clientY-rect.top);});
     listen('wheel', event => {
       event.preventDefault();
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.canvas.clientHeight : 1);
@@ -183,7 +181,7 @@ export class MeshViewer {
     }, { passive: false });
     listen('webglcontextlost', event => {
       event.preventDefault();
-      this.contextLost = true;
+      this.stopNavigation();this.contextLost = true;
       this.onError(t('WebGL 显示上下文暂时丢失，正在等待浏览器恢复。'));
     });
     listen('webglcontextrestored', () => {
@@ -210,6 +208,7 @@ export class MeshViewer {
   }
 
   setModels(models) {
+    this.stopNavigation();
     if (!Array.isArray(models)) throw new TypeError(t('setModels 需要模型数组。'));
     const prepared = models.map(model => {
       if (!model.vertices?.length || !Array.isArray(model.faces)) throw new Error(t("楼栋 {0} 缺少有效网格。", [model.id]));
@@ -315,6 +314,7 @@ export class MeshViewer {
       return positions;
     };
     this.edgePositions = {all: retainPositions(allEdges), feature: retainPositions(featureEdges)};
+    this.navigationTriangles=retainPositions(triangles);
     this.models = models;
     this.labelAnchors = labels;
     this.triangleCount = triangles.length / 30;
@@ -344,18 +344,17 @@ export class MeshViewer {
   }
 
   setView(view) {
+    this.stopNavigation();
     const views = { iso: [38, -55], top: [90, -90], front: [0, -90] };
     if (!views[view]) throw new Error(t("不支持的视角：{0}", [view]));
     [this.camera.elevation, this.camera.azimuth] = views[view];
     this.fit();
   }
 
-  basis() {
-    const e = this.camera.elevation * DEG, a = this.camera.azimuth * DEG;
-    return [[-Math.sin(a), Math.cos(a), 0], [-Math.cos(a) * Math.sin(e), -Math.sin(a) * Math.sin(e), Math.cos(e)], [Math.cos(a) * Math.cos(e), Math.sin(a) * Math.cos(e), Math.sin(e)]];
-  }
+  basis() { return navigationBasis(this); }
 
   fit() {
+    this.resetNavigation();
     const [right, up] = this.basis(), [min, max] = this.sceneBounds;
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
     for (const x of [min[0], max[0]]) for (const y of [min[1], max[1]]) for (const z of [min[2], max[2]]) {
@@ -367,16 +366,15 @@ export class MeshViewer {
     this.baseHeight = Math.max(2, yMax - yMin, (xMax - xMin) / aspect) * 1.3;
     this.camera.zoom = 1;
     this.camera.pan = [0, 0];
+    this.target=this.sceneBounds[0].map((v,i)=>(v+this.sceneBounds[1][i])/2);
+    this.distance=Math.max(.001,this.baseHeight,Math.hypot(...this.sceneBounds[1].map((v,i)=>v-this.sceneBounds[0][i])))*2;this.near=Math.max(1e-6,this.distance*1e-5);
     this.render();
   }
 
-  zoomBy(factor) {
-    if (!Number.isFinite(factor) || factor <= 0) return;
-    this.camera.zoom = clamp(this.camera.zoom * factor, .15, 30);
-    this.render();
-  }
+  zoomBy(factor, precision=false, repivot=true) { this.navigationZoom(factor,precision,repivot); }
 
   matrix() {
+    if(this.projection==='perspective')return navigationMatrix(this);
     const [r, u, t] = this.basis();
     const aspect = (this.exportTarget?.width || this.canvas.width) / Math.max(1, this.exportTarget?.height || this.canvas.height);
     const height = this.baseHeight / this.camera.zoom, width = height * aspect;
@@ -396,6 +394,7 @@ export class MeshViewer {
   render() {
     if (this.disposed || this.contextLost) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
+    this.stepNavigation();
     const canvas = this.canvas, gl = this.gl, rect = canvas.getBoundingClientRect();
     const dpr = this.exportTarget?.scale || Math.min(window.devicePixelRatio || 1, 2);
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr)), height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
@@ -443,8 +442,10 @@ export class MeshViewer {
     this.onLabels(this.options.labels ? this.labelAnchors.map(({ id, bounds: [min, max] }) => {
       let xMin = Infinity, xMax = -Infinity, yMin = Infinity;
       for (const px of [min[0], max[0]]) for (const py of [min[1], max[1]]) for (const pz of [min[2], max[2]]) {
-        const x = matrix[0] * px + matrix[4] * py + matrix[8] * pz + matrix[12];
-        const y = matrix[1] * px + matrix[5] * py + matrix[9] * pz + matrix[13];
+        const w = matrix[3] * px + matrix[7] * py + matrix[11] * pz + matrix[15];
+        if(w <= 0) continue;
+        const x = (matrix[0] * px + matrix[4] * py + matrix[8] * pz + matrix[12]) / w;
+        const y = (matrix[1] * px + matrix[5] * py + matrix[9] * pz + matrix[13]) / w;
         xMin = Math.min(xMin, x); xMax = Math.max(xMax, x); yMin = Math.min(yMin, y);
       }
       const x = (xMin + xMax) / 2;
@@ -466,6 +467,7 @@ export class MeshViewer {
   }
 
   destroy() {
+    this.fly?.dispose();if(typeof document!=='undefined')document.removeEventListener('visibilitychange',this.onNavigationVisibility);
     this.disposed = true;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();

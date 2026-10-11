@@ -8,11 +8,11 @@ export class NativeProjectFile {
   constructor(projectId,record){this.projectId=projectId;this.record=record;this.name=record.path.split('/').at(-1);this.size=record.size;this.lastModified=record.modified||0;this.webkitRelativePath=record.path;this.nativeKey=record.key;}
   slice(start=0,end=this.size){
     const size=this.size;start=start<0?Math.max(0,size+start):Math.min(start,size);end=end<0?Math.max(0,size+end):Math.min(end,size);end=Math.max(start,end);
-    return {size:end-start,arrayBuffer:async()=>{
+    const result={size:end-start,arrayBuffer:async()=>{
       const output=new Uint8Array(end-start);let cursor=start;
       while(cursor<end){const length=Math.min(1048576,end-cursor),reply=await mobileProjects().readChunk({id:this.projectId,key:this.nativeKey,offset:cursor,length});const binary=atob(reply.data);if(binary.length!==length)throw Error(t('项目文件读取不完整'));for(let i=0;i<binary.length;i++)output[cursor-start+i]=binary.charCodeAt(i);cursor+=length;}
       return output.buffer;
-    }};
+    }};result.text=async()=>new TextDecoder().decode(await result.arrayBuffer());return result;
   }
   async text(){return new TextDecoder().decode(await this.slice().arrayBuffer());}
   async arrayBuffer(){return this.slice().arrayBuffer();}

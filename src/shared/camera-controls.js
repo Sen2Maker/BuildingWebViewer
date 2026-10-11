@@ -1,6 +1,7 @@
+import { gsSetOrbitBasis } from './orbit-camera.js';
 import { isMobileApp, mobileShareBlob } from './mobile-project.js';
 import { t } from './i18n.js';
-/** Shared orthographic camera snapshots and an optional, local-only control panel. */
+/** Shared camera snapshots and an optional, local-only control panel. */
 const CAMERA_FORMAT = 'BuildingWebViewer.camera';
 const CAMERA_BOOK_FORMAT = 'BuildingWebViewer.camera-bookmarks';
 const CAMERA_SPACES = ['raw-world', 'lod-arrangement'];
@@ -36,32 +37,38 @@ function cameraSameScene(a, b) {
 /** Validate before mutating a viewer; snapshots use original-world or synthetic-layout targets. */
 export function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
   cameraSpace(space);
-  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || value.version !== 1) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1）'));
+  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || ![1,2].includes(value.version)) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）'));
   if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用'));
-  if (value.projection !== 'orthographic') throw Error(t('当前查看器仅支持正交相机'));
+  if (!['orthographic','perspective'].includes(value.projection) || value.version===1 && value.projection!=='orthographic') throw Error(t('相机投影与文件版本不兼容'));
   const source = value.camera;
   if (!cameraObject(source)) throw Error(t('相机参数缺失'));
   const azimuth = cameraFinite(source.azimuth, t('方位角')), elevation = cameraFinite(source.elevation, t('仰角'));
   const zoom = cameraFinite(source.zoom, t('缩放倍率')), baseHeight = cameraFinite(source.baseHeight, t('基准视野高度'));
-  const limits = space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  const limits = value.version===2 ? {minElevation:-90,minZoom:.02,maxZoom:100} : space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
   if (Math.abs(azimuth) > 1e6) throw Error(t('方位角数值过大'));
   if (elevation < limits.minElevation || elevation > 90) throw Error(t("仰角需在 {0}° 至 90° 之间", [limits.minElevation]));
   if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(t("缩放倍率需在 {0} 至 {1} 之间", [limits.minZoom, limits.maxZoom]));
   if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error(t('基准视野高度必须为有效正数'));
+  let extended={};
+  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
   const savedScene = cameraScene(value.scene, space);
   if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("LOD 布局不匹配：此书签需要楼栋 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
-  return {format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic',
+  return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
     camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
-      pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
+      ...extended, pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
 }
 
 export function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
   cameraSpace(space);
   if (!viewer?.camera) throw Error(t('相机尚未准备好'));
   const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
-  const target = cameraVector(viewer.target, 3, t('目标点')).map((value, axis) => value + origin[axis]);
-  return validateCameraSnapshot({format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic', scene,
-    camera: {...viewer.camera, pan: [...viewer.camera.pan], target, baseHeight: viewer.baseHeight}}, {space, scene, checkScene: false});
+  const camera={...viewer.camera,pan:[...viewer.camera.pan]},projection=viewer.projection||'orthographic';
+  let localTarget=[...viewer.target],distance=viewer.distance||viewer.baseHeight*2;
+  if(viewer.flyPose){gsSetOrbitBasis({camera},viewer.flyPose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=viewer.flyPose.eye.map((v,i)=>v-viewer.flyPose.basis[2][i]*distance);}
+  const version=projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
+  const target = cameraVector(localTarget,3,t('目标点')).map((value,axis)=>value+origin[axis]);
+  return validateCameraSnapshot({format:CAMERA_FORMAT,version,space,projection,scene,
+    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
 }
 
 export function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback()} = {}) {
@@ -74,7 +81,9 @@ export function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space,
   });
   pauseSync(() => {
     viewers.forEach((viewer, index) => {
-      viewer.camera = {azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
+      viewer.stopNavigation?.();viewer.flyPose=null;viewer.projection=value.projection;
+      if(value.version===2){viewer.distance=value.camera.distance;viewer.fov=value.camera.fov;viewer.near=value.camera.near;}
+      viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
       viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
     });
     viewers.forEach(viewer => viewer.render());
@@ -117,7 +126,7 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
   const doc = container.ownerDocument, win = doc.defaultView || globalThis;
   const separateBookmarks = bookmarkContainer && bookmarkContainer !== container;
   const key = `BuildingWebViewer.camera-bookmarks.v1.${space}`;
-  const limits = space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  const limits = {minElevation: -90, minZoom: .02, maxZoom: 100};
   const watches = new Map(), inputs = new Map(), sliders = new Map(), dragging = new Set();
   let bookmarks = [], preserveView = true, selectedBookmark = '', disposed = false, frame = null, idCounter = 0;
   const pendingBookmarks = new Map();
@@ -170,6 +179,7 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
     const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再调整相机'));
     if (!String(raw).trim()) throw Error(t('相机参数不能为空'));
     const value = Number(raw);
+    if(snapshot.version===1){const viewer=getViewers()[0];snapshot.version=2;Object.assign(snapshot.camera,{roll:viewer.camera.roll||0,distance:viewer.distance||viewer.baseHeight*2,fov:viewer.fov||55,near:viewer.near||.001});}
     if (name.startsWith('pan')) snapshot.camera.pan[Number(name.slice(3))] = value;
     else if (name.startsWith('target')) snapshot.camera.target[Number(name.slice(6))] = value;
     else snapshot.camera[name] = value;
@@ -314,7 +324,7 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
         if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
         slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? t(' 倍') : t(' 度')}`);
       }
-      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [(snapshot.camera.baseHeight / snapshot.camera.zoom).toPrecision(6)]);
+      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? 2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
     } else {
       dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
       heightLabel.textContent = t('加载数据后可调整');

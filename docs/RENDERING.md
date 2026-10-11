@@ -16,11 +16,15 @@ Dimensions are integer pixels, at least 16 per view. Actual render targets must 
 
 SVG contains real editable line paths, not an embedded screenshot. It exports one view and at most 200,000 segments. It intentionally omits point clouds, filled surfaces, hidden-line removal, gradients, 3D line materials, grid and guides. Use raster export for the rendered appearance. Vector density limits avoid freezing the browser on massive linework.
 
-Point spheres are lit sprites, not tessellated spheres: no sphere-surface depth correction, normal-oriented splats, surface reconstruction or Gaussian splatting. Display sampling builds deterministic jittered index strata and uses the same indices for positions/colors/scalars. It changes neither stored points nor processing/export input. Increasing back to 100% restores all already-loaded points and releases the sampling index buffer. A prior import cap still applies. Sampling is per visible cloud; tiny clouds can round down to zero points.
+Point spheres are lit sprites, not tessellated spheres: no sphere-surface depth correction, normal-oriented point sprites or surface reconstruction. Display sampling builds deterministic jittered index strata and uses the same indices for positions/colors/scalars. It changes neither stored points nor processing/export input. Increasing back to 100% restores all already-loaded points and releases the sampling index buffer. A prior import cap still applies. Sampling is per visible cloud; tiny clouds can round down to zero points.
 
 3D lines use `ANGLE_instanced_arrays` with shared endpoint buffers and a small reusable shape. Unsupported browsers retain thin lines and report unavailable styles. Width is screen-relative; SVG does not reproduce tube shading. Native line width remains browser-controlled. Face lighting uses existing per-face normals, preserving architectural sharp edges; this is not normal smoothing or a PBR/path tracer.
 
 The scale bar measures distances in the orthographic image plane using the data’s coordinate units. No meter assumption is made. Normalized LOD uses synthetic layout units; this is not a geographic measurement tool. The on-screen guide canvas is only 150×160 CSS pixels and is updated on rendering, with no animation loop.
+
+The Gaussian viewer reuses this orthographic camera, the project tree, touch gestures, guides and image export. It draws anisotropic 3D Gaussians as screen-space quads sorted far-to-near. Degree 0 uses the DC spherical harmonic; degrees 1–3 reread `f_rest` and evaluate it on the GPU. The projection stays orthographic so camera bookmarks remain `BuildingWebViewer.camera` v1. Training cameras only set the orbit direction toward each stored camera position; roll and perspective are not reproduced.
+
+The point-cloud generator reuses the same orthographic camera and the point renderer. It samples parametric surfaces into an ordinary cloud and can draw the shape edges as a wire overlay. Display ratio and point size affect the preview only. Export uses the spacing from the part, not the thinned preview. Camera bookmarks stay `BuildingWebViewer.camera` v1.
 
 ## 参考 / References
 

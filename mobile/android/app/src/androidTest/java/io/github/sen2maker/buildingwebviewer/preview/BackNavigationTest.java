@@ -30,7 +30,7 @@ public class BackNavigationTest {
     String id=store.create("Back regression").getString("id");
     try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
       waitFor(scenario,"!!(document.getElementById('projects')&&document.getElementById('projects').children.length)");
-      for(String tool:new String[]{"pointcloud","wireframe","lod"}){
+      for(String tool:new String[]{"pointcloud","wireframe","lod","gaussian","generate"}){
         scenario.onActivity(a->a.getBridge().getWebView().loadUrl("https://localhost/"+tool+".html?project="+id+"&lang=en"));
         waitFor(scenario,"typeof window.bwvReturnToProjectHome==='function' && !!document.querySelector('.mobile-save-status') && document.querySelector('.mobile-save-status').textContent==='Saved'");
         assertTrue(store.get(id).getJSONObject("states").has(tool));
@@ -40,6 +40,7 @@ public class BackNavigationTest {
       // Native dialogs consume Back before Activity navigation.
       scenario.onActivity(MainActivity::showDiagnostics);SystemClock.sleep(500);back();
       scenario.onActivity(a->{assertFalse(a.diagnostics.showing);assertFalse(a.isFinishing());});
+      for(int i=0;i<40;i++){ArrayBlockingQueue<Boolean> focus=new ArrayBlockingQueue<>(1);scenario.onActivity(a->focus.offer(a.hasWindowFocus()));if(Boolean.TRUE.equals(focus.poll(2,TimeUnit.SECONDS)))break;SystemClock.sleep(100);}
       back();
       for(int i=0;i<40&&scenario.getState()==Lifecycle.State.RESUMED;i++)SystemClock.sleep(250);
       assertNotEquals("Home Back must leave foreground rather than replay a viewer",Lifecycle.State.RESUMED,scenario.getState());

@@ -94,7 +94,7 @@ public class BWVProjectsPlugin extends Plugin {
   @Override protected void handleOnResume(){ArchiveImporter.background=false;bridge.triggerWindowJSEvent("bwvResume");}
   @PluginMethod public void readChunk(PluginCall call){run(call,()->{
     String id=call.getString("id"),key=call.getString("key");JSONArray files=store.get(id).getJSONArray("files");boolean allowed=false;for(int i=0;i<files.length();i++)if(files.getJSONObject(i).getString("key").equals(key)){allowed=true;break;}if(!allowed)throw new IOException("File is not in project");
-    long offset=call.getLong("offset",0L);int length=call.getInt("length",1048576);if(offset<0||length<0||length>1048576)throw new IOException("Invalid read range");
+    long offset=call.getData().optLong("offset",0L);int length=call.getInt("length",1048576);if(offset<0||length<0||length>1048576)throw new IOException("Invalid read range");
     File file=store.objectFile(key);try(RandomAccessFile in=new RandomAccessFile(file,"r")){int count=(int)Math.min(length,Math.max(0,in.length()-offset));byte[] bytes=new byte[count];in.seek(Math.min(offset,in.length()));in.readFully(bytes);return new JSONObject().put("data",Base64.encodeToString(bytes,Base64.NO_WRAP));}
   });}
   @PluginMethod public void beginExport(PluginCall call){run(call,()->{String token=ProjectStore.id(),name=call.getString("name","export.bin");name=new File(name.replace('\\','/')).getName();File folder=new File(getContext().getCacheDir(),"exports/"+token);folder.mkdirs();File file=new File(folder,name);exports.put(token,file);return new JSONObject().put("token",token);});}
@@ -103,6 +103,11 @@ public class BWVProjectsPlugin extends Plugin {
   @PluginMethod public void finishExport(PluginCall call){run(call,()->{File file=exports.remove(call.getString("token"));if(file==null)throw new IOException("Unknown export");share(file,call.getString("type","application/octet-stream"));return new JSONObject();});}
   @PluginMethod public void commitExport(PluginCall call){run(call,()->{
     File file=exports.remove(call.getString("token"));if(file==null)throw new IOException("Unknown export");JSONObject record=store.object(file,call.getString("path"));JSONObject p=store.get(call.getString("id"));p.getJSONArray("files").put(record);store.put(p);ProjectStore.deleteTree(file.getParentFile());return record;
+  });}
+  @PluginMethod public void commitSnapshot(PluginCall call){run(call,()->{
+    String token=call.getString("token");File file=exports.get(token);if(file==null)throw new IOException("Unknown export");
+    JSONObject result=store.commitSnapshot(call.getString("id"),call.getString("tool"),file,call.getObject("state",new JSObject()));
+    exports.remove(token);ProjectStore.deleteTree(file.getParentFile());return result;
   });}
   void share(File file,String type){getActivity().runOnUiThread(()->{Uri uri=FileProvider.getUriForFile(getContext(),getContext().getPackageName()+".fileprovider",file);Intent intent=new Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("export",uri));getActivity().startActivity(Intent.createChooser(intent,"保存或分享 / Save or share"));});}
 }

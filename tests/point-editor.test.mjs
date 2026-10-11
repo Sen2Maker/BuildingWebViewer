@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { PointEditModel,editSubset,editIndices,editLiveCount } from '../src/generate/point-edit-model.js';
+import { editSelectProjected } from '../src/generate/point-selection.js';
+import { editorProjectBlob,editorReadProject } from '../src/generate/editor-project.js';
+import { writePointExport } from '../src/pointcloud/point-export.js';
+import { parsePointCloud } from '../src/cloud/point-io.js';
+const cloud=()=>({count:6,totalCount:6,positions:new Float64Array([-1,0,0,0,0,0,1,0,0,-1,0,-1,0,0,-1,1,0,-1]),rgb:new Float32Array(18).fill(.5),fields:{intensity:new Float64Array([10,20,30,40,50,60]),nx:new Float64Array(6).fill(1)},semantics:{tags:{intensity:'intensity',nx:'nx'},order:['x','y','z','intensity','nx']},columnOrder:['x','y','z','intensity','nx']});
+const model=new PointEditModel(),a=model.add(cloud(),'A'),b=model.add(cloud(),'B');model.active=a.id;
+const spec={basis:[[1,0,0],[0,1,0],[0,0,1]],eye:[0,0,10],width:100,height:100,perspective:false,worldHeight:10,near:.001};
+const box={type:'box',x0:35,x1:45,y0:45,y1:55,zMin:null,zMax:null};
+let hits=await editSelectProjected(model.scope(),spec,[0,0,0],box);assert.deepEqual([...hits.get(a.id)],[1,0,0,1,0,0]);model.setSelection(hits);assert.equal(model.selectedCount(),2);model.deleteSelected();assert.equal(editLiveCount(model.entities[0]),4);assert.equal(editLiveCount(model.entities[1]),6);assert.equal(a.cloud.count,6);assert.equal(a.deleted,null);assert(model.entities[0].frozen);assert(model.undo());assert.equal(editLiveCount(model.entities[0]),6);assert(model.redo());assert.equal(editLiveCount(model.entities[0]),4);
+model.restore(a.id);assert.equal(editLiveCount(model.entities[0]),6);
+hits=await editSelectProjected(model.scope(),spec,[0,0,0],{...box,zMin:-.5});assert.equal(hits.get(a.id).reduce((n,v)=>n+v,0),1);
+hits=await editSelectProjected(model.scope(),spec,[0,0,0],{type:'lasso',path:[[35,45],[45,45],[45,55],[35,55]],zMin:null,zMax:null});model.setSelection(hits);assert.equal(model.selectedCount(),2);model.setSelection(hits,'subtract');assert.equal(model.selectedCount(),0);model.setSelection(hits,'add');assert.equal(model.selectedCount(),2);
+model.deleteSelected({keep:true});assert.equal(editLiveCount(model.entities[0]),2);assert.equal(editLiveCount(model.entities[1]),6);let trimmed=editSubset(a.cloud,editIndices(model.entities[0]));assert.deepEqual([...trimmed.fields.intensity],[10,40]);assert.equal(trimmed.positions.length,6);
+model.undo();model.setSelection(hits);assert.equal(model.extract(),1);assert.equal(model.entities.length,3);assert.deepEqual([...model.entities[2].cloud.fields.intensity],[10,40]);
+model.active=a.id;model.setSelection(hits);model.colorSelected([1,0,0]);assert.equal(model.entities[0].cloud.rgb[0],1);assert.equal(a.cloud.rgb[0],.5);assert.equal(model.entities[0].cloud.fields.intensity[3],40);assert.equal(model.entities[0].cloud.fields.nx[3],1);model.undo();
+model.setSelection(hits);model.deleteSelected();const blob=editorProjectBlob(model.entities),restored=await editorReadProject(blob);assert.equal(editLiveCount(restored[0]),4);assert.deepEqual(restored[0].cloud.positions,model.entities[0].cloud.positions);assert.deepEqual(restored[0].cloud.fields.intensity,model.entities[0].cloud.fields.intensity);assert.deepEqual(restored[0].deleted,model.entities[0].deleted);
+await assert.rejects(()=>editorReadProject(blob.slice(0,blob.size-1)));await assert.rejects(()=>editorReadProject(new Blob(['broken'])));
+const ctrl=new AbortController();ctrl.abort();await assert.rejects(()=>editSelectProjected([a],spec,[0,0,0],box,{signal:ctrl.signal}),{name:'AbortError'});
+const chunks=[];await writePointExport([{name:'Edited',cloud:editSubset(restored[0].cloud,editIndices(restored[0]))}],{format:'ply',write:c=>chunks.push(c)});const output=parsePointCloud(await new Blob(chunks).arrayBuffer(),'edited.ply');assert.equal(output.count,4);assert.deepEqual([...output.fields.intensity],[20,30,50,60]);
+const empty=new PointEditModel();assert.deepEqual(await editorReadProject(editorProjectBlob(empty.entities)),[]);
+// Painting preserves source color columns/custom tags while exporting the edited RGB roles.
+const colored=cloud();colored.fields.red=new Float64Array(6).fill(128);colored.fields.quality=new Float64Array([1,2,3,4,5,6]);colored.semantics.tags.red='red';colored.semantics.tags.quality='custom_quality';colored.semantics.order.push('red','quality');
+const painter=new PointEditModel(),painted=painter.add(colored,'Colors');painter.setSelection(new Map([[painted.id,new Uint8Array([1,0,0,0,0,0])]]));painter.colorSelected([1,0,0]);const pc=painter.entities[0].cloud;
+assert.equal(pc.fields.red[0],128);assert.equal(pc.semantics.tags.red,'scalar');assert.equal(pc.semantics.tags.quality,'custom_quality');assert.equal(pc.semantics.tags[pc.processing.paintKeys[0]],'red');assert.equal(pc.fields[pc.processing.paintKeys[0]][0],1);assert.equal(colored.rgb[0],.5);
+const savedPaint=await editorReadProject(editorProjectBlob(painter.entities));assert.deepEqual(savedPaint[0].cloud.semantics,JSON.parse(JSON.stringify(pc.semantics)));assert.deepEqual(savedPaint[0].cloud.rgb,pc.rgb);
+const capacity=new PointEditModel();capacity.entities=Array.from({length:200},(_,i)=>({...painted,id:i+1}));capacity.next=201;capacity.active=1;capacity.selectAll();assert.throws(()=>capacity.extract(),/200/);assert.equal(capacity.entities.length,200);assert.equal(capacity.next,201);assert.throws(()=>capacity.add(cloud(),'Overflow'),/200/);
+
+console.log('PASS selection, reversible edits, color semantics, field retention, project/PLY roundtrip and capacity guards');

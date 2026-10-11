@@ -18,6 +18,7 @@ import { CloudFileCache } from './cloud-cache.js';
 import { describePointClouds } from './cloud-combine.js';
 import { mountPaletteControls, paletteGradient } from '../shared/palette-controls.js';
 import { mountCameraControls } from '../shared/camera-controls.js';
+import { genTakeHandoff } from '../shared/generate-handoff.js';
 
 initializeLocale();
 (() => {
@@ -55,8 +56,11 @@ initializeLocale();
   function error(message) { $('error').hidden = !message; $('error').querySelector('span').textContent = message || ''; }
   function activeViewerCount() { return !isWire || !$('compare-mode').checked ? 1 : Number($('compare-count').value) === 3 ? 3 : 2; }
   function copyCamera(source, target) {
+    target.navigation?.reset();
     target.camera = { ...source.camera, pan: [...source.camera.pan] };
     target.target = [...source.target]; target.baseHeight = source.baseHeight;
+    target.projection=source.projection;target.distance=source.distance;target.fov=source.fov;target.near=source.near;
+    target.flyPose=source.flyPose?{eye:[...source.flyPose.eye],basis:source.flyPose.basis.map(v=>[...v])}:null;
   }
   function installSync() {
     for (const viewer of viewers) originals.set(viewer, viewer.render.bind(viewer));
@@ -64,7 +68,7 @@ initializeLocale();
       const ownRender = originals.get(viewer);
       viewer.render = function syncedRender() {
         const result = ownRender();
-        if (!syncEnabled || syncGuard) return result;
+        if (!syncEnabled || syncGuard || this.flyPose&&!this.fly?.active || viewers.some(v=>v!==this&&v.fly?.active)) return result;
         syncGuard = true;
         try {
           for (const other of viewers.slice(0, activeViewerCount())) {
@@ -388,10 +392,11 @@ initializeLocale();
     if (!viewers[0]?.bounds) return null;
     const viewer = viewers[0];
     return { camera: { ...viewer.camera, pan: [...viewer.camera.pan] },
-      worldTarget: viewer.target.map((value, axis) => value + viewer.origin[axis]), baseHeight: viewer.baseHeight };
+      projection:viewer.projection,distance:viewer.distance,fov:viewer.fov,near:viewer.near,worldTarget: viewer.target.map((value, axis) => value + viewer.origin[axis]), baseHeight: viewer.baseHeight };
   }
   function restoreView(snapshot, viewer) {
     if (!snapshot) return;
+    viewer.stopNavigation();viewer.projection=snapshot.projection;viewer.distance=snapshot.distance;viewer.fov=snapshot.fov;viewer.near=snapshot.near;
     viewer.camera = { ...snapshot.camera, pan: [...snapshot.camera.pan] };
     viewer.target = snapshot.worldTarget.map((value, axis) => value - viewer.origin[axis]); viewer.baseHeight = snapshot.baseHeight;
   }
@@ -659,6 +664,21 @@ initializeLocale();
     }});
     if (isWire) mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name) || pointExtension.test(name), onFiles: importRecords});
     clear(); update();
+    if (!isWire && new URLSearchParams(location.search).get('generated') === '1') {
+      genTakeHandoff().then(files => {
+        const url = new URL(location.href);
+        url.searchParams.delete('generated');
+        history.replaceState(null, '', url.pathname + url.search + url.hash);
+        if (!files?.length) { error(t('没有找到刚生成的点云，请从点云生成页重新打开。')); return; }
+        const list = files.map(item => new File([item.buffer], item.name, {type: 'application/octet-stream'}));
+        const added = new Set(list);
+        receiveCloudFiles(list, false);
+        selectedCloudEntries.clear();
+        for (const entry of entries) if (added.has(entry.file)) selectedCloudEntries.add(entry);
+        if (selectedCloudEntries.size) applyCloudSelection();
+        else error(t('没有找到刚生成的点云，请从点云生成页重新打开。'));
+      }).catch(cause => error(cause.message || t('没有找到刚生成的点云，请从点云生成页重新打开。')));
+    }
     mountMobileProject({receive:importRecords,getState:()=>({
       tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...selectedCloudEntries].map(e=>e.id),active:active?.id,cloudMode,
       inputs:captureMobileInputs(),wire:isWire?Object.fromEntries(['wire-file','wire-file-2','wire-file-3','cloud-file','compare-mode','compare-count'].map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value])):null,camera:(loaded.cloud||loaded.wire)?cameraControls?.capture():null,
@@ -670,6 +690,12 @@ initializeLocale();
           selectedCloudEntries.clear();for(const id of state.selected||[]){const entry=entries.find(e=>e.id===id);if(entry)selectedCloudEntries.add(entry);}if(selectedCloudEntries.size)await loadCloudSelection();
         }
         restoreMobileInputs(state.inputs);update();if(state.camera&&(loaded.cloud||loaded.wire))cameraControls.restore(state.camera,{checkScene:false});
+      }
+      const handoff=new URL(location.href),batch=handoff.searchParams.get('studio');
+      if(!isWire&&batch&&/^[a-z0-9]+$/.test(batch)){
+        selectedCloudEntries.clear();for(const entry of entries)if(entry.file?.webkitRelativePath?.startsWith(`studio/${batch}/`))selectedCloudEntries.add(entry);
+        cloudMode='multiple';if(selectedCloudEntries.size)await loadCloudSelection();
+        handoff.searchParams.delete('studio');history.replaceState(null,'',handoff.pathname+handoff.search+handoff.hash);
       }
       list();$('source-note').textContent=t('项目自动保存在此设备');
     },onBackground:()=>{processingControls?.cancel();for(const [file] of cached.records)if(!cached.active.has(file))cached.forget(file);}}).then(session=>{mobileSession=session;});

@@ -12,7 +12,7 @@ import java.util.*;
 @RunWith(AndroidJUnit4.class)
 public class NativeStorageTest {
  Context context;File work;ProjectStore store;
- @Before public void setup(){context=InstrumentationRegistry.getInstrumentation().getTargetContext();work=new File(context.getCacheDir(),"native-tests-"+UUID.randomUUID());work.mkdirs();store=new ProjectStore(new ContextWrapper(context){@Override public File getFilesDir(){return work;}});}
+ @Before public void setup(){ArchiveImporter.background=false;context=InstrumentationRegistry.getInstrumentation().getTargetContext();work=new File(context.getCacheDir(),"native-tests-"+UUID.randomUUID());work.mkdirs();store=new ProjectStore(new ContextWrapper(context){@Override public File getFilesDir(){return work;}});}
  @After public void cleanup(){ProjectStore.deleteTree(work);}
  File fixture(String name)throws Exception{File file=new File(work,name);try(InputStream in=InstrumentationRegistry.getInstrumentation().getContext().getAssets().open(name.endsWith(".gz")?name+".fixture":name)){store.copy(in,file);}return file;}
  @Test public void realNativeArchiveFormats()throws Exception{
@@ -33,5 +33,22 @@ public class NativeStorageTest {
   JSONObject p=store.create("Existing");String id=p.getString("id");File folder=new File(context.getCacheDir(),"exports/native-test-"+UUID.randomUUID());folder.mkdirs();File original=new File(work,"original.txt");try(FileOutputStream out=new FileOutputStream(original)){out.write("0 0 0 1\n".getBytes("UTF-8"));}JSONObject kept=store.object(original,"original.txt");p.getJSONArray("files").put(kept);store.put(p);File valid=new File(folder,"new.txt");try(FileOutputStream out=new FileOutputStream(valid)){out.write("1 1 1 2\n".getBytes("UTF-8"));}File unsupported=new File(folder,"bad.zip");try(FileOutputStream out=new FileOutputStream(unsupported)){out.write(new byte[]{80,75,3,4,1});}
   try{store.importUris(id,Arrays.asList(FileProvider.getUriForFile(context,context.getPackageName()+".fileprovider",valid),FileProvider.getUriForFile(context,context.getPackageName()+".fileprovider",unsupported)));fail();}catch(Exception expected){}finally{ProjectStore.deleteTree(folder);}
   JSONObject saved=store.get(id);assertEquals("Existing",saved.getString("name"));assertEquals("failed",saved.getString("status"));assertEquals(1,saved.getJSONArray("files").length());assertEquals(kept.getString("key"),saved.getJSONArray("files").getJSONObject(0).getString("key"));assertTrue(new File(store.inbox,saved.getString("importJob")+"/receipt.json").isFile());
+ }
+ @Test public void editorSnapshotsReplaceAtomicallyAndBackupRestoresThem()throws Exception{
+  JSONObject p=store.create("Editor");String id=p.getString("id");File data=new File(work,"edit.snapshot");
+  try(FileOutputStream out=new FileOutputStream(data)){out.write(new byte[]{1,2,3});}
+  JSONObject first=store.commitSnapshot(id,"generate",data,new JSONObject().put("active",1));String oldKey=first.getString("snapshotKey");
+  try(FileOutputStream out=new FileOutputStream(data)){out.write(new byte[]{4,5,6});}
+  JSONObject next=store.commitSnapshot(id,"generate",data,new JSONObject().put("active",2));
+  assertNotEquals(oldKey,next.getString("snapshotKey"));assertEquals(1,store.get(id).getJSONArray("files").length());assertTrue(store.objectFile(oldKey).exists());
+  assertEquals(2,store.get(id).getJSONObject("states").getJSONObject("generate").getInt("active"));
+  try{store.commitSnapshot(id,"../bad",data,new JSONObject());fail();}catch(IOException expected){}
+  assertEquals(next.getString("snapshotKey"),store.get(id).getJSONObject("states").getJSONObject("generate").getString("snapshotKey"));
+  File backup=store.backup(id,new File(work,"editor-backup"));JSONObject restored=store.restoreBackup(backup,new File(work,"editor-restore"));
+  assertEquals(next.getString("snapshotKey"),restored.getJSONObject("states").getJSONObject("generate").getString("snapshotKey"));
+  assertEquals(".bwv/generate.snapshot",restored.getJSONArray("files").getJSONObject(0).getString("path"));
+  store.saveState(id,"gaussian",new JSONObject().put("selected",new JSONArray()));assertTrue(store.get(id).getJSONObject("states").has("gaussian"));
+  store.commitSnapshot(id,"future-editor",data,new JSONObject());assertTrue(store.get(id).getJSONObject("states").has("future-editor"));
+  assertTrue(ArchivePolicy.data("workspace.bwvproject"));assertTrue(ArchivePolicy.data("cameras.json"));
  }
 }

@@ -1,7 +1,7 @@
 <div align="center">
 
 <h1>BuildingWebViewer</h1>
-<p>A general 3D toolbox for LOD meshes, OBJ wireframes and point clouds, with attribute editing, geometric processing and export.</p>
+<p>A general 3D toolbox for LOD meshes, OBJ wireframes, point clouds and 3D Gaussian splats. Draw and refine point clouds, edit attributes, run geometric processing and export.</p>
 <p><a href="README.md">简体中文</a> · <strong>English</strong> · <a href="https://sen2maker.github.io/BuildingWebViewer/">Live demo ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">Download release</a></p>
 
 </div>
@@ -22,13 +22,15 @@ python3 server.py
 
 Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)**. Press `Ctrl+C` to stop; add `--port 8766` if the default port is busy.
 
-## Three viewers
+## Tools
 
 | Tool | Input | Key features |
 | --- | --- | --- |
 | **LOD models** | Triangulated OBJ meshes | Multiple buildings, solid / wireframe display, height above each model’s lowest point |
 | **Building wireframes** | OBJ wireframes + optional point clouds | Folders grouped by object ID, up to three comparison panes, synchronized cameras |
 | **Point clouds** | TXT · XYZ · CSV · PTS · PLY · PCD | Multi-file overlays, attribute coloring, geometric features and merged export |
+| **Gaussian splats** | 3DGS binary PLY + cameras.json | Perspective / orthographic splats, spherical harmonics, scale and training-camera directions |
+| **Point cloud studio** | Draw from scratch or import existing clouds | Lines, faces and extrusions; box / lasso selection, crop, color, editable projects and PLY export |
 
 Organize wireframe data as `dataset / object-ID / wireframe.obj, points.txt`. Text point clouds support XYZ and additional attributes, such as `x y z intensity`. LAS / LAZ and compressed PCD are not supported.
 
@@ -41,12 +43,12 @@ Organize wireframe data as `dataset / object-ID / wireframe.obj, points.txt`. Te
 Switch 中文 / English in the homepage header; the preference follows you into each tool and its loading screen, avoiding a flash of the other language on slow connections. On phones, use file selection, one-finger orbit and two-finger zoom/pan. Folder picking and large datasets depend on browser support and device memory.
 
 - **Local data**: files are processed in your browser, never uploaded. No model datasets are bundled.
-- **Shared project tree**: all three tools support appended imports. Drop files or folders, collapse groups, create folders, Ctrl/Shift-select or box-select items, and use the context menu for batch moves/removal. The sidebar can be resized or collapsed. Checked clouds are used for display, processing, and merging. Groups exist for this session only; disk files stay unchanged.
+- **Shared project tree**: the four viewers support appended imports. Drop files or folders, collapse groups, create folders, Ctrl/Shift-select or box-select items, and use the context menu for batch moves/removal. The sidebar can be resized or collapsed. Checked clouds are used for display, processing, and merging. Groups exist for this session only; disk files stay unchanged. The studio imports existing clouds and saves editable projects; its result can be opened in the point-cloud viewer.
 - **Explicit selection**: select objects after opening a folder. Reloading requires selecting your data again; saved bookmarks remain.
 - **Large files**: all points are displayed by default, with optional per-file limits and cache reuse. Capacity depends on available RAM and GPU memory.
 - **Coordinates**: point cloud overlays preserve original coordinates and require a common coordinate system. LOD models use a rearranged display layout.
 
-**Display and import**: sampling slider, per-cloud colors and advanced camera capture; all viewers accept ordinary ZIP archives. An Android APK is not available yet; see the [mobile roadmap](docs/MOBILE.md).
+**Display and import**: sampling slider, per-cloud colors and advanced camera capture; viewers accept ordinary ZIP archives. Gaussian splats add spherical-harmonic degree, opacity, scale, background, a display cap and training-camera directions. Android Preview is available in Releases; see [installation and builds](docs/ANDROID.md).
 
 ## Develop and package
 
@@ -66,3 +68,5 @@ See [design notes](docs/DESIGN_NOTES.md) (Chinese) for implementation details an
 **Versioning**: `v1.0.0` is the first stable baseline. Future changes are tested, recorded in the [changelog](CHANGELOG.md) and reported before uploading under a release instruction. Only stable Releases update the live website. [Release guide](docs/RELEASING.md)
 
 [Android preview, installation and builds](docs/ANDROID.md)
+
+**Continue on another device**: desktop web, mobile web and Android share `.bwvproject` point editor files; use PLY for point clouds or Gaussians. Copy/share files yourself; no data is uploaded. Full Android backups use `.bwv.zip`. See [cross-platform workflows](docs/CROSS_PLATFORM.md).

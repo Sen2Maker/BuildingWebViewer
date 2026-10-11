@@ -19,7 +19,8 @@ def validate(tag=None, package=True):
     version = json.loads((ROOT/'package.json').read_text(encoding='utf-8'))['version']
     if not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', version): raise ValueError('Invalid version')
     notes = release_notes(version,(ROOT/'CHANGELOG.md').read_text(encoding='utf-8'))
-    for name in ['index','lod','wireframe','pointcloud']:
+    for page in json.loads((ROOT/'src/shared/site-meta.json').read_text(encoding='utf-8')):
+        name = page[:-5]
         text = (ROOT/(name+'.html')).read_text(encoding='utf-8')
         if 'content="'+version+'"' not in text or '/releases/tag/v'+version+'"' not in text:
             raise ValueError('Stale version in '+name)
@@ -43,7 +44,7 @@ def validate(tag=None, package=True):
                 if path.parts[0] != 'BuildingWebViewer' or '..' in path.parts: raise ValueError('Unsafe archive path')
                 local = ROOT.joinpath(*path.parts[1:])
                 if not local.is_file() or archive.read(member) != local.read_bytes(): raise ValueError('Stale archive member: '+member)
-            for required in ['index.html','package.json','CHANGELOG.md','README.md','README.en.md','assets/js/cloud.bundle.js']:
+            for required in ['index.html','package.json','CHANGELOG.md','README.md','README.en.md','assets/js/cloud.bundle.js','assets/js/gaussian.bundle.js','assets/js/generate.bundle.js','gaussian.html','generate.html']:
                 if 'BuildingWebViewer/'+required not in archive.namelist(): raise ValueError('Missing archive member: '+required)
     return version, notes
 

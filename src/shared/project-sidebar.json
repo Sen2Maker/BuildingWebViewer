@@ -16,5 +16,11 @@
     "list_id": "data-list",
     "selection_actions": "<button id=\"select-all-clouds\" disabled>全选</button><button id=\"invert-cloud-selection\" disabled>反选</button>",
     "options_file": "src/pointcloud/pointcloud-project-options.html"
+  },
+  "gaussian.html": {
+    "accept": ".ply,.json,.zip",
+    "list_id": "splat-list",
+    "selection_actions": "<button id=\"select-all-splats\" disabled>全选</button><button id=\"invert-splat-selection\" disabled>反选</button>",
+    "options_file": "src/gaussian/gaussian-project-options.html"
   }
 }

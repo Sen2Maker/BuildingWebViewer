@@ -1,12 +1,12 @@
 # Android Preview
 
-App 复用三个网页查看器，文件和项目保存在手机内。网页不需要安装 Node 或 Android SDK；下面的依赖仅用于构建 APK。
+App 复用五个三维工具，文件和项目保存在手机内。网页不需要安装 Node 或 Android SDK；下面的依赖仅用于构建 APK。
 
 ## 安装与使用
 
-1. 安装 `BuildingWebViewer-Android-v1.3.0-preview.1.apk`。预览版为独立应用，Android 7.0+，兼容构建目标为 Android System WebView 60+。JavaScript 语法转换与缺失接口回归已加入构建；实际 GPU/WebGL 和厂商内核仍需真机验证。
+1. 安装 `BuildingWebViewer-Android-v1.4.0-preview.1.apk`。预览版为独立应用，Android 7.0+，兼容构建目标为 Android System WebView 60+。JavaScript 语法转换与缺失接口回归已加入构建；实际 GPU/WebGL 和厂商内核仍需真机验证。
 2. 从 QQ 或文件管理器“分享/用其他应用打开”文件或压缩包，选择 **BuildingWebViewer Preview**。也可在 App 内新建项目或导入文件。
-3. 选择项目，再进入 LOD、线框或点云。解压后的目录保留；线框和对应点云请放在同一目录。
+3. 选择项目，再进入 LOD、线框、点云、高斯或点云创作与修订。解压后的目录保留；线框和对应点云请放在同一目录。
 4. 修改项目树、勾选、属性标签、显示颜色和相机会自动保存。计算结果写入项目；手机关闭应用后可从首页重新打开。
 5. 卸载前用“导出项目备份”保存 `.bwv.zip`，以后通过首页“导入文件/压缩包”恢复。回收站可恢复；清空后不能撤销。
 
@@ -40,7 +40,7 @@ Android 安装仍需用户确认。Android 8+ 首次需用户允许本 App 安�
 
 公告保存在包内，成功进入新版项目首页后展示一次；手动入口可再次查看。只有下载完成不算升级成功，回退不会展示失败版本的成功公告。更新后的网页版本可能高于系统显示的 APK 版本，这是两层版本的正常区别。
 
-v1.3.0 使用 nativeApi 5，需要覆盖安装新版 APK。新客户端只接受内置公钥验证通过的 ECDSA 签名清单，再检查单调序号、有效期、文件哈希、大小和兼容性。验证失败继续使用本地版本，绝不降级为无签名更新。已经安装的可信网页过期后仍可离线运行。详见 [更新安全与发布](UPDATE_SECURITY.md)。
+v1.4.0 使用 nativeApi 6，需要本次覆盖安装新版 APK。新客户端只接受内置公钥验证通过的 ECDSA 签名清单，再检查单调序号、有效期、文件哈希、大小和兼容性。验证失败继续使用本地版本，绝不降级为无签名更新。已经安装的可信网页过期后仍可离线运行。详见 [更新安全与发布](UPDATE_SECURITY.md)。
 
 
 ## 启动问题定位
@@ -78,6 +78,16 @@ bash mobile/android/gradlew -p mobile/android :app:connectedDebugAndroidTest
 
 ## English
 
-The Android preview bundles all three viewers for offline use. The compatibility build targets WebView 60+ (Android 7+) with downlevel syntax and offline polyfills; actual device/GPU compatibility still needs verification. Local startup never waits for GitHub: one deferred background check times out after 3 seconds, silently. Verified web updates are staged for the next launch, with no live reload. v1.3.0 adds signed web updates, consent-based APK download/verification and local release notes; it requires a new APK (nativeApi 5). Share files/archives to the app, select a persistent project, then choose a viewer. Projects use atomic manifests and deduplicated private files; export `.bwv.zip` backups before uninstalling. Completed edits persist, but abrupt process death can lose the last in-flight operation.
+The Android preview bundles all five tools for offline use. The compatibility build targets WebView 60+ (Android 7+) with downlevel syntax and offline polyfills; actual device/GPU compatibility still needs verification. Local startup never waits for GitHub: one deferred background check times out after 3 seconds, silently. Verified web updates are staged for the next launch, with no live reload. Signed web updates, consent-based APK download/verification and local release notes remain enabled. This v1.4.0 release needs one APK upgrade to nativeApi 6; subsequent compatible web changes reuse that native layer. Share files/archives to the app, select a persistent project, then choose a viewer. Projects use atomic manifests and deduplicated private files; export `.bwv.zip` backups before uninstalling. Completed edits persist, but abrupt process death can lose the last in-flight operation.
 
 Build with Node 22+, Python 3, JDK 21 and Android SDK 36 using the commands above. Compatible patch web bundles update automatically; feature releases ask first, and native changes require a new APK. Debug signing and a separate preview application ID are intentional. Validate QQ sharing, background/process recovery, large files and the published update channel on physical devices before a stable release.
+
+## v1.4 编辑工作台与跨端文件
+
+高斯与点云创作工具通过 nativeApi 6 保存二进制编辑快照；快照和状态在一次原子项目提交中更新。同名旧快照不重复列入项目，未引用数据可通过首页清理回收。App 备份包含快照，返回首页前等待保存完成。
+
+电脑网页 / 手机网页保存的 `.bwvproject` 可分享至 App，选项目后进入“点云创作与修订”；App 的“保存项目”通过系统分享输出相同格式，浏览器用“打开项目”继续编辑。多个项目文件导入 App 时合并为独立对象。点云 / 高斯 PLY 可交给对应工具；高斯训练相机 JSON 可与 PLY 一起导入。网页浏览器缓存不跨设备同步，`.bwv.zip` 是 App 整项目备份，`.bwvproject` 是跨端点云编辑文件，两者用途不同。
+
+本次需要覆盖安装 v1.4.0 APK（nativeApi 6）；签名更新流程会提示安装，不向旧 nativeApi 5 注入不兼容资源。WebView 60 是编译目标，高斯渲染仍需设备可用的 WebGL。
+
+通用工具快照接口以安全的工具标识保存状态，未来新增兼容工具不需要修改原生工具白名单。网页改版、算法和交互调整优先走签名热更新；仅底层能力变化要求 APK。

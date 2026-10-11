@@ -22,13 +22,13 @@ final class BackNavigation {
 
   void update(String url) {
     if(url==null){callback.setEnabled(false);return;}
-    Uri current=Uri.parse(url),root=Uri.parse(home);
-    callback.setEnabled(!(root.getScheme().equals(current.getScheme())&&root.getAuthority().equals(current.getAuthority())&&root.getPath().equals(current.getPath())));
+    callback.setEnabled(true);
   }
 
   private void navigate() {
     if(activity.diagnostics.rendererGone){callback.setEnabled(false);activity.getOnBackPressedDispatcher().onBackPressed();return;}
     final String before=bridge.getWebView().getUrl();
+    if(before!=null&&Uri.parse(home).getPath().equals(Uri.parse(before).getPath())){activity.moveTaskToBack(true);return;}
     // The shared viewer handler saves first, and keeps the current page if saving fails.
     bridge.getWebView().evaluateJavascript("(function(){if(typeof window.bwvReturnToProjectHome==='function'){window.bwvReturnToProjectHome();return true;}return false;})()",handled->{
       if("true".equals(handled)||activity.isFinishing()||activity.isDestroyed())return;

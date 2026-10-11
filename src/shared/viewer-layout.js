@@ -1,3 +1,5 @@
+import { mountFlyCameraControls } from './fly-controls.js';
+import { mountCameraNavigationControls } from './camera-navigation-controls.js';
 import { mountImageExport } from './image-export.js';
 import { mountPresentationControls } from './presentation-controls.js';
 import { t } from './i18n.js';
@@ -6,6 +8,19 @@ import { mountResourceMonitor } from './resource-monitor.js';
 
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 export function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
+  const primary=getViewers()[0],cameraPanel=root.getElementById('camera-controls');
+  if(primary?.navigation&&!primary.fly&&cameraPanel){
+    const navigationPanel=root.createElement('div');cameraPanel.prepend(navigationPanel);
+    const setNavigation=primary.setNavigation;
+    primary.setNavigation=options=>pauseSync(()=>{setNavigation(options);for(const other of getViewers())if(other!==primary)other.setNavigation?.(options);});
+    mountFlyCameraControls(primary,navigationPanel);mountCameraNavigationControls(navigationPanel,primary);
+    const label=root.createElement('label'),select=root.createElement('select'),en=document.documentElement.lang==='en';
+    label.textContent=en?'Projection':'投影模式';select.setAttribute('aria-label',label.textContent);
+    for(const[value,zh,english]of [['orthographic','正交','Orthographic'],['perspective','透视','Perspective']]){const option=root.createElement('option');option.value=value;option.textContent=en?english:zh;select.append(option);}
+    select.onchange=()=>{for(const viewer of getViewers()){viewer.stopNavigation();if(select.value==='perspective')viewer.prepareFly();else viewer.baseHeight=2*viewer.distance*Math.tan(viewer.fov*Math.PI/360);viewer.projection=select.value;viewer.requestRender();}};
+    label.append(select);cameraPanel.append(label);
+    const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
+  }
   mountResourceMonitor({root, getViewers});
   mountImageExport({root,getViewers,pauseSync});
   mountPresentationControls({root,getViewers,pauseSync});

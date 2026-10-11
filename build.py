@@ -10,9 +10,9 @@ import shutil
 import zipfile
 
 HERE = Path(__file__).resolve().parent
-PAGES = ('index.html', 'lod.html', 'wireframe.html', 'pointcloud.html')
+PAGES = ('index.html', 'lod.html', 'wireframe.html', 'pointcloud.html', 'gaussian.html', 'generate.html')
 ICONS = ('favicon.svg', 'favicon.ico', 'favicon-32.png', 'apple-touch-icon.png')
-ENTRIES = {'mobile': 'src/mobile/home.js', 'hub': 'src/hub/hub.js', 'lod': 'src/lod/app.js', 'cloud': 'src/cloud/cloud-app.js'}
+ENTRIES = {'mobile': 'src/mobile/home.js', 'hub': 'src/hub/hub.js', 'lod': 'src/lod/app.js', 'cloud': 'src/cloud/cloud-app.js', 'gaussian': 'src/gaussian/app.js', 'generate': 'src/generate/app.js'}
 IMPORT = re.compile(r"^import\s+\{[^}]+\}\s+from\s+['\"]([^'\"]+)['\"];?\s*$", re.MULTILINE)
 
 
@@ -47,7 +47,7 @@ def site_files():
 
 
 def boot_page(source):
-    """Generate critical startup UI from one shared source for all four entry pages."""
+    """Generate critical startup UI from one shared source for every entry page."""
     head = '<style>' + (HERE / 'src/shared/page-boot.css').read_text(encoding='utf-8') + '</style>\n<script>' + (HERE / 'src/shared/page-boot.js').read_text(encoding='utf-8') + '</script>'
     head += '\n<script>' + (HERE / 'src/shared/site-update.js').read_text(encoding='utf-8') + '</script>'
     body = (HERE / 'src/shared/page-boot.html').read_text(encoding='utf-8')

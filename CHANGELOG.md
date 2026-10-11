@@ -6,6 +6,19 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.0] - 2026-10-11
+
+三维创作与跨端项目 / 3D creation and cross-platform projects. Android remains Preview.
+
+- 新增三维高斯 PLY 查看与基础修订：透视 / 正交、球谐颜色、训练相机、框选 / 画刷、隐藏 / 删除及原始属性 PLY 导出。
+- 新增点云创作与修订工作台：工作平面折线、自由画笔、面和拉伸体采样；现有点云导入、矩形 / 套索、删除 / 裁剪 / 提取 / 染色、撤销及完整项目保存。
+- 相机导航共用模块：漫游 WASD、升降、Q/E 滚转，手机摇杆；视野 / 固定点 / 模型中心旋转、独立灵敏度、可选平滑。
+- 电脑网页、手机网页和 Android 共用数据与编辑逻辑；`.bwvproject` 跨端保存源点、属性和删除状态，常规点云和高斯通过 PLY 转移。文件由用户分享或复制，不上传到服务器。
+- App 为新工具新增原子项目快照、保存后返回、后台保存及原生分享导出；备份包含快照，旧项目继续可读。修复 Android 兼容构建依赖路径、二进制分段读取偏移，以及首页返回退到后台的行为。
+- nativeApi 6：本次需要新版 APK；沿用签名验证、公告、离线启动与失败回退。后续兼容网页更新继续使用原有更新通道。
+- Gaussian PLY viewing/editing, point-cloud drawing/refinement, shared fly/orbit navigation and portable point editor projects. Native snapshots, backup, Back and share/export integrate both new tools into Android projects.
+- 边界：选区为穿透选择；高斯仍非 SuperSplat 全功能替代。无曲面吸附、孔洞或布尔雕刻；不跨设备自动同步。Android 为预览版，厂商设备手感与大数据内存需用户实测。
+
 ## [1.3.0] - 2026-10-10
 
 签名更新与完整的 App 升级流程 / Signed updates and an integrated App upgrade flow. Android remains Preview.

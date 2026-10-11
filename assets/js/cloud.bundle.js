@@ -5,6 +5,7 @@
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  '浏览': 'Browse',
   'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',
   '发现功能更新 v{0}。下载后将在下次启动使用，项目和数据会保留。': 'Feature update v{0} is available. Download for next launch? Projects and data will be kept.',
 
@@ -255,9 +256,9 @@ const EN_MESSAGES = {
   "相机坐标空间无效": "Invalid camera coordinate space",
   "相机场景需要有效的文件或楼栋 ID 列表": "The camera scene requires a valid list of file or building IDs",
   "LOD 相机需要记录实际比例或统一大小模式": "LOD cameras must specify true scale or normalized size",
-  "不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1）": "Unsupported camera JSON (expected BuildingWebViewer.camera v1)",
+  "不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）": "Unsupported camera JSON (expected BuildingWebViewer.camera v1/v2)",
   "相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用": "Camera spaces do not match: point/wire views cannot be used for LOD arrangements",
-  "当前查看器仅支持正交相机": "Only orthographic cameras are supported",
+  "相机投影与文件版本不兼容": "Camera projection is incompatible with the file version",
   "相机参数缺失": "Missing camera parameters",
   "方位角": "Azimuth",
   "仰角": "Elevation",
@@ -985,6 +986,221 @@ const EN_MESSAGES = {
   "个人主页 ↗": "Author ↗",
   "项目仓库 ↗": "Repository ↗",
   "版本更新记录": "Release notes",
+  "在浏览器中查看 LOD 模型、线框、点云与高斯泼溅。": "View LOD meshes, wireframes, point clouds and Gaussian splats in your browser.",
+  "高斯泼溅": "Gaussian splats",
+  "查看训练得到的三维高斯，沿用项目、相机与截图。": "View trained 3D Gaussians with the same project, camera and screenshot tools.",
+  "3DGS PLY": "3DGS PLY",
+  "训练相机": "Training cameras",
+  "高斯泼溅查看器": "Gaussian Splatting Viewer",
+  "本机 PLY · 正交泼溅": "Local PLY · orthographic splats",
+  "结果显示模式": "Result display mode",
+  "单个结果": "Single result",
+  "多个结果叠加": "Multiple results",
+  "高斯泼溅查看器三维预览": "3D Gaussian splatting preview",
+  "高斯原始坐标 · 正交泼溅": "Original Gaussian coordinates · orthographic splats",
+  "添加高斯 PLY 或结果文件夹，再勾选左侧文件。": "Add a Gaussian PLY or result folder, then check a file on the left.",
+  "拍摄位置": "Camera position",
+  "不使用训练相机": "No training camera",
+  "把 cameras.json 和 point_cloud.ply 一起导入后，可以跳到训练机位。": "Import cameras.json with point_cloud.ply to jump to a training camera.",
+  "泼溅": "Splats",
+  "球谐阶数": "Spherical harmonics",
+  "0 阶 · 底色": "Degree 0 · base color",
+  "1 阶": "Degree 1",
+  "2 阶": "Degree 2",
+  "3 阶 · 完整颜色": "Degree 3 · full color",
+  "不透明度下限": "Opacity cutoff",
+  "尺度倍率": "Scale multiplier",
+  "背景": "Background",
+  "浅灰": "Light gray",
+  "黑色": "Black",
+  "白色": "White",
+  "显示数量": "Display count",
+  "5 万": "50,000",
+  "20 万": "200,000",
+  "全部": "All",
+  "正交投影，与点云、线框共用相机和书签。远处的高斯先绘制。0 阶只使用底色；提高阶数会重新读取 PLY。黑色背景更接近常见的训练渲染。": "Orthographic projection shares cameras and bookmarks with the point and wireframe viewers. Farther Gaussians draw first. Degree 0 uses the base color; higher degrees reread the PLY. A black background is closer to typical training renders.",
+  "显示即时生效 · Esc 收起": "Display changes apply immediately · Esc closes the panel",
+  "勾选后显示三维高斯。点击名称管理，Ctrl / ⌘ 多选、Shift 连选、空白处拖动框选。右键可批量显示、隐藏、移动或移除。新建文件夹和移动只影响本次页面，不修改磁盘。": "Check an item to display its Gaussians. Click a name to manage it. Ctrl / ⌘ selects more, Shift selects a range, and dragging on empty space box-selects. Right-click shows, hides, moves or removes items. New folders and moves affect this page only.",
+  "请打开 3D Gaussian Splatting 的二进制 PLY（point_cloud/iteration_*/point_cloud.ply）。同一次导入中的 cameras.json 会挂到这些 PLY 上。普通点云 PLY 请使用点云查看器。": "Open a binary 3D Gaussian Splatting PLY (point_cloud/iteration_*/point_cloud.ply). A cameras.json from the same import is attached to those PLYs. Use the point-cloud viewer for ordinary PLY files.",
+  "勾选后显示高斯": "Check to display Gaussians",
+  "只支持二进制小端、float 属性的高斯 PLY。": "Only little-endian binary Gaussian PLY files with float properties are supported.",
+  "这个 PLY 不是三维高斯泼溅结果（需要 opacity、scale、rot 和 f_dc）。普通点云请使用点云查看器。": "This PLY is not a 3D Gaussian Splatting result (it needs opacity, scale, rot and f_dc). Use the point-cloud viewer for ordinary points.",
+  "高斯 PLY 为空。": "The Gaussian PLY is empty.",
+  "高斯数量超过 {0}，请先减少点数后再打开。": "More than {0} Gaussians. Reduce the count before opening.",
+  "高斯 PLY 比文件头声明的更短，文件可能不完整。": "The Gaussian PLY is shorter than its header. The file may be incomplete.",
+  "高斯 PLY 没有有效坐标。": "The Gaussian PLY has no valid coordinates.",
+  "不是训练相机 JSON（需要 position 数组）。": "Not a training-camera JSON file (a position array is required).",
+  "无法启用 WebGL2，请使用 Chrome 或 Edge，并打开硬件加速。": "WebGL2 is unavailable. Use Chrome or Edge with hardware acceleration enabled.",
+  "显存不足，请降低显示数量。": "Not enough GPU memory. Lower the display count.",
+  "已记录 {0} 个训练相机。正交相机只对齐拍摄方向，不能复现滚转和透视。": "{0} training cameras recorded. The orthographic camera matches direction only, without roll or perspective.",
+  "正在读取 {0}…": "Reading {0}…",
+  "正在解析 {0}（{1}%）": "Parsing {0} ({1}%)",
+  "已显示 {0} / {1} 个高斯": "Showing {0} / {1} Gaussians",
+  "球谐 {0} 阶 · 正交泼溅": "SH degree {0} · orthographic splats",
+  "球谐 0 阶 · 正交泼溅": "SH degree 0 · orthographic splats",
+  "此文件没有球谐系数，已保持 0 阶。": "This file has no spherical-harmonic coefficients. Staying at degree 0.",
+  "{0} 个高斯": "{0} Gaussians",
+  "没有找到高斯 PLY。请选择 point_cloud.ply，或包含它的结果文件夹。": "No Gaussian PLY found. Choose point_cloud.ply or the result folder that contains it.",
+  "在浏览器中查看 LOD 模型、线框、点云与高斯泼溅，也可按参数生成点云。": "View LOD meshes, wireframes, point clouds and Gaussian splats in your browser, or generate a point cloud from parameters.",
+  "点云生成": "Point generator",
+  "按间距采样屋顶、方盒和地面，可加噪声，再导出为点云。": "Sample a roof, box or ground plane by spacing, add noise, and export a point cloud.",
+  "参数形体": "Parametric shapes",
+  "间距 / 噪声": "Spacing / noise",
+  "参数采样 · 本机计算": "Parametric sampling · on this device",
+  "本地计算": "Computed locally",
+  "生成部件": "Generated parts",
+  "部件": "Parts",
+  "添加形体": "Add a shape",
+  "双坡屋顶": "Gable roof",
+  "方盒": "Box",
+  "地面": "Ground",
+  "部件列表": "Part list",
+  "添加一个形体后，在这里改尺寸和采样。": "Add a shape, then edit its size and sampling here.",
+  "显示此部件": "Show this part",
+  "开间": "Span",
+  "进深": "Depth",
+  "宽度": "Width",
+  "深度": "Depth",
+  "高度": "Height",
+  "檐高": "Eave height",
+  "脊高": "Ridge height",
+  "出檐": "Overhang",
+  "地面标高": "Ground elevation",
+  "位置 X": "Position X",
+  "位置 Y": "Position Y",
+  "位置 Z": "Position Z",
+  "墙": "Walls",
+  "山墙": "Gable ends",
+  "包含内部": "Include interior",
+  "内部": "Interior",
+  "采样": "Sampling",
+  "间距": "Spacing",
+  "分布": "Distribution",
+  "规则网格": "Regular grid",
+  "分层随机": "Stratified",
+  "噪声": "Noise",
+  "种子": "Seed",
+  "噪声沿表面法向偏移。": "Noise is offset along the surface normal.",
+  "表面沿法向偏移，内部沿三个方向偏移。": "Surfaces move along their normal. Interior points move in all three directions.",
+  "删除此部件": "Delete this part",
+  "导出可见 PLY": "Export visible PLY",
+  "在点云查看器中打开": "Open in the point-cloud viewer",
+  "这一版怎么采样": "How this version samples",
+  "点沿表面等距。规则网格落在格子角上，分层随机在每个格子里抽一个点。噪声在采样之后加上，同一粒种子得到同一片点。屋脊、檐口和墙边会有重合点。山墙用三角点阵，短边会比长边更密。方盒可以另外填充内部。数值不换算单位。": "Points are spaced along each surface. A regular grid sits on cell corners, and stratified sampling draws one point in each cell. Noise is added after sampling, and the same seed repeats the cloud. Ridges, eaves and wall edges can contain coincident points. Gable ends use a triangle lattice, so the shorter side is denser. A box can also fill its interior. Values are not converted between units.",
+  "工作平面画笔还没有放进来。生成结果是普通点云，可在点云查看器里上色、计算和再导出。": "A work-plane brush is not included yet. The result is an ordinary point cloud, so the point-cloud viewer can color, process and export it again.",
+  "未添加形体": "No shape yet",
+  "从左侧添加一个形体": "Add a shape from the left",
+  "点云生成三维预览": "Point-cloud generator preview",
+  "生成坐标 · Z 朝上": "Generated coordinates · Z up",
+  "沿表面等距 · 导出使用左侧间距": "Evenly spaced on the surface · export uses the spacing on the left",
+  "添加一个形体": "Add a shape",
+  "从双坡屋顶、方盒或地面开始。参数改完会立即预览。": "Start with a gable roof, box or ground plane. Changes preview immediately.",
+  "正在生成点云…": "Generating the point cloud…",
+  "预览": "Preview",
+  "这里的点大小、显示比例和线样式只改变视口。导出仍按左侧间距生成全部点。": "Point size, display ratio and line style change only the view. Export still uses the spacing on the left for every point.",
+  "约 {0} 点": "About {0} points",
+  "已隐藏": "Hidden",
+  "预览 {0} 点 · 按间距导出约 {1} 点": "Previewing {0} points · export at this spacing is about {1}",
+  "参数尚未生效": "These parameters are not applied yet",
+  "按当前间距约 {0} 点，超过 {1}。请加大间距后再导出。": "This spacing is about {0} points, above {1}. Increase the spacing before exporting.",
+  "视口里是抽稀预览，导出和送去查看器仍按间距生成全部点。": "The view is a thinned preview. Export and the point-cloud viewer still use the full spacing.",
+  "正在生成 {0}…": "Generating {0}…",
+  "导出超过 256 MB，请加大间距或减少部件。": "Export is over 256 MB. Increase the spacing or remove parts.",
+  "没有可导出的可见部件。": "There is no visible part to export.",
+  "已导出 {0} 点。文件留在本机。": "Exported {0} points. The file stays on this device.",
+  "没有可送出的点云": "There is no point cloud to send",
+  "当前环境不能把点云交给查看器，请改用导出 PLY。": "This environment cannot hand the cloud to the viewer. Export a PLY instead.",
+  "没有找到刚生成的点云，请从点云生成页重新打开。": "The generated cloud was not found. Open it again from the generator.",
+  "法向长度无效": "The normal length is invalid",
+  "{0}必须大于 0": "{0} must be greater than 0",
+  "{0}开关无效": "{0} toggle is invalid",
+  "间距过大": "Spacing is too large",
+  "噪声不能为负": "Noise cannot be negative",
+  "种子需为 0 到 4294967295 的整数": "Seed must be an integer from 0 to 4294967295",
+  "采样分布无效": "Sampling distribution is invalid",
+  "未知形体": "Unknown shape",
+  "檐高不能为负": "Eave height cannot be negative",
+  "脊高不能低于檐高": "Ridge height cannot be below the eave",
+  "出檐不能为负": "Overhang cannot be negative",
+  "部件编号无效": "Part id is invalid",
+  "形体参数无效": "Shape parameters are invalid",
+  "生成点数超出可表示范围": "The generated point count cannot be represented",
+  "生成点数上限无效": "The generation limit is invalid",
+  "当前形体没有可采样的点。": "This shape has no points to sample.",
+  "生成点数超过 {0}，请加大间距。": "More than {0} points. Increase the spacing.",
+  "采样数量和估计不一致。": "The sample count does not match the estimate.",
+  "预览点数无效": "The preview count is invalid",
+  "预览采样失败，请加大间距。": "Preview sampling failed. Increase the spacing.",
+  "已记录 {0} 个训练相机。使用完整旋转、位置和焦距。": "Loaded {0} training cameras with rotation, position and focal lengths.",
+  "原始尺度 · 可撤销编辑 · 本地草稿": "Original scales · Undoable edits · Local draft",
+  "高斯原始坐标 · 编辑草稿": "Original Gaussian coordinates · Editor draft",
+  "默认透视和完整球谐颜色；原始尺度保持不变。显示数量只影响预览，导出使用源文件。画刷与框选按显示的高斯中心穿透选择。": "Perspective and full SH colors by default; source scales are preserved. The display count only limits the preview. Export uses full source data. Brush and rectangle select displayed Gaussian centers through depth.",
+  "三维画笔 · 本机计算": "3D drawing · on this device",
+  "参数形体": "Parametric shapes",
+  "保存项目": "Save project",
+  "打开项目": "Open project",
+  "绘制完成后，在这里调整形状和采样。": "Finish drawing, then edit geometry and sampling here.",
+  "部件名称": "Part name",
+  "部件颜色": "Part color",
+  "编辑绘制顶点": "Edit drawn vertices",
+  "每行 X Y Z": "X Y Z per line",
+  "顶点坐标": "Vertex coordinates",
+  "应用顶点坐标": "Apply vertex coordinates",
+  "面和体的底面必须共面；可修改空间折线的任意坐标。": "Faces and volume bases must be planar. Space polyline vertices can have any XYZ.",
+  "拉伸高度": "Extrusion height",
+  "体采样": "Volume sampling",
+  "仅表面": "Surface only",
+  "整个体积": "Filled volume",
+  "绘制与采样说明": "Drawing & sampling notes",
+  "折线和画笔沿路径生成点；面需要闭合的平面轮廓；体由轮廓沿法向拉伸。面和体支持凹多边形，不支持孔洞和自交。完成绘制后可调整间距、噪声、颜色和顶点。": "Lines sample along the path. Faces require closed planar contours; volumes extrude along the plane normal. Concave polygons are supported; holes and self-intersections are not. Edit spacing, noise, colors and vertices after drawing.",
+  "预览自动降低密度，PLY 按设置间距完整生成。三角片与部件边界可能出现重合点。线和体内点没有唯一法向，normal_valid 为 0。项目自动保存在此浏览器，也可导出 JSON 继续编辑。": "Preview density is reduced automatically; PLY uses the requested spacing. Triangle and part boundaries may contain duplicates. Line and volume points have no unique normal (normal_valid = 0). Projects autosave in this browser and can be exported as editable JSON.",
+  "在三维中画出点云": "Draw point clouds in 3D",
+  "选折线、画笔、面或体，再点击画布。用“正对平面”开始更容易。": "Choose Polyline, Freehand, Face or Extrude, then click the canvas. Face plane makes a good starting view.",
+  "绘制线": "Drawn line",
+  "绘制面": "Drawn face",
+  "拉伸体": "Extrusion",
+  "已自动保存绘制项目": "Drawing project autosaved",
+  "自动保存失败，请导出项目 JSON": "Autosave failed; export a project JSON backup",
+  "参数必须为有效数字": "Parameters must be valid numbers",
+  "绘制坐标 · 导出按设置间距采样": "Drawing coordinates · Export uses requested spacing",
+  "点数过多，请增大间距": "Too many points; increase spacing",
+  "最多 200 个部件": "At most 200 parts",
+  "本地项目无法恢复，可以打开 JSON 备份": "Could not restore local project; open a JSON backup",
+  "请先完成或取消草稿再保存项目": "Finish or cancel your draft before saving the project",
+  "项目 JSON 超过 4 MB": "Project JSON exceeds 4 MB",
+  "已打开项目，可撤销恢复之前内容": "Project opened; Undo restores the previous content",
+  "已自动保存已完成的部件": "Completed parts autosaved",
+  "噪声沿 XYZ 三个方向偏移；这些点没有唯一法向。": "Noise offsets XYZ; these points have no unique normal.",
+  "撤销": "Undo",
+  "重做": "Redo",
+  "点云生成 · 三维数据工具箱": "Point Cloud Generator · 3D Data Workspace",
+  "点云对象": "Point-cloud objects",
+  "项目对象": "Project objects",
+  "＋ 导入点云": "+ Import point clouds",
+  "拖入文件 · TXT / XYZ / PLY / PCD": "Drop files \u00b7 TXT / XYZ / PLY / PCD",
+  "点云对象列表": "Point-cloud object list",
+  "导出可见点云": "Export visible clouds",
+  "点云创作与修订": "Point Cloud Studio",
+  "点云工作台": "Point-cloud workspace",
+  "导入点云，或从绘制开始": "Import point clouds or start drawing",
+  "工作模式": "Workspace mode",
+  "绘制点云": "Create clouds",
+  "选择与修订": "Select & refine",
+  "工具与属性": "Tools & properties",
+  "工具": "Tools",
+  "原始坐标 · 本地编辑": "Original coordinates \u00b7 Local editing",
+  "选择后可删除、裁剪或提取": "Select to delete, crop or extract",
+  "从点开始，逐步成形": "Create, select, refine",
+  "导入已有点云进行修订，或选择“绘制点云”从零创建。": "Import existing clouds to refine, or create new clouds with the drawing tools.",
+  "显示设置只影响预览；修订和导出使用完整点云。": "Display settings affect preview only; editing and export use the full point cloud.",
+  "在浏览器中查看 LOD 模型、线框、点云与高斯泼溅，也可绘制和修订点云。": "View LOD meshes, wireframes, point clouds and Gaussian splats; draw and refine point clouds in your browser.",
+  "绘制线、面与体生成点云，或导入已有数据，选择、裁剪与精修。": "Draw lines, faces and volumes, or import existing clouds to select, crop and refine.",
+  "选区修订": "Selection editing",
+  "点云创作与修订 · 三维数据工具箱": "Point Cloud Studio · 3D Data Workspace",
+  "点云工作台三维预览": "Point cloud studio preview",
+  "高斯原始坐标 · 本地编辑": "Gaussian coordinates · Local editing",
+  "本机 PLY · 高斯泼溅": "Local PLY · Gaussian splats",
+  "原始尺度 · 可撤销编辑 · 本地处理": "Original scale · Undoable edits · Local processing",
 };
 
 
@@ -1048,7 +1264,7 @@ function initializeLocale(doc = document) {
   for(const link of doc.querySelectorAll('a[href]')) {
     const href=link.getAttribute('href');
     const url=new URL(href,doc.baseURI), name=url.pathname.split('/').pop();
-    if(!/^(index|lod|wireframe|pointcloud)\.html$/.test(name))continue;
+    if(!/^(index|lod|wireframe|pointcloud|gaussian|generate)\.html$/.test(name))continue;
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }
@@ -1078,11 +1294,11 @@ class NativeProjectFile {
   constructor(projectId,record){this.projectId=projectId;this.record=record;this.name=record.path.split('/').at(-1);this.size=record.size;this.lastModified=record.modified||0;this.webkitRelativePath=record.path;this.nativeKey=record.key;}
   slice(start=0,end=this.size){
     const size=this.size;start=start<0?Math.max(0,size+start):Math.min(start,size);end=end<0?Math.max(0,size+end):Math.min(end,size);end=Math.max(start,end);
-    return {size:end-start,arrayBuffer:async()=>{
+    const result={size:end-start,arrayBuffer:async()=>{
       const output=new Uint8Array(end-start);let cursor=start;
       while(cursor<end){const length=Math.min(1048576,end-cursor),reply=await mobileProjects().readChunk({id:this.projectId,key:this.nativeKey,offset:cursor,length});const binary=atob(reply.data);if(binary.length!==length)throw Error(t('项目文件读取不完整'));for(let i=0;i<binary.length;i++)output[cursor-start+i]=binary.charCodeAt(i);cursor+=length;}
       return output.buffer;
-    }};
+    }};result.text=async()=>new TextDecoder().decode(await result.arrayBuffer());return result;
   }
   async text(){return new TextDecoder().decode(await this.slice().arrayBuffer());}
   async arrayBuffer(){return this.slice().arrayBuffer();}
@@ -2086,6 +2302,286 @@ function mountPointColumns({container,getItems,getSettings,applySettings}) {
 }
 
 
+// Source: src/shared/camera-geometry.js
+// Gaussian camera conventions: right/up/back form an orthonormal world basis.
+// Inria cameras.json stores camera-to-world columns right/down/forward.
+const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
+function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function gsTrainingPose(camera, origin=[0,0,0]) {
+  const r=camera.rotation;
+  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
+  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
+  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
+  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
+}
+function gsViewSpec(viewer, width, height) {
+  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
+  const training=viewer.trainingPose;
+  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
+  const fit=training?Math.min(width/training.width,height/training.height):1;
+  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
+  const distance=viewer.distance/viewer.camera.zoom;
+  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
+  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
+  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
+}
+function gsProjectPosition(point, spec) {
+  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
+  const depth=-gsDot3(delta,back);
+  if (spec.perspective && depth<=spec.near) return null;
+  const x=gsDot3(delta,right), y=gsDot3(delta,up);
+  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
+}
+
+
+// Source: src/shared/fly-camera.js
+
+const FLY_CAMERA_DEFAULTS = Object.freeze({sensitivity: .12, speed: .15, rollSpeed: 30});
+function flyCameraSettings(value = {}) {
+  const v = value || {}, number = (key, low, high) => Number.isFinite(v[key]) ? Math.max(low, Math.min(high, v[key])) : FLY_CAMERA_DEFAULTS[key];
+  return {sensitivity: number('sensitivity', .01, 1), speed: number('speed', .005, 2), rollSpeed: number('rollSpeed', 5, 120)};
+}
+function gsFlyRotate(vector, axis, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle), cross = gsCross3(axis, vector), dot = gsDot3(axis, vector);
+  return vector.map((v, i) => v*c + cross[i]*s + axis[i]*dot*(1-c));
+}
+/** Independent eye, with the entry view's up axis as the local vertical. */
+class FlyCameraPose {
+  constructor(eye, basis) {
+    this.eye = [...eye]; this.initial = basis.map(v => [...v]);
+    this.vertical = [...basis[1]]; this.yaw = 0; this.pitch = 0; this.roll = 0; this.basis = basis.map(v => [...v]);
+  }
+  look(dx, dy, sensitivity) {
+    const c=Math.cos(this.roll),s=Math.sin(this.roll),sx=dx*c+dy*s,sy=-dx*s+dy*c;
+    dx=sx;dy=sy;
+    this.yaw = (this.yaw - dx*sensitivity*Math.PI/180) % (2*Math.PI);
+    this.pitch = Math.max(-Math.PI*.495, Math.min(Math.PI*.495, this.pitch - dy*sensitivity*Math.PI/180));
+    this.rebuild();
+  }
+  rollBy(degrees) { this.roll=(this.roll+degrees*Math.PI/180)%(2*Math.PI);this.rebuild(); }
+  rebuild() {
+    const yawed = this.initial.map(v => gsFlyRotate(v, this.vertical, this.yaw));
+    this.basis = [yawed[0], gsFlyRotate(yawed[1], yawed[0], this.pitch), gsFlyRotate(yawed[2], yawed[0], this.pitch)];
+    this.basis=this.basis.map(v=>gsFlyRotate(v,this.basis[2],this.roll));
+  }
+  move(right, forward, up, distance) {
+    const direction = this.eye.map((_, i) => this.basis[0][i]*right - this.basis[2][i]*forward + this.vertical[i]*up);
+    // Keep diagonal travel bounded, including when the view points toward the vertical.
+    const length = Math.hypot(...direction), input = Math.min(1, Math.hypot(right, forward, up));
+    if (length > 1e-8) this.eye = this.eye.map((v, i) => v + direction[i]/length*distance*input);
+  }
+}
+
+
+// Source: src/shared/fly-controls.js
+
+
+/** Owns keyboard/pointer/touch input only while the explicit first-person mode is active. */
+function mountFlyCameraControls(viewer, container) {
+  const en = document.documentElement.lang === 'en', tr = (zh, english) => en ? english : zh;
+  const make = (tag, text, cls) => { const el = document.createElement(tag); if (text) el.textContent = text; if (cls) el.className = cls; return el; };
+  const storage = 'BuildingWebViewer.camera.fly.v2';
+  let settings = flyCameraSettings(); try { settings = flyCameraSettings(JSON.parse(localStorage.getItem(storage))); } catch {}
+  const canvas = viewer.canvas, stage = canvas.parentElement, listeners = [], keys = new Set(), holds = new Map(), rolls = new Map();
+  let active = false, frame = null, last = 0, sceneSpan = 1, locked = false, joystick = [0,0], lookPointer = null, stickPointer = null, savedCursor = '';
+  const on = (el, event, fn, options) => { el.addEventListener(event, fn, options); listeners.push(() => el.removeEventListener(event, fn, options)); };
+  const entry = make('button', tr('漫游模式', 'Fly camera'), 'gs-fly-entry'); entry.type = 'button'; entry.setAttribute('aria-pressed','false');
+  document.querySelector('.viewer-toolbar').append(entry);
+  const section = make('details', null, 'gs-navigation'); section.open = true;
+  section.append(make('summary', tr('第一人称漫游', 'First-person camera')));
+  const fields = [];
+  function field(key, zh, eng, min, max, step, unit) {
+    const row = make('div', null, 'gs-navigation-field'); row.append(make('span',tr(zh,eng)));
+    const range = make('input'), number = make('input'); range.type='range'; number.type='number';
+    for (const input of [range,number]) {
+      input.min=min; input.max=max; input.step=step; input.value=settings[key];
+      input.setAttribute('aria-label',tr(zh,eng)+(input===range?tr('滑块',' slider'):tr('数值',' value')));
+      on(input,'input',()=>{const value=Number(input.value); if(input.value===''||!Number.isFinite(value)||value<min||value>max)return;settings=flyCameraSettings({...settings,[key]:value});(input===range?number:range).value=value;try{localStorage.setItem(storage,JSON.stringify(settings));}catch{}});
+      on(input,'change',()=>{input.value=settings[key];});
+    }
+    fields.push([key,range,number]); row.append(range,number,make('small',unit)); section.append(row);
+  }
+  field('sensitivity','转头灵敏度','Look sensitivity',.01,1,.01,'°/px');
+  field('speed','移动速度','Travel speed',.005,2,.005,tr('场景/秒','scene/s'));
+  field('rollSpeed','滚转速度','Roll speed',5,120,5,'°/s');
+  const touchLabel=make('label',null,'gs-navigation-toggle'), touchMode=make('input');touchMode.type='checkbox';touchMode.checked=matchMedia('(pointer: coarse)').matches;
+  touchLabel.append(touchMode,make('span',tr('使用触屏摇杆','Use touch controls')));section.append(touchLabel);
+  section.append(make('p',tr('WASD / 方向键移动，空格上升，Shift 下降，Q 逆时针 / E 顺时针滚转相机，Esc 退出。鼠标向右即向右看，无惯性；按住 Ctrl 临时慢行。升降沿进入时的画面上方向，移动速度按模型大小换算。触屏：左摇杆移动，右侧拖动转头，可同时操作升降与 ↶ / ↷ 滚转。滚转改变相机倾斜，画面会向相反方向转动。','WASD / arrows move, Space rises, Shift descends, Q rolls the camera counterclockwise / E clockwise, Esc exits. Direct mouse look; hold Ctrl for precision travel. Vertical movement uses the entry view’s up direction. Speed scales with scene size. Touch: left stick moves, right side looks; rise/descend and ↶ / ↷ roll can be held together. Camera roll turns the image in the opposite direction.'),'presentation-help'));
+  const reset=make('button',tr('恢复漫游默认值','Reset fly controls'));reset.type='button';reset.onclick=()=>{settings=flyCameraSettings(FLY_CAMERA_DEFAULTS);for(const[k,r,n]of fields)r.value=n.value=settings[k];try{localStorage.setItem(storage,JSON.stringify(settings));}catch{}};section.append(reset);container.append(section);
+  const hud=make('div',null,'gs-fly-hud');hud.hidden=true;
+  const top=make('div',null,'gs-fly-top'), status=make('span',null,'gs-fly-status'), exit=make('button',tr('退出漫游 · Esc','Exit fly · Esc'));exit.type='button';top.append(status,exit);
+  const cross=make('div','+','gs-fly-cross');cross.setAttribute('aria-hidden','true');
+  const pad=make('div',null,'gs-fly-stick');pad.setAttribute('aria-label',tr('移动摇杆','Movement joystick'));const thumb=make('i');pad.append(thumb,make('span',tr('移动','Move')));
+  const look=make('div',tr('拖动转头','Drag to look'),'gs-fly-look');look.setAttribute('aria-label',tr('转头触控区','Touch look area'));
+  const vertical=make('div',null,'gs-fly-vertical');
+  for(const [value,zh,eng]of [[1,'上升','Rise'],[-1,'下降','Descend']]){const b=make('button',tr(zh,eng));b.type='button';vertical.append(b);on(b,'pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);holds.set(e.pointerId,value);schedule();});for(const name of ['pointerup','pointercancel','lostpointercapture'])on(b,name,e=>{holds.delete(e.pointerId);});}
+  const rollPad=make('div',null,'gs-fly-roll');
+  for(const [value,symbol,zh,eng]of [[1,'↶','逆时针滚转相机','Roll camera counterclockwise'],[-1,'↷','顺时针滚转相机','Roll camera clockwise']]){const b=make('button',symbol);b.type='button';b.setAttribute('aria-label',tr(zh,eng));rollPad.append(b);on(b,'pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);rolls.set(e.pointerId,value);schedule();});for(const name of ['pointerup','pointercancel','lostpointercapture'])on(b,name,e=>rolls.delete(e.pointerId));}
+  hud.append(top,cross,look,pad,vertical,rollPad);stage.append(hud);
+  function help(fallback=false){status.textContent=touchMode.checked?tr('漫游 · 左手移动 / 右手转头','Fly · left move / right look'):fallback?tr('鼠标锁定不可用：按住画面拖动转头 · WASD 移动 · Q/E 滚转 · Esc 退出','Pointer lock unavailable: drag to look · WASD moves · Q/E rolls · Esc exits'):tr('漫游 · WASD 移动 · 空格 ↑ / Shift ↓ · Q/E ↶↷ · Esc 退出','Fly · WASD moves · Space ↑ / Shift ↓ · Q/E ↶↷ · Esc exits');}
+  function clearInput(){keys.clear();holds.clear();rolls.clear();joystick=[0,0];lookPointer=null;stickPointer=null;thumb.style.transform='';if(frame!==null)cancelAnimationFrame(frame);frame=null;last=0;}
+  function schedule(){if(active&&frame===null){if(!last)last=performance.now();frame=requestAnimationFrame(tick);}}
+  function tick(now){frame=null;if(!active)return;const dt=Math.min(.05,Math.max(0,(now-last)/1000));last=now;
+    const has=(...codes)=>codes.some(code=>keys.has(code))?1:0;
+    const x=has('KeyD','ArrowRight')-has('KeyA','ArrowLeft')+joystick[0], z=has('KeyW','ArrowUp')-has('KeyS','ArrowDown')+joystick[1], y=has('Space')-has('ShiftLeft','ShiftRight')+[...holds.values()].reduce((a,b)=>a+b,0);
+    const roll=has('KeyQ')-has('KeyE')+[...rolls.values()].reduce((a,b)=>a+b,0);
+    if(x||y||z||roll){viewer.flyPose.rollBy(Math.max(-1,Math.min(1,roll))*settings.rollSpeed*dt*(has('ControlLeft','ControlRight')?.2:1));viewer.flyPose.move(x,z,y,sceneSpan*settings.speed*dt*(has('ControlLeft','ControlRight')?.2:1));viewer.requestRender();schedule();}else last=0;
+  }
+  function turn(dx,dy){if(!active)return;viewer.flyPose.look(dx,dy,settings.sensitivity);viewer.requestRender();}
+  function enter(){if(active||!(viewer.count||viewer.pointCount||viewer.edgeCount||viewer.triangleCount)||viewer.contextLost)return;viewer.stopNavigation();viewer.drag=null;viewer.prepareFly?.();
+    const spec=gsViewSpec(viewer,canvas.clientWidth,canvas.clientHeight);
+    viewer.flyPose=new FlyCameraPose(spec.eye,spec.basis); viewer.projection='perspective';
+    // Preserve calibrated focal lengths rather than replacing the training lens on entry.
+    if(!viewer.prepareFly&&!viewer.trainingPose)viewer.trainingPose={eye:[...spec.eye],basis:spec.basis,width:spec.width,height:spec.height,fx:spec.fx,fy:spec.fy};
+    sceneSpan=Math.max(.001,viewer.baseHeight||1);active=true;entry.setAttribute('aria-pressed','true');savedCursor=canvas.style.cursor;canvas.style.cursor='crosshair';hud.hidden=false;stage.classList.add('gs-fly-active');hud.classList.toggle('touch',touchMode.checked);help();
+    canvas.focus({preventScroll:true});viewer.requestRender();
+    if(!touchMode.checked){try{if(!canvas.requestPointerLock){help(true);return;}const result=canvas.requestPointerLock();if(result?.catch)result.catch(()=>{if(active)help(true);});}catch{help(true);}}
+  }
+  function leave(){if(!active)return;active=false;clearInput();
+    const pose=viewer.flyPose;viewer.flyPose=null;
+    if(viewer.adoptFlyPose)viewer.adoptFlyPose(pose);
+    else {viewer.trainingPose={...viewer.trainingPose,eye:[...pose.eye],basis:pose.basis.map(v=>[...v])};
+    viewer.distance=Math.max(.01,viewer.distance/viewer.camera.zoom);viewer.camera.zoom=1;viewer.camera.pan=[0,0];viewer.target=pose.eye.map((v,i)=>v-pose.basis[2][i]*viewer.distance);}
+    hud.hidden=true;stage.classList.remove('gs-fly-active');entry.setAttribute('aria-pressed','false');canvas.style.cursor=savedCursor;locked=false;
+    if(document.pointerLockElement===canvas)document.exitPointerLock();viewer.requestRender();entry.focus({preventScroll:true});
+  }
+  entry.onclick=()=>active?leave():enter();exit.onclick=leave;
+  on(document,'pointerlockchange',()=>{if(document.pointerLockElement===canvas){if(!active){document.exitPointerLock();return;}locked=true;}else if(locked)leave();});
+  on(document,'pointerlockerror',()=>{if(active)help(true);});
+  on(document,'mousemove',e=>{if(active&&document.pointerLockElement===canvas)turn(e.movementX,e.movementY);});
+  const movement=new Set(['KeyQ','KeyE','KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','ShiftLeft','ShiftRight','ControlLeft','ControlRight']);
+  on(document,'keydown',e=>{if(!active)return;if(e.code==='Escape'){e.preventDefault();e.stopImmediatePropagation();leave();return;}if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||e.target.isContentEditable)return;e.stopImmediatePropagation();if(movement.has(e.code)){e.preventDefault();keys.add(e.code);schedule();}},true);
+  on(document,'keyup',e=>{if(!active)return;keys.delete(e.code);if(movement.has(e.code)){e.preventDefault();e.stopImmediatePropagation();}},true);
+  on(window,'blur',leave);on(document,'visibilitychange',()=>{if(document.hidden)leave();});on(canvas,'webglcontextlost',leave);
+  function bindLook(el){on(el,'pointerdown',e=>{if(!active||document.pointerLockElement===canvas||lookPointer||e.button!==0)return;e.preventDefault();e.stopImmediatePropagation();el.setPointerCapture(e.pointerId);lookPointer={id:e.pointerId,x:e.clientX,y:e.clientY};},true);
+    on(el,'pointermove',e=>{if(!active||lookPointer?.id!==e.pointerId)return;e.preventDefault();e.stopImmediatePropagation();turn(e.clientX-lookPointer.x,e.clientY-lookPointer.y);lookPointer.x=e.clientX;lookPointer.y=e.clientY;},true);
+    for(const name of ['pointerup','pointercancel','lostpointercapture'])on(el,name,e=>{if(lookPointer?.id===e.pointerId)lookPointer=null;});}
+  bindLook(canvas);bindLook(look);
+  function stick(e){const r=pad.getBoundingClientRect(),radius=r.width*.32,dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,length=Math.hypot(dx,dy),scale=length>radius?radius/length:1;joystick=length<radius*.08?[0,0]:[dx*scale/radius,-dy*scale/radius];thumb.style.transform=`translate(${dx*scale}px,${dy*scale}px)`;schedule();}
+  on(pad,'pointerdown',e=>{if(stickPointer!==null)return;e.preventDefault();stickPointer=e.pointerId;pad.setPointerCapture(e.pointerId);stick(e);});on(pad,'pointermove',e=>{if(e.pointerId===stickPointer){e.preventDefault();stick(e);}});
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])on(pad,name,e=>{if(stickPointer===e.pointerId){stickPointer=null;joystick=[0,0];thumb.style.transform='';}});
+  on(touchMode,'change',()=>{if(active)leave();});
+  canvas.tabIndex=0;canvas.classList.add('camera-scene');
+  viewer.fly={get active(){return active;},leave,dispose(){leave();listeners.forEach(fn=>fn());entry.remove();section.remove();hud.remove();}};
+  return viewer.fly;
+}
+
+
+// Source: src/shared/camera-navigation.js
+// Gaussian navigation settings are independent of camera bookmarks and model data.
+const CAMERA_NAV_DEFAULTS = Object.freeze({
+  rotateSpeed: 0.3, panSpeed: 0.65, zoomSpeed: 0.55,
+  pivot: 'view', adaptive: true, smoothing: true, smoothingMs: 100,
+});
+const CAMERA_NAV_STORAGE = 'BuildingWebViewer.camera.navigation.v2';
+function cameraNavigationSettings(value = {}) {
+  const result = {...CAMERA_NAV_DEFAULTS};
+  for (const key of ['rotateSpeed', 'panSpeed', 'zoomSpeed', 'smoothingMs']) {
+    const v = value?.[key], lo = key === 'smoothingMs' ? 20 : 0.05, hi = key === 'smoothingMs' ? 350 : 2;
+    if (typeof v === 'number' && Number.isFinite(v)) result[key] = Math.max(lo, Math.min(hi, v));
+  }
+  for (const key of ['adaptive', 'smoothing']) if (typeof value?.[key] === 'boolean') result[key] = value[key];
+  if (['view','fixed','model'].includes(value?.pivot)) result.pivot=value.pivot;
+  return result;
+}
+function cameraNavigationScale(viewer, settings) {
+  const zoom = Math.max(0.02, viewer.camera.zoom), height = Math.max(1, viewer.canvas.clientHeight);
+  const perspective = viewer.projection !== 'orthographic';
+  const span = perspective ? 2 * viewer.distance / zoom * Math.tan(viewer.fov * Math.PI / 360) : viewer.baseHeight / zoom;
+  const adaptive = settings.adaptive ? Math.max(0.1, Math.min(2, (perspective ? viewer.fov / 55 : 1) / Math.sqrt(zoom))) : 1;
+  return {
+    rotateX: 0.35 * settings.rotateSpeed * adaptive,
+    rotateY: 0.3 * settings.rotateSpeed * adaptive,
+    pan: settings.panSpeed * (settings.adaptive ? span : viewer.baseHeight / zoom) / height,
+  };
+}
+/** Integrate remaining input with an elapsed-time exponential filter, not a
+ * frame-count multiplier. This converges to the same pose at 30/60/120 Hz.
+ * No velocity extrapolation: releasing the pointer only finishes received input.
+ */
+class CameraNavigation {
+  constructor(settings = {}) { this.settings = cameraNavigationSettings(settings); this.reset(); }
+  reset() { this.pending = [0, 0, 0, 0, 0]; this.lastTime = null; this.age = 0; }
+  get active() { return this.pending.some(value => value !== 0); }
+  enqueue(delta, now) {
+    if (!this.active) { this.lastTime = now; this.age = 0; }
+    for (let i = 0; i < 5; i++) this.pending[i] += Number.isFinite(delta[i]) ? delta[i] : 0;
+    this.age = 0;
+  }
+  step(now) {
+    if (!this.active) return [0, 0, 0, 0, 0];
+    const dt = Math.max(0, now - (this.lastTime ?? now)); this.lastTime = now; this.age += dt;
+    const done = !this.settings.smoothing || this.age >= this.settings.smoothingMs * 8;
+    const alpha = done ? 1 : -Math.expm1(-dt / this.settings.smoothingMs);
+    return this.pending.map((value, i) => { const applied = value * alpha; this.pending[i] = done ? 0 : value - applied; return applied; });
+  }
+}
+
+
+// Source: src/shared/camera-navigation-controls.js
+
+function mountCameraNavigationControls(container, viewer) {
+  const en = document.documentElement.lang === 'en', label = (zh, english) => en ? english : zh;
+  const node = (tag, text) => { const element = document.createElement(tag); if (text) element.textContent = text; return element; };
+  const section = node('details'); section.className = 'gs-navigation'; section.open = true;
+  section.append(node('summary', label('环绕浏览手感', 'Orbit navigation feel')));
+  const fields = new Map();
+  const pivotLabel=node('label',label('旋转中心','Orbit pivot')), pivot=node('select');
+  pivot.setAttribute('aria-label',label('旋转中心','Orbit pivot'));
+  for(const[value,zh,en]of [['view','当前视野中心（自动）','View center (automatic)'],['fixed','固定观察点','Fixed focus point'],['model','模型中心','Model center']]){const option=node('option',label(zh,en));option.value=value;pivot.append(option);}
+  pivot.onchange=()=>{status.textContent='';viewer.setNavigation({pivot:pivot.value});refresh();};pivotLabel.append(pivot);section.append(pivotLabel);
+  const anchor=node('button',label('锁定当前视野中心','Lock current view center'));anchor.type='button';anchor.onclick=()=>{viewer.focusOrbit();refresh();};section.append(anchor);
+  const status=node('p');status.className='presentation-help';status.setAttribute('role','status');section.append(status);
+  viewer.onOrbitAnchor=hit=>{status.textContent=hit?label('已锁定观察点。双击模型可重新指定。','Focus locked. Double-click the model to choose another point.'):label('附近没有有效数据，沿用当前观察距离。','No nearby data; keeping the current viewing distance.');refresh();};
+  section.append(node('p',label('自动：每次拖动开始时，按画面中央数据估计深度；拖动期间不切换。固定：围绕已锁定点。模型：围绕整组数据中心。双击模型可指定固定点；平移后可重新锁定。点云 / 高斯深度为估计值，透明或稀疏区域可能不准确。','Automatic estimates center depth once per gesture. Fixed orbits the locked point; Model uses the scene center. Double-click to choose a fixed point; relock after panning. Point-cloud / Gaussian depth is approximate in sparse or transparent areas.')));
+
+  function numeric(key, zh, english, min, max, step, suffix) {
+    const row = node('div'); row.className = 'gs-navigation-field';
+    row.append(node('span', label(zh, english)));
+    const range = node('input'), number = node('input'); range.type = 'range'; number.type = 'number';
+    for (const input of [range, number]) {
+      input.min = min; input.max = max; input.step = step;
+      input.setAttribute('aria-label', label(zh, english) + (input === range ? label('滑块', ' slider') : label('数值', ' value')));
+    }
+    const commit = (input, revert = false) => {
+      const value = Number(input.value);
+      if (input.value === '' || !Number.isFinite(value) || value < min || value > max) { if (revert) refresh(); return; }
+      viewer.setNavigation({[key]: value}); refresh(revert ? null : input);
+    };
+    range.oninput = () => commit(range); number.oninput = () => commit(number); number.onchange = () => commit(number, true);
+    row.append(range, number, node('small', suffix)); section.append(row); fields.set(key, {range, number});
+  }
+  numeric('rotateSpeed', '旋转速度', 'Orbit speed', .05, 2, .05, '×');
+  numeric('panSpeed', '平移速度', 'Pan speed', .05, 2, .05, '×');
+  numeric('zoomSpeed', '缩放速度', 'Zoom speed', .05, 2, .05, '×');
+  function toggle(key, zh, english) {
+    const row = node('label'), input = node('input'); row.className = 'gs-navigation-toggle'; input.type = 'checkbox';
+    input.setAttribute('aria-label', label(zh, english)); row.append(input, node('span', label(zh, english))); section.append(row);
+    input.onchange = () => { viewer.setNavigation({[key]: input.checked}); refresh(); }; fields.set(key, {input});
+  }
+  toggle('adaptive', '随视距与视野自适应', 'Adapt to distance and field of view');
+  toggle('smoothing', '平滑移动', 'Smooth movement');
+  numeric('smoothingMs', '平滑时间', 'Smoothing time', 20, 350, 10, 'ms');
+  const help = node('p', label('靠近模型、缩小视野时更细腻。平滑时间越大，跟随越柔和、延迟越明显；关闭即直接响应。Ctrl / ⌘ 拖动可临时降至 20% 速度。设置自动保存在本机浏览器。', 'Closer views and narrower fields of view allow finer control. Longer smoothing is softer but adds latency; switch it off for direct input. Ctrl / ⌘ drag uses 20% speed. Preferences are saved in this browser.'));
+  help.className = 'presentation-help'; section.append(help);
+  const reset = node('button', label('恢复默认手感', 'Reset navigation')); reset.type = 'button';
+  reset.onclick = () => { viewer.setNavigation(CAMERA_NAV_DEFAULTS); refresh(); }; section.append(reset);
+  function refresh(editing = null) {
+    pivot.value=viewer.navigation.settings.pivot;
+    for (const [key, field] of fields) {
+      if (field.input) field.input.checked = viewer.navigation.settings[key];
+      else {
+        field.range.value = viewer.navigation.settings[key];
+        if (editing !== field.number) field.number.value = viewer.navigation.settings[key];
+        field.range.disabled = field.number.disabled = key === 'smoothingMs' && !viewer.navigation.settings.smoothing;
+      }
+    }
+  }
+  refresh(); container.append(section);
+}
+
+
 // Source: src/shared/palettes.js
 
 /** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
@@ -2182,7 +2678,7 @@ function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
       ctx.fillText('XYZ'[i],x+right[i]*38,y-up[i]*38+4);
     });
   }
-  if(options.ruler) {
+  if(options.ruler && viewer.projection !== 'perspective') {
     const ruler=niceScale(viewer.baseHeight/viewer.camera.zoom/(height/scale));
     if(ruler) {
       ctx.strokeStyle='#526d66';ctx.fillStyle='#526d66';ctx.lineWidth=1.5;
@@ -2234,6 +2730,7 @@ function updateSceneGuides(viewer) {
 
 
 
+
 function validateImageSize(width,height,maxSide=8192) {
   if(!Number.isInteger(width)||!Number.isInteger(height)||width<16||height<16||width>maxSide||height>maxSide||width*height>32*1024*1024)throw Error(t('图片尺寸需为 16–{0} 的整数，总像素不超过 3200 万。',[maxSide]));
   return {width,height};
@@ -2265,6 +2762,7 @@ function renderImagePixels(viewer,width,height,{transparent=false}={}) {
   }
 }
 function projectImagePoint(point, viewer, width, height) {
+  if(viewer.projection==='perspective'){const p=gsProjectPosition(point,gsViewSpec(viewer,width,height));return p?[p.x,p.y]:[NaN,NaN];}
   const [r,u]=viewer.basis(),h=viewer.baseHeight/viewer.camera.zoom,w=h*width/height;
   const p=point.map((v,i)=>v-viewer.target[i]);
   const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
@@ -2303,7 +2801,7 @@ function mountImageExport({root=document,getViewers,pauseSync=callback=>callback
   const details=el('details');details.append(el('summary','高级导出'));section.append(details);
   function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
   const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
-  const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'?[]:[['svg','SVG · 线框矢量']])]));
+  const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'||root.body.dataset.tool==='gaussian'?[]:[['svg','SVG · 线框矢量']])]));
   const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
   const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
   const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));
@@ -2373,9 +2871,10 @@ function mountPresentationControls({root=document,getViewers,pauseSync=callback=
     if(kind==='number')input.oninput=input.onchange;
     return input;
   }
-  field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');field('legend','颜色图例','checkbox');
+  field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');
+  if(root.body.dataset.tool!=='gaussian')field('legend','颜色图例','checkbox');
   if(root.body.dataset.tool!=='lod')field('pointCountLabel','显示点数','checkbox');
-  if(root.body.dataset.tool!=='lod'){
+  if(root.body.dataset.tool!=='lod' && root.body.dataset.tool!=='gaussian'){
     field('pointStyle','点的样式','select',[['disc','圆点'],['square','方点'],['sphere','球形光照']]);
     const ratio=field('pointRatio','显示点比例（%）','number',[1,100,1]);
     const slider=el('input');slider.type='range';slider.min=1;slider.max=100;slider.step=1;slider.value=ratio.value;slider.setAttribute('aria-label',t('拖动调整显示点比例'));
@@ -2387,7 +2886,7 @@ function mountPresentationControls({root=document,getViewers,pauseSync=callback=
     ratio.oninput=ratio.onchange=()=>{if(ratio.value!==''&&ratio.checkValidity()){slider.value=ratio.value;schedule();}};
     const help=el('p','球形光照为拟球着色，不生成球体网格。比例抽样作用于当前勾选显示的点云，100% 恢复全部已加载点。');help.className='presentation-help';section.append(help);
   }
-  if(root.body.dataset.tool!=='pointcloud'){
+  if(root.body.dataset.tool!=='pointcloud' && root.body.dataset.tool!=='gaussian'){
     const style=field('lineStyle','线的样式','select',[['native','细线'],['cylinder','圆柱'],['box','方柱']]);
     const width=field('lineWidth','线宽（屏幕 px）','number',[.5,24,.5]),gradient=field('lineGradient','端点渐变（立体线）','checkbox');
     const end=field('lineEndColor','渐变终点颜色','color','#417ec4');
@@ -2535,8 +3034,23 @@ function mountResourceMonitor({root=document, getViewers=()=>[]}) {
 
 
 
+
+
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
+  const primary=getViewers()[0],cameraPanel=root.getElementById('camera-controls');
+  if(primary?.navigation&&!primary.fly&&cameraPanel){
+    const navigationPanel=root.createElement('div');cameraPanel.prepend(navigationPanel);
+    const setNavigation=primary.setNavigation;
+    primary.setNavigation=options=>pauseSync(()=>{setNavigation(options);for(const other of getViewers())if(other!==primary)other.setNavigation?.(options);});
+    mountFlyCameraControls(primary,navigationPanel);mountCameraNavigationControls(navigationPanel,primary);
+    const label=root.createElement('label'),select=root.createElement('select'),en=document.documentElement.lang==='en';
+    label.textContent=en?'Projection':'投影模式';select.setAttribute('aria-label',label.textContent);
+    for(const[value,zh,english]of [['orthographic','正交','Orthographic'],['perspective','透视','Perspective']]){const option=root.createElement('option');option.value=value;option.textContent=en?english:zh;select.append(option);}
+    select.onchange=()=>{for(const viewer of getViewers()){viewer.stopNavigation();if(select.value==='perspective')viewer.prepareFly();else viewer.baseHeight=2*viewer.distance*Math.tan(viewer.fov*Math.PI/360);viewer.projection=select.value;viewer.requestRender();}};
+    label.append(select);cameraPanel.append(label);
+    const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
+  }
   mountResourceMonitor({root, getViewers});
   mountImageExport({root,getViewers,pauseSync});
   mountPresentationControls({root,getViewers,pauseSync});
@@ -2627,6 +3141,124 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
 }
 
 
+// Source: src/shared/orbit-camera.js
+
+function gsOrbitRotate(v, axis, angle) {
+  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
+  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
+  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
+}
+function gsSetOrbitBasis(viewer, basis) {
+  const [right,,back]=basis, deg=180/Math.PI;
+  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
+  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
+  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
+  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
+}
+/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
+ * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
+ */
+function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
+  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
+  if(!viewer.packed)return null;
+  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
+  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
+  let limit=radius*radius;
+  for(let i=0;i<viewer.count;i++) {
+    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
+    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
+    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
+    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
+    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
+    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
+    const d=px*px+py*py;if(d>limit)continue;
+    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
+    if(candidates.length===32)limit=candidates[31].d;
+  }
+  if(!candidates.length)return null;
+  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
+  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
+}
+function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
+  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
+  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
+  if(!model&&x!==null&&picked===null)return false;
+  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
+  let depth=picked??fallback;
+  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
+  if(!model&&x!==null) {
+    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
+    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
+    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
+  }
+  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
+  if(depth<=spec.near)return false;
+  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
+  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
+  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
+  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
+  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
+}
+
+
+// Source: src/shared/navigation-adapter.js
+
+
+
+function navigationBasis(viewer) {
+  if(viewer.flyPose)return viewer.flyPose.basis;
+  const a=viewer.camera.azimuth*Math.PI/180,e=viewer.camera.elevation*Math.PI/180,roll=(viewer.camera.roll||0)*Math.PI/180;
+  const r=[-Math.sin(a),Math.cos(a),0],u=[-Math.cos(a)*Math.sin(e),-Math.sin(a)*Math.sin(e),Math.cos(e)],b=[Math.cos(a)*Math.cos(e),Math.sin(a)*Math.cos(e),Math.sin(e)];
+  return [r.map((v,i)=>v*Math.cos(roll)+u[i]*Math.sin(roll)),u.map((v,i)=>v*Math.cos(roll)-r[i]*Math.sin(roll)),b];
+}
+function navigationMatrix(viewer) {
+  const width=viewer.exportTarget?.width||viewer.canvas.width,height=viewer.exportTarget?.height||viewer.canvas.height;
+  const spec=gsViewSpec(viewer,width,height),[r,u,b]=spec.basis,eye=spec.eye;
+  const n=Math.max(1e-6,viewer.near),far=Math.max(n*100,viewer.baseHeight*1000,viewer.distance*10),a=(far+n)/(far-n),z=2*far*n/(far-n),sx=spec.fx*2/width,sy=spec.fy*2/height;
+  return new Float32Array([sx*r[0],sy*u[0],-a*b[0],-b[0],sx*r[1],sy*u[1],-a*b[1],-b[1],sx*r[2],sy*u[2],-a*b[2],-b[2],-sx*gsDot3(r,eye),-sy*gsDot3(u,eye),a*gsDot3(b,eye)-z,gsDot3(b,eye)]);
+}
+/** Attach navigation to a renderer without owning its geometry, importing or GPU lifecycle. */
+function installCameraNavigation(viewer) {
+  let saved;try{saved=JSON.parse(localStorage.getItem(CAMERA_NAV_STORAGE));}catch{}
+  viewer.navigation=new CameraNavigation(saved);viewer.projection='orthographic';viewer.fov=55;viewer.distance=100;viewer.near=.001;viewer.origin ||= [0,0,0];
+  viewer.hasNavigationData=()=>!!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount);
+  viewer.worldCenter=()=>{const bounds=viewer.sceneBounds||viewer.bounds;return bounds?bounds[0].map((v,i)=>(v+bounds[1][i])/2):[0,0,0];};
+  viewer.stopNavigation=()=>{viewer.fly?.leave();viewer.navigation.reset();};
+  viewer.setNavigation=options=>{viewer.stopNavigation();viewer.navigation.settings=cameraNavigationSettings({...viewer.navigation.settings,...options});if(options.pivot==='model')gsReanchorOrbit(viewer,{model:true});try{localStorage.setItem(CAMERA_NAV_STORAGE,JSON.stringify(viewer.navigation.settings));}catch{}viewer.requestRender();};
+  viewer.beginOrbit=(pan=false)=>{if(!viewer.hasNavigationData()||viewer.fly?.active)return;viewer.navigation.reset();if(!pan&&viewer.navigation.settings.pivot!=='fixed')gsReanchorOrbit(viewer,{model:viewer.navigation.settings.pivot==='model'});};
+  viewer.focusOrbit=(x=null,y=null)=>{if(!viewer.hasNavigationData())return false;viewer.stopNavigation();const hit=gsReanchorOrbit(viewer,{x,y});if(hit)viewer.setNavigation({pivot:'fixed'});viewer.onOrbitAnchor?.(hit);viewer.requestRender();return hit;};
+  viewer.applyNavigation=delta=>{const[az,el,x,y,z]=delta;if(az||el){const basis=viewer.basis(),yaw=basis.map(v=>gsOrbitRotate(v,basis[1],az*Math.PI/180));gsSetOrbitBasis(viewer,yaw.map(v=>gsOrbitRotate(v,yaw[0],-el*Math.PI/180)));}viewer.camera.pan[0]+=x;viewer.camera.pan[1]+=y;viewer.camera.zoom=Math.max(.02,Math.min(100,viewer.camera.zoom*Math.exp(z)));if(viewer.camera.zoom===.02||viewer.camera.zoom===100)viewer.navigation.pending[4]=0;};
+  viewer.queueNavigation=delta=>{viewer.navigation.enqueue(delta,performance.now());if(!viewer.navigation.settings.smoothing)viewer.applyNavigation(viewer.navigation.step(performance.now()));viewer.requestRender();};
+  viewer.navigatePixels=(dx,dy,pan=false,precision=false)=>{if(!viewer.hasNavigationData()||viewer.fly?.active)return;const scale=cameraNavigationScale(viewer,viewer.navigation.settings),fine=precision?.2:1;viewer.queueNavigation(pan?[0,0,-dx*scale.pan*fine,dy*scale.pan*fine,0]:[-dx*scale.rotateX*fine,dy*scale.rotateY*fine,0,0,0]);};
+  viewer.navigationZoom=(factor,precision=false,repivot=true)=>{if(viewer.fly?.active||!(factor>0)||!Number.isFinite(factor))return;const now=performance.now();if(repivot&&(!viewer.lastOrbitWheel||now-viewer.lastOrbitWheel>180))viewer.beginOrbit();viewer.lastOrbitWheel=now;viewer.queueNavigation([0,0,0,0,Math.log(factor)*viewer.navigation.settings.zoomSpeed*(precision?.2:1)]);};
+  viewer.stepNavigation=()=>{if(!viewer.exportTarget&&viewer.navigation.active){viewer.applyNavigation(viewer.navigation.step(performance.now()));if(viewer.navigation.active)viewer.requestRender();}};
+  viewer.prepareFly=()=>{if(viewer.projection==='orthographic')viewer.distance=viewer.baseHeight/(2*Math.tan(viewer.fov*Math.PI/360));viewer.projection='perspective';};
+  viewer.adoptFlyPose=pose=>{viewer.trainingPose=null;gsSetOrbitBasis(viewer,pose.basis);viewer.distance=Math.max(.001,viewer.distance/viewer.camera.zoom);viewer.camera.zoom=1;viewer.camera.pan=[0,0];viewer.target=pose.eye.map((v,i)=>v-pose.basis[2][i]*viewer.distance);};
+  viewer.resetNavigation=()=>{viewer.stopNavigation();viewer.projection='orthographic';viewer.camera.roll=0;};
+  viewer.onNavigationVisibility=()=>{if(document.hidden)viewer.stopNavigation();};if(typeof document!=='undefined')document.addEventListener('visibilitychange',viewer.onNavigationVisibility);
+}
+
+/** Point clouds use projected point centers; wireframes include the closest point on each edge. */
+function pickCloudNavigationDepth(viewer,spec,x,y) {
+  let best=Infinity,depth=null;const radius=Math.max(12,Math.min(spec.width,spec.height)*.045);
+  const consider=(p)=>{if(!p)return;const d=(p.x-x)**2+(p.y-y)**2;if(d<=radius*radius&&(d<best-1e-6||Math.abs(d-best)<1e-6&&p.depth<depth)){best=d;depth=p.depth;}};
+  if(viewer.options.showPoints)for(const entry of viewer.activeClouds||[]){const points=entry.item.cloud.positions,stride=Math.max(1,Math.ceil(viewer.pointCount/200000))*3;for(let i=0;i<points.length;i+=stride)consider(gsProjectPosition([points[i]-viewer.origin[0],points[i+1]-viewer.origin[1],points[i+2]-viewer.origin[2]],spec));}
+  const wire=viewer.options.showWire&&viewer.wireEntry?.wire;
+  if(wire)for(const [a,b]of wire.edges){const p=gsProjectPosition(wire.vertices[a].map((v,i)=>v-viewer.origin[i]),spec),q=gsProjectPosition(wire.vertices[b].map((v,i)=>v-viewer.origin[i]),spec);if(!p||!q)continue;const dx=q.x-p.x,dy=q.y-p.y,t=Math.max(0,Math.min(1,((x-p.x)*dx+(y-p.y)*dy)/(dx*dx+dy*dy||1)));consider({x:p.x+t*dx,y:p.y+t*dy,depth:spec.perspective?1/((1-t)/p.depth+t/q.depth):p.depth*(1-t)+q.depth*t});}
+  return depth;
+}
+/** Ray/triangle intersection uses displayed mesh coordinates, including LOD layout transforms. */
+function pickMeshNavigationDepth(viewer,spec,x,y) {
+  const [r,u,b]=spec.basis, sx=(x-spec.width/2),sy=-(y-spec.height/2);
+  const origin=spec.eye.map((v,i)=>v+(spec.perspective?0:(r[i]*sx+u[i]*sy)*spec.worldHeight/spec.height));
+  const ray=b.map((v,i)=>-v+(spec.perspective?r[i]*sx/spec.fx+u[i]*sy/spec.fy:0));
+  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  let nearest=Infinity;const points=viewer.navigationTriangles||[];
+  for(let i=0;i<points.length;i+=9){const a=[points[i],points[i+1],points[i+2]],ab=[points[i+3]-a[0],points[i+4]-a[1],points[i+5]-a[2]],ac=[points[i+6]-a[0],points[i+7]-a[1],points[i+8]-a[2]],h=cross(ray,ac),det=gsDot3(ab,h);if(Math.abs(det)<1e-12)continue;const s=origin.map((v,j)=>v-a[j]),u=gsDot3(s,h)/det;if(u<0||u>1)continue;const q=cross(s,ab),v=gsDot3(ray,q)/det;if(v<0||u+v>1)continue;const distance=gsDot3(ac,q)/det;if(distance>spec.near&&distance<nearest)nearest=distance;}
+  return Number.isFinite(nearest)?nearest:null;
+}
+
+
 // Source: src/shared/line-renderer.js
 
 /** Instanced tubes share existing endpoint buffers; no mesh per edge is allocated. */
@@ -2699,7 +3331,8 @@ function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
       distance: points.length === 2 ? Math.hypot(points[0].x-points[1].x, points[0].y-points[1].y) : 0};
   };
   listen('pointerdown', event => {
-    if (event.pointerType !== 'touch') return;
+    if (viewer.fly?.active || event.pointerType !== 'touch') return;
+    if (!fingers.size) viewer.beginOrbit?.(false);
     event.preventDefault(); fingers.set(event.pointerId, {x:event.clientX,y:event.clientY});
     viewer.canvas.setPointerCapture(event.pointerId); previous = pose();
   });
@@ -2709,13 +3342,16 @@ function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
     const next = pose();
     if (previous && next.count === previous.count) {
       const dx = next.x-previous.x, dy=next.y-previous.y;
-      if (next.count === 1) {
+      if (viewer.navigatePixels) {
+        viewer.navigatePixels(dx, dy, next.count !== 1);
+        if (next.count === 2 && previous.distance > 2 && next.distance > 2) viewer.zoomBy(next.distance/previous.distance,false,false);
+      } else if (next.count === 1) {
         viewer.camera.azimuth = (viewer.camera.azimuth-dx*.35)%360;
         viewer.camera.elevation = Math.max(minElevation,Math.min(90,viewer.camera.elevation+dy*.3));
       } else {
         const step=viewer.baseHeight/viewer.camera.zoom/Math.max(1,viewer.canvas.clientHeight);
         viewer.camera.pan[0]-=dx*step; viewer.camera.pan[1]+=dy*step;
-        if(previous.distance>2 && next.distance>2) viewer.zoomBy(next.distance/previous.distance);
+        if(previous.distance>2 && next.distance>2) viewer.zoomBy(next.distance/previous.distance,false,false);
       }
       viewer.requestRender();
     }
@@ -2731,6 +3367,7 @@ function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
 
 
 // Source: src/cloud/cloud-renderer.js
+
 
 
 
@@ -2847,6 +3484,8 @@ class CloudViewer {
       if (!this.gl) throw new Error(t('无法启用 WebGL，请检查浏览器的硬件加速设置。'));
       this.initGL();
     } catch (error) { this.onError(error.message); throw error; }
+    installCameraNavigation(this);
+    this.pickOrbitDepth=(...args)=>pickCloudNavigationDepth(this,...args);
     this.installEvents();
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
     this.resizeObserver.observe(canvas);
@@ -2897,25 +3536,20 @@ class CloudViewer {
     listen('contextmenu', event => event.preventDefault());
     mountTouchCamera(this, listen);
     listen('pointerdown', event => {
-      if (event.pointerType === 'touch') return;
+      if (this.fly?.active || event.pointerType === 'touch') return;
       if (![0, 1, 2].includes(event.button)) return;
       event.preventDefault();
       this.canvas.setPointerCapture(event.pointerId);
+      this.beginOrbit(event.button!==0||event.shiftKey);
       this.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, pan: event.button !== 0 || event.shiftKey };
       this.canvas.style.cursor = 'grabbing';
     });
     listen('pointermove', event => {
-      if (event.pointerType === 'touch') return;
+      if (this.fly?.active || event.pointerType === 'touch') return;
       if (!this.drag || this.drag.id !== event.pointerId) return;
       const dx = event.clientX - this.drag.x, dy = event.clientY - this.drag.y;
       this.drag.x = event.clientX; this.drag.y = event.clientY;
-      if (this.drag.pan || event.shiftKey) {
-        const step = this.baseHeight / this.camera.zoom / Math.max(1, this.canvas.clientHeight);
-        this.camera.pan[0] -= dx * step; this.camera.pan[1] += dy * step;
-      } else {
-        this.camera.azimuth = (this.camera.azimuth - dx * .35) % 360;
-        this.camera.elevation = CLOUD_CLAMP(this.camera.elevation + dy * .3, -89, 90);
-      }
+      this.navigatePixels(dx,dy,this.drag.pan||event.shiftKey,event.ctrlKey||event.metaKey);
       this.requestRender();
     });
     const finish = event => {
@@ -2925,6 +3559,7 @@ class CloudViewer {
       if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
     };
     for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) listen(name, finish);
+    listen('dblclick',event=>{if(this.fly?.active||event.button!==0)return;const rect=this.canvas.getBoundingClientRect();this.focusOrbit(event.clientX-rect.left,event.clientY-rect.top);});
     listen('wheel', event => {
       event.preventDefault();
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.canvas.clientHeight : 1);
@@ -2932,7 +3567,7 @@ class CloudViewer {
     }, { passive: false });
     listen('webglcontextlost', event => {
       event.preventDefault();
-      this.contextLost = true;
+      this.stopNavigation();this.contextLost = true;
       this.onError(t('WebGL 显示上下文暂时丢失，正在等待浏览器恢复。'));
     });
     listen('webglcontextrestored', () => {
@@ -2986,6 +3621,7 @@ class CloudViewer {
   }
 
   forgetClouds(keys) {
+    this.stopNavigation?.();
     this.ensureCache();
     if (this.activeClouds.some(entry => keys.has(entry.key))) {
       this.setClouds(this.activeClouds.filter(entry => !keys.has(entry.key)).map(entry => entry.item));
@@ -2997,6 +3633,7 @@ class CloudViewer {
   }
 
   clearCache() {
+    this.stopNavigation?.();
     this.ensureCache();
     const active = new Set(this.activeClouds.map(entry => entry.key));
     for (const [key, entry] of this.entityCache) if (!active.has(key)) { this.deleteEntity(entry); this.entityCache.delete(key); }
@@ -3053,6 +3690,7 @@ class CloudViewer {
 
   /** Independent immutable cloud objects share a camera; unchanged keys reuse GPU geometry. */
   setClouds(items, {wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null, preserveView = true} = {}) {
+    this.stopNavigation?.();
     this.ensureCache();
     if (!Array.isArray(items)) throw new Error(t('setClouds 需要点云条目数组。'));
     const keys = new Set(), created = [], next = [];
@@ -3293,12 +3931,10 @@ class CloudViewer {
     return CLOUD_UNION([this.referenceBounds, this.options.showPoints && this.pointCount ? this.cloudBounds : null, this.options.showWire && this.edgeCount ? this.wireBounds : null]);
   }
 
-  basis() {
-    const e = this.camera.elevation * CLOUD_DEG, a = this.camera.azimuth * CLOUD_DEG;
-    return [[-Math.sin(a), Math.cos(a), 0], [-Math.cos(a) * Math.sin(e), -Math.sin(a) * Math.sin(e), Math.cos(e)], [Math.cos(a) * Math.cos(e), Math.sin(a) * Math.cos(e), Math.sin(e)]];
-  }
+  basis() { return navigationBasis(this); }
 
   fit() {
+    this.resetNavigation();
     const visible = this.visibleBounds();
     const bounds = visible ? visible.map(point => point.map((value, axis) => value - this.origin[axis])) : [[-1, -1, -1], [1, 1, 1]];
     this.target = bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2);
@@ -3311,23 +3947,22 @@ class CloudViewer {
     const aspect = Math.max(1, this.canvas.clientWidth) / Math.max(1, this.canvas.clientHeight);
     this.baseHeight = Math.max(.001, maxY - minY, (maxX - minX) / aspect) * 1.22;
     this.camera.zoom = 1; this.camera.pan = [0, 0];
+    this.distance=Math.max(.001,this.baseHeight,Math.hypot(...bounds[1].map((v,i)=>v-bounds[0][i])))*2;this.near=Math.max(1e-6,this.distance*1e-5);
     this.render();
   }
 
   setView(view) {
+    this.stopNavigation();
     const values = { iso: [38, -55], top: [90, -90], front: [0, -90] }[view];
     if (!values) throw new Error(t("不支持的视角：{0}", [view]));
     [this.camera.elevation, this.camera.azimuth] = values;
     this.fit();
   }
 
-  zoomBy(factor) {
-    if (!Number.isFinite(factor) || factor <= 0) return;
-    this.camera.zoom = CLOUD_CLAMP(this.camera.zoom * factor, .02, 100);
-    this.render();
-  }
+  zoomBy(factor, precision=false, repivot=true) { this.navigationZoom(factor,precision,repivot); }
 
   matrix() {
+    if(this.projection==='perspective')return navigationMatrix(this);
     const [r, u, t] = this.basis();
     const height = this.baseHeight / this.camera.zoom, width = height * (this.exportTarget?.width || this.canvas.width) / Math.max(1, this.exportTarget?.height || this.canvas.height);
     const cx = CLOUD_DOT(this.target, r) + this.camera.pan[0], cy = CLOUD_DOT(this.target, u) + this.camera.pan[1];
@@ -3347,6 +3982,7 @@ class CloudViewer {
   render() {
     if (this.disposed || this.contextLost) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
+    this.stepNavigation();
     const gl = this.gl, canvas = this.canvas, loc = this.locations, rect = canvas.getBoundingClientRect();
     const dpr = this.exportTarget?.scale || Math.min(window.devicePixelRatio || 1, 2);
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr)), height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
@@ -3425,6 +4061,7 @@ class CloudViewer {
 
   dispose() {
     if (this.disposed) return;
+    this.fly?.dispose();if(typeof document!=='undefined')document.removeEventListener('visibilitychange',this.onNavigationVisibility);
     this.disposed = true;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
@@ -4677,7 +5314,8 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
 // Source: src/shared/camera-controls.js
 
 
-/** Shared orthographic camera snapshots and an optional, local-only control panel. */
+
+/** Shared camera snapshots and an optional, local-only control panel. */
 const CAMERA_FORMAT = 'BuildingWebViewer.camera';
 const CAMERA_BOOK_FORMAT = 'BuildingWebViewer.camera-bookmarks';
 const CAMERA_SPACES = ['raw-world', 'lod-arrangement'];
@@ -4713,32 +5351,38 @@ function cameraSameScene(a, b) {
 /** Validate before mutating a viewer; snapshots use original-world or synthetic-layout targets. */
 function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
   cameraSpace(space);
-  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || value.version !== 1) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1）'));
+  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || ![1,2].includes(value.version)) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）'));
   if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用'));
-  if (value.projection !== 'orthographic') throw Error(t('当前查看器仅支持正交相机'));
+  if (!['orthographic','perspective'].includes(value.projection) || value.version===1 && value.projection!=='orthographic') throw Error(t('相机投影与文件版本不兼容'));
   const source = value.camera;
   if (!cameraObject(source)) throw Error(t('相机参数缺失'));
   const azimuth = cameraFinite(source.azimuth, t('方位角')), elevation = cameraFinite(source.elevation, t('仰角'));
   const zoom = cameraFinite(source.zoom, t('缩放倍率')), baseHeight = cameraFinite(source.baseHeight, t('基准视野高度'));
-  const limits = space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  const limits = value.version===2 ? {minElevation:-90,minZoom:.02,maxZoom:100} : space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
   if (Math.abs(azimuth) > 1e6) throw Error(t('方位角数值过大'));
   if (elevation < limits.minElevation || elevation > 90) throw Error(t("仰角需在 {0}° 至 90° 之间", [limits.minElevation]));
   if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(t("缩放倍率需在 {0} 至 {1} 之间", [limits.minZoom, limits.maxZoom]));
   if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error(t('基准视野高度必须为有效正数'));
+  let extended={};
+  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
   const savedScene = cameraScene(value.scene, space);
   if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("LOD 布局不匹配：此书签需要楼栋 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
-  return {format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic',
+  return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
     camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
-      pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
+      ...extended, pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
 }
 
 function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
   cameraSpace(space);
   if (!viewer?.camera) throw Error(t('相机尚未准备好'));
   const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
-  const target = cameraVector(viewer.target, 3, t('目标点')).map((value, axis) => value + origin[axis]);
-  return validateCameraSnapshot({format: CAMERA_FORMAT, version: 1, space, projection: 'orthographic', scene,
-    camera: {...viewer.camera, pan: [...viewer.camera.pan], target, baseHeight: viewer.baseHeight}}, {space, scene, checkScene: false});
+  const camera={...viewer.camera,pan:[...viewer.camera.pan]},projection=viewer.projection||'orthographic';
+  let localTarget=[...viewer.target],distance=viewer.distance||viewer.baseHeight*2;
+  if(viewer.flyPose){gsSetOrbitBasis({camera},viewer.flyPose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=viewer.flyPose.eye.map((v,i)=>v-viewer.flyPose.basis[2][i]*distance);}
+  const version=projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
+  const target = cameraVector(localTarget,3,t('目标点')).map((value,axis)=>value+origin[axis]);
+  return validateCameraSnapshot({format:CAMERA_FORMAT,version,space,projection,scene,
+    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
 }
 
 function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback()} = {}) {
@@ -4751,7 +5395,9 @@ function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene 
   });
   pauseSync(() => {
     viewers.forEach((viewer, index) => {
-      viewer.camera = {azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
+      viewer.stopNavigation?.();viewer.flyPose=null;viewer.projection=value.projection;
+      if(value.version===2){viewer.distance=value.camera.distance;viewer.fov=value.camera.fov;viewer.near=value.camera.near;}
+      viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
       viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
     });
     viewers.forEach(viewer => viewer.render());
@@ -4794,7 +5440,7 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
   const doc = container.ownerDocument, win = doc.defaultView || globalThis;
   const separateBookmarks = bookmarkContainer && bookmarkContainer !== container;
   const key = `BuildingWebViewer.camera-bookmarks.v1.${space}`;
-  const limits = space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  const limits = {minElevation: -90, minZoom: .02, maxZoom: 100};
   const watches = new Map(), inputs = new Map(), sliders = new Map(), dragging = new Set();
   let bookmarks = [], preserveView = true, selectedBookmark = '', disposed = false, frame = null, idCounter = 0;
   const pendingBookmarks = new Map();
@@ -4847,6 +5493,7 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
     const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再调整相机'));
     if (!String(raw).trim()) throw Error(t('相机参数不能为空'));
     const value = Number(raw);
+    if(snapshot.version===1){const viewer=getViewers()[0];snapshot.version=2;Object.assign(snapshot.camera,{roll:viewer.camera.roll||0,distance:viewer.distance||viewer.baseHeight*2,fov:viewer.fov||55,near:viewer.near||.001});}
     if (name.startsWith('pan')) snapshot.camera.pan[Number(name.slice(3))] = value;
     else if (name.startsWith('target')) snapshot.camera.target[Number(name.slice(6))] = value;
     else snapshot.camera[name] = value;
@@ -4991,7 +5638,7 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
         if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
         slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? t(' 倍') : t(' 度')}`);
       }
-      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [(snapshot.camera.baseHeight / snapshot.camera.zoom).toPrecision(6)]);
+      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? 2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
     } else {
       dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
       heightLabel.textContent = t('加载数据后可调整');
@@ -5098,7 +5745,60 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
 }
 
 
+// Source: src/shared/generate-handoff.js
+
+const GEN_DB = 'BuildingWebViewer.generate';
+const GEN_STORE = 'handoff';
+
+function genOpenDb() {
+  if (!globalThis.indexedDB) return Promise.reject(Error(t('当前环境不能把点云交给查看器，请改用导出 PLY。')));
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(GEN_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(GEN_STORE)) db.createObjectStore(GEN_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || Error(t('当前环境不能把点云交给查看器，请改用导出 PLY。')));
+  });
+}
+
+/** Local handoff from the generator page to the point-cloud viewer. One record, replaced on each send. */
+async function genSaveHandoff(files) {
+  if (!Array.isArray(files) || !files.length || files.some(file => typeof file?.name !== 'string' || !(file.buffer instanceof ArrayBuffer))) throw Error(t('没有可送出的点云'));
+  const db = await genOpenDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(GEN_STORE, 'readwrite');
+      tx.objectStore(GEN_STORE).put({files, savedAt: Date.now()}, 'latest');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || Error(t('当前环境不能把点云交给查看器，请改用导出 PLY。')));
+    });
+  } finally { db.close(); }
+}
+
+async function genTakeHandoff() {
+  const db = await genOpenDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(GEN_STORE, 'readwrite');
+      const store = tx.objectStore(GEN_STORE);
+      const request = store.get('latest');
+      let record = null;
+      request.onsuccess = () => {
+        record = request.result || null;
+        if (record) store.delete('latest');
+      };
+      request.onerror = () => reject(request.error || Error(t('当前环境不能把点云交给查看器，请改用导出 PLY。')));
+      tx.oncomplete = () => resolve(record?.files || null);
+      tx.onerror = () => reject(tx.error || Error(t('当前环境不能把点云交给查看器，请改用导出 PLY。')));
+    });
+  } finally { db.close(); }
+}
+
+
 // Source: src/cloud/cloud-app.js
+
 
 
 
@@ -5155,8 +5855,11 @@ initializeLocale();
   function error(message) { $('error').hidden = !message; $('error').querySelector('span').textContent = message || ''; }
   function activeViewerCount() { return !isWire || !$('compare-mode').checked ? 1 : Number($('compare-count').value) === 3 ? 3 : 2; }
   function copyCamera(source, target) {
+    target.navigation?.reset();
     target.camera = { ...source.camera, pan: [...source.camera.pan] };
     target.target = [...source.target]; target.baseHeight = source.baseHeight;
+    target.projection=source.projection;target.distance=source.distance;target.fov=source.fov;target.near=source.near;
+    target.flyPose=source.flyPose?{eye:[...source.flyPose.eye],basis:source.flyPose.basis.map(v=>[...v])}:null;
   }
   function installSync() {
     for (const viewer of viewers) originals.set(viewer, viewer.render.bind(viewer));
@@ -5164,7 +5867,7 @@ initializeLocale();
       const ownRender = originals.get(viewer);
       viewer.render = function syncedRender() {
         const result = ownRender();
-        if (!syncEnabled || syncGuard) return result;
+        if (!syncEnabled || syncGuard || this.flyPose&&!this.fly?.active || viewers.some(v=>v!==this&&v.fly?.active)) return result;
         syncGuard = true;
         try {
           for (const other of viewers.slice(0, activeViewerCount())) {
@@ -5488,10 +6191,11 @@ initializeLocale();
     if (!viewers[0]?.bounds) return null;
     const viewer = viewers[0];
     return { camera: { ...viewer.camera, pan: [...viewer.camera.pan] },
-      worldTarget: viewer.target.map((value, axis) => value + viewer.origin[axis]), baseHeight: viewer.baseHeight };
+      projection:viewer.projection,distance:viewer.distance,fov:viewer.fov,near:viewer.near,worldTarget: viewer.target.map((value, axis) => value + viewer.origin[axis]), baseHeight: viewer.baseHeight };
   }
   function restoreView(snapshot, viewer) {
     if (!snapshot) return;
+    viewer.stopNavigation();viewer.projection=snapshot.projection;viewer.distance=snapshot.distance;viewer.fov=snapshot.fov;viewer.near=snapshot.near;
     viewer.camera = { ...snapshot.camera, pan: [...snapshot.camera.pan] };
     viewer.target = snapshot.worldTarget.map((value, axis) => value - viewer.origin[axis]); viewer.baseHeight = snapshot.baseHeight;
   }
@@ -5759,6 +6463,21 @@ initializeLocale();
     }});
     if (isWire) mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name) || pointExtension.test(name), onFiles: importRecords});
     clear(); update();
+    if (!isWire && new URLSearchParams(location.search).get('generated') === '1') {
+      genTakeHandoff().then(files => {
+        const url = new URL(location.href);
+        url.searchParams.delete('generated');
+        history.replaceState(null, '', url.pathname + url.search + url.hash);
+        if (!files?.length) { error(t('没有找到刚生成的点云，请从点云生成页重新打开。')); return; }
+        const list = files.map(item => new File([item.buffer], item.name, {type: 'application/octet-stream'}));
+        const added = new Set(list);
+        receiveCloudFiles(list, false);
+        selectedCloudEntries.clear();
+        for (const entry of entries) if (added.has(entry.file)) selectedCloudEntries.add(entry);
+        if (selectedCloudEntries.size) applyCloudSelection();
+        else error(t('没有找到刚生成的点云，请从点云生成页重新打开。'));
+      }).catch(cause => error(cause.message || t('没有找到刚生成的点云，请从点云生成页重新打开。')));
+    }
     mountMobileProject({receive:importRecords,getState:()=>({
       tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...selectedCloudEntries].map(e=>e.id),active:active?.id,cloudMode,
       inputs:captureMobileInputs(),wire:isWire?Object.fromEntries(['wire-file','wire-file-2','wire-file-3','cloud-file','compare-mode','compare-count'].map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value])):null,camera:(loaded.cloud||loaded.wire)?cameraControls?.capture():null,
@@ -5770,6 +6489,12 @@ initializeLocale();
           selectedCloudEntries.clear();for(const id of state.selected||[]){const entry=entries.find(e=>e.id===id);if(entry)selectedCloudEntries.add(entry);}if(selectedCloudEntries.size)await loadCloudSelection();
         }
         restoreMobileInputs(state.inputs);update();if(state.camera&&(loaded.cloud||loaded.wire))cameraControls.restore(state.camera,{checkScene:false});
+      }
+      const handoff=new URL(location.href),batch=handoff.searchParams.get('studio');
+      if(!isWire&&batch&&/^[a-z0-9]+$/.test(batch)){
+        selectedCloudEntries.clear();for(const entry of entries)if(entry.file?.webkitRelativePath?.startsWith(`studio/${batch}/`))selectedCloudEntries.add(entry);
+        cloudMode='multiple';if(selectedCloudEntries.size)await loadCloudSelection();
+        handoff.searchParams.delete('studio');history.replaceState(null,'',handoff.pathname+handoff.search+handoff.hash);
       }
       list();$('source-note').textContent=t('项目自动保存在此设备');
     },onBackground:()=>{processingControls?.cancel();for(const [file] of cached.records)if(!cached.active.has(file))cached.forget(file);}}).then(session=>{mobileSession=session;});

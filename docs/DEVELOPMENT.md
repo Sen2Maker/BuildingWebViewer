@@ -4,13 +4,15 @@ No framework or runtime package dependencies. Python 3 serves/builds the app; No
 
 | Location | Responsibility |
 | --- | --- |
-| `index.html`, `lod.html`, `wireframe.html`, `pointcloud.html` | Stable public entry pages |
+| `index.html`, `lod.html`, `wireframe.html`, `pointcloud.html`, `gaussian.html`, `generate.html` | Stable public entry pages |
 | `src/hub/` | Homepage and language switch |
 | `src/shared/` | Locale/startup shell, project model/tree/import adapters, camera/bookmarks, palettes, sidebar, touch gestures and file drops |
 | `src/locales/en.js` | English catalog; Chinese source messages are keys |
 | `src/lod/` | Mesh parser, rendering and app orchestration |
 | `src/cloud/` | Shared point/wire renderer, streaming I/O, cache and orchestration |
 | `src/pointcloud/` | Point-cloud columns, geometry computations and export |
+| `src/gaussian/` | 3D Gaussian Splatting PLY parser, perspective renderer and reversible editor |
+| `src/generate/` | Parametric point-cloud shapes, surface sampling and preview orchestration |
 | `assets/css/` | Shared and tool-specific layouts |
 | `assets/js/` | Generated, tracked offline bundles — do not edit |
 | `tests/` | Parser, geometry, cache, camera, project, locale and gesture regressions |

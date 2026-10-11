@@ -1,0 +1,41 @@
+.gs-navigation{border:1px solid var(--line,#dbe6df);border-radius:9px;padding:10px 12px;margin:12px 0 18px;background:#f6f9f7}
+.gs-navigation summary{cursor:pointer;font-size:13px;font-weight:600;color:#32594a}
+.gs-navigation-field{display:grid;grid-template-columns:minmax(0,1fr) 62px max-content;gap:6px;align-items:center;margin-top:10px}
+.gs-navigation-field>span{grid-column:1/-1;font-size:12px}.gs-navigation-field input[type=range]{width:100%;min-width:0;accent-color:#48846b}
+.gs-navigation-field input[type=number]{width:62px;min-width:0;padding:5px}.gs-navigation-field small{color:#70877c;font-size:11px}
+.gs-navigation-toggle{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;cursor:pointer}.gs-navigation-toggle input{accent-color:#48846b}
+.gs-navigation .presentation-help{margin:10px 0;font-size:11px;line-height:1.6}
+
+/* First-person overlay stays inside the renderer, keeping camera aspect stable. */
+.gs-fly-entry { color: #276550; border-color: #97b6a9; font-weight: 650; }
+.gs-fly-active > :not(.camera-scene):not(.gs-fly-hud) { visibility: hidden; pointer-events: none; }
+.gs-fly-hud { position: absolute; inset: 0; z-index: 20; color: #fff; pointer-events: none; user-select: none; }
+.gs-fly-hud[hidden] { display: none; }
+.gs-fly-top { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-fly-status { background: #10271edb; border: 1px solid #ffffff30; padding: 9px 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; }
+.gs-fly-top button, .gs-fly-vertical button { pointer-events: auto; min-height: 44px; background: #17392de8; color: white; border: 1px solid #ffffff70; border-radius: 10px; }
+.gs-fly-top button { flex-shrink: 0; }
+.gs-fly-cross { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 23px; font-weight: 300; opacity: .7; text-shadow: 0 1px 4px #000; }
+.gs-fly-stick, .gs-fly-look, .gs-fly-vertical { display: none; }
+.gs-fly-hud.touch .gs-fly-stick { display: block; position: absolute; left: max(20px,env(safe-area-inset-left)); bottom: max(24px,env(safe-area-inset-bottom)); width: 120px; height: 120px; border-radius: 50%; background: #17392d70; border: 1px solid #ffffff70; pointer-events: auto; touch-action: none; }
+.gs-fly-stick i { position: absolute; width: 42px; height: 42px; left: 38px; top: 38px; border-radius: 50%; background: #d8eee6bb; border: 1px solid white; }
+.gs-fly-stick span { position: absolute; bottom: 8px; width: 100%; text-align: center; font-size: 11px; }
+.gs-fly-hud.touch .gs-fly-look { display: flex; position: absolute; right: 0; top: 76px; bottom: 0; width: 52%; align-items: center; justify-content: center; color: #ffffff90; font-size: 12px; pointer-events: auto; touch-action: none; }
+.gs-fly-hud.touch .gs-fly-vertical { display: grid; gap: 10px; position: absolute; right: max(20px,env(safe-area-inset-right)); bottom: max(24px,env(safe-area-inset-bottom)); }
+.gs-fly-vertical button { min-width: 66px; min-height: 48px; touch-action: none; }
+@media (max-width: 700px) {
+  .gs-fly-top { top: 8px; left: 8px; right: 8px; gap: 6px; }
+  .gs-fly-status { font-size: 11px; padding: 6px 8px; }
+  .gs-fly-top button { padding: 6px 9px; }
+}
+
+@media (max-width: 700px), (max-height: 500px) and (pointer: coarse) {
+  .viewport.gs-fly-active { position: fixed; inset: 0; z-index: 100; width: auto; height: auto; min-height: 0; max-height: none; margin: 0; border-radius: 0; background: #000; }
+  .gs-fly-top { top: max(10px,env(safe-area-inset-top)); }
+}
+
+.gs-navigation-field small { white-space: nowrap; font-size: 9px; }
+
+.gs-fly-roll { display:none; }
+.gs-fly-hud.touch .gs-fly-roll { display:flex; gap:8px; position:absolute; right:20px; bottom:max(146px,calc(env(safe-area-inset-bottom) + 130px)); }
+.gs-fly-roll button { pointer-events:auto;touch-action:none;min-width:44px;min-height:44px;color:white;background:#17392de8;border:1px solid #ffffff70;border-radius:10px;font-size:22px; }

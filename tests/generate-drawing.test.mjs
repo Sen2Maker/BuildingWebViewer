@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { drawFrame,drawUnproject,drawRayPlane,drawCheck,drawPolygon } from '../src/generate/drawing-geometry.js';
+import { genSample,genEstimate,genPreviewPart,genWire } from '../src/generate/sample.js';
+import { genRecipe,genValidateProject,genHistory } from '../src/generate/project.js';
+import { gsViewSpec,gsProjectPosition } from '../src/shared/camera-geometry.js';
+import { writePointExport } from '../src/pointcloud/point-export.js';
+import { parsePointCloud } from '../src/cloud/point-io.js';
+const part=shape=>({id:1,name:'Drawing',visible:true,color:[1,0,0],place:{x:0,y:0,z:0},sampling:{spacing:.25,pattern:'grid',noise:0,seed:42},shape});
+const square={type:'polygon',normal:[0,0,1],points:[[0,0,0],[2,0,0],[2,2,0],[0,2,0]]};
+const concave={...square,points:[[0,0,0],[3,0,0],[3,1,0],[1,1,0],[1,3,0],[0,3,0]]};
+const check=(name,work)=>{work();console.log('PASS',name);};
+check('Concave face triangulation preserves area and does not fill the notch',()=>{
+ const {triangles}=drawPolygon(concave.points,concave.normal);let area=0;for(const[a,b,c]of triangles){const[p,q,r]=[a,b,c].map(i=>concave.points[i]);area+=Math.abs((q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]))/2;}assert.equal(area,5);
+ const cloud=genSample(part(concave));for(let i=0;i<cloud.count;i++){const[x,y,z]=cloud.positions.slice(i*3,i*3+3);assert.equal(z,0);assert(x<=1+1e-9||y<=1+1e-9);assert.equal(cloud.fields.normal_valid[i],1);}assert.equal(cloud.count,genEstimate(part(concave)));
+});
+check('Both windings and collinear perimeter vertices are accepted',()=>{for(const points of [square.points,[...square.points].reverse(),[[0,0,0],[1,0,0],[2,0,0],[2,2,0],[0,2,0]]])assert(genSample(part({...square,points})).count>0);});
+check('Self-intersection, touching edges, degenerate and non-planar faces fail',()=>{
+ for(const points of [[[0,0,0],[2,2,0],[0,2,0],[2,0,0]],[[0,0,0],[1,0,0],[2,0,0]],[[0,0,0],[2,0,0],[2,2,1],[0,2,0]],[[0,0,0],[1,0,0],[1,0,0]]])assert.throws(()=>drawCheck({...square,points}));
+});
+check('Space polyline follows each segment and has no invented normal',()=>{const cloud=genSample(part({type:'stroke',points:[[0,0,0],[2,0,0],[2,0,3]]}));assert.equal(cloud.count,22);for(let i=0;i<cloud.count;i++){assert(cloud.positions[i*3]===2||cloud.positions[i*3+2]===0);assert.equal(cloud.fields.normal_valid[i],0);}});
+check('Concave prism fills the volume without filling its notch',()=>{const p=part({...concave,type:'extrusion',height:2,fill:'volume'}),cloud=genSample(p);assert.equal(cloud.count,genEstimate(p));let inside=false;for(let i=0;i<cloud.count;i++){const[x,y,z]=cloud.positions.slice(i*3,i*3+3);assert(x<=1+1e-9||y<=1+1e-9);assert(z>=0&&z<=2);if(z>0&&z<2)inside=true;assert.equal(cloud.fields.normal_valid[i],0);}assert(inside);});
+check('Prism shell normals point outward and wireframe has 12 edges',()=>{const p=part({...square,type:'extrusion',height:2,fill:'surface'}),cloud=genSample(p);assert.equal(genWire([p]).edges.length,12);for(let i=0;i<cloud.count;i++){const[x,y,z]=cloud.positions.slice(i*3,i*3+3),nx=cloud.fields.nx[i],ny=cloud.fields.ny[i],nz=cloud.fields.nz[i];assert((x-1)*nx+(y-1)*ny+(z-1)*nz>.99);}});
+check('Tilted planes and coordinate translation remain 3D',()=>{const s={type:'extrusion',points:[[0,1,0],[2,1,0],[2,1,2],[0,1,2]],normal:[0,-1,0],height:3,fill:'volume'},p=part(s);p.place.x=20;const c=genSample(p);for(let i=0;i<c.count;i++){assert(c.positions[i*3]>=20&&c.positions[i*3]<=22);assert(c.positions[i*3+1]>=-2&&c.positions[i*3+1]<=1);}});
+check('Grid snapping and perspective / orthographic rays agree with projection',()=>{const viewer={basis:()=>[[1,0,0],[0,1,0],[0,0,1]],target:[0,0,0],camera:{zoom:1,pan:[0,0]},distance:10,baseHeight:10,fov:55,near:.01};for(const projection of ['orthographic','perspective']){viewer.projection=projection;const spec=gsViewSpec(viewer,800,600),p=[1.2,-2.1,0],screen=gsProjectPosition(p,spec),ray=drawUnproject(spec,screen.x,screen.y),hit=drawRayPlane(ray,drawFrame([0,0,1]));assert(Math.hypot(...hit.map((v,i)=>v-p[i]))<1e-9);assert.deepEqual(drawRayPlane(ray,drawFrame([0,0,1]),1),[1,-2,0]);}assert.equal(drawRayPlane({origin:[0,0,1],direction:[1,0,0]},drawFrame([0,0,1])),null);});
+check('Random drawing sampling is deterministic and preview leaves source intact',()=>{const p=part({...square,type:'extrusion',height:2,fill:'volume'});p.sampling.pattern='stratified';p.sampling.noise=.02;assert.deepEqual(genSample(p).positions,genSample(p).positions);p.sampling.spacing=.03;const before=JSON.stringify(p),cloud=genPreviewPart(p,1000);assert(cloud.count<=1000);assert.equal(JSON.stringify(p),before);});
+check('Project round trip validates IDs and rejects partial corruption',()=>{const p=part(concave),recipe=genRecipe([p]);assert.deepEqual(genValidateProject(JSON.parse(JSON.stringify(recipe))),recipe);assert.throws(()=>genRecipe([p,p]));assert.throws(()=>genValidateProject({...recipe,version:99}));assert.throws(()=>genRecipe([{...p,color:[NaN,0,0]}]));});
+check('History retains redo after restoring and branches on edits',()=>{const h=genHistory();h.record([]);h.record([1]);h.record([1,2]);const old=h.undo();h.record(old);assert(h.redoable);assert.deepEqual(h.redo(),[1,2]);h.undo();h.record([3]);assert.equal(h.redo(),null);});
+const cloud=genSample(part({...square,type:'extrusion',height:1,fill:'surface'}),{color:[1,0,0]});const chunks=[];await writePointExport([{name:'Drawn',cloud}],{format:'ply',write:c=>chunks.push(c)});const blob=new Blob(chunks);const read=parsePointCloud(await blob.arrayBuffer(),'drawn.ply');assert.equal(read.count,cloud.count);console.log('PASS drawing PLY exports and parses back');

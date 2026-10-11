@@ -58,7 +58,7 @@ export function initializeLocale(doc = document) {
   for(const link of doc.querySelectorAll('a[href]')) {
     const href=link.getAttribute('href');
     const url=new URL(href,doc.baseURI), name=url.pathname.split('/').pop();
-    if(!/^(index|lod|wireframe|pointcloud)\.html$/.test(name))continue;
+    if(!/^(index|lod|wireframe|pointcloud|gaussian|generate)\.html$/.test(name))continue;
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }

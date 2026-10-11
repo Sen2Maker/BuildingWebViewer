@@ -1,11 +1,11 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 1,
-  "issuedAt": 1791590400,
-  "expiresAt": 1807142400,
+  "sequence": 2,
+  "issuedAt": 1791676800,
+  "expiresAt": 1807228800,
   "notes": {
-    "zh": "新增签名更新验证：拒绝被篡改、过期和重放的更新清单。\n网页修复更新自动准备，功能更新先确认；涉及 Android 底层时可在 App 内下载并验证 APK，再交给系统确认安装。\n新增“版本与更新”和更新公告；公告在实际升级后展示一次，也可随时查看。\n继续保持本地项目、离线启动与失败回退。旧版 Preview 请覆盖安装本版。",
-    "en": "Signed update verification rejects tampered, expired and replayed metadata.\nWeb fixes are staged automatically; feature updates ask first. Native app upgrades download and verify an APK before opening Android installation confirmation.\nVersion & updates controls and local release notes appear once after an actual upgrade and remain available manually.\nLocal projects, offline startup and rollback are preserved. Install this APK over the previous preview."
+    "zh": "新增高斯泼溅查看与基础修订、点云创作与修订工作台。\n共享漫游与相机旋转设置，支持手机触控。\nApp 新增两个工具的本地项目快照、返回保存与分享导出；.bwvproject 可在电脑网页、手机网页和 App 间转移。\n本次升级原生接口至 6，需要安装新版 APK；已有项目保留。Android 仍为 Preview。",
+    "en": "Gaussian splat viewing/editing and the point cloud creation/refinement studio.\nShared fly/orbit navigation with mobile touch controls.\nNative editor snapshots, save-aware Back and share/export; transfer .bwvproject files between desktop web, mobile web and Android.\nNative API 6 requires the new APK. Existing projects are retained. Android remains Preview."
   }
 }

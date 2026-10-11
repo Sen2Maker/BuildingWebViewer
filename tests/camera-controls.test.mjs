@@ -50,7 +50,7 @@ check('Invalid camera input fails before mutating any panel', () => {
   }
   const valid = viewer(), invalid = viewer([Infinity, 0, 0]);
   assert.throws(() => applyCameraSnapshot([valid, invalid], snapshot, {space: 'raw-world'})); assert.equal(valid.renders, 0);
-  assert.throws(() => validateCameraSnapshot({...snapshot, projection: 'perspective'}, {space: 'raw-world'}), /正交/);
+  assert.throws(() => validateCameraSnapshot({...snapshot, projection: 'perspective'}, {space: 'raw-world'}), /投影/);
 });
 check('Renderer-specific elevation and zoom ranges are respected', () => {
   const raw = captureCameraSnapshot(viewer(), {space: 'raw-world'});
@@ -196,7 +196,7 @@ check('Dragging stays stable across RAF and the +180 endpoint does not jump to t
   assert.equal(camera.camera.azimuth, 5); assert.equal(slider.value, '5'); panel.destroy();
 });
 check('Zoom is logarithmic with exact renderer-specific endpoints and valid elevation ranges', () => {
-  for (const [space, minZoom, maxZoom, minElevation] of [['raw-world', .02, 100, -89], ['lod-arrangement', .15, 30, 0]]) {
+  for (const [space, minZoom, maxZoom, minElevation] of [['raw-world', .02, 100, -90], ['lod-arrangement', .02, 100, -90]]) {
     const fixture = panelFixture(), camera = viewer(); camera.bounds = [[0, 0, 0], [1, 1, 1]]; camera.models = [1];
     const panel = mountCameraControls({container: fixture.container, getViewers: () => [camera], space, getScene: () => scene});
     const zoom = fixture.byLabel('缩放倍率滑块'), elevation = fixture.byLabel('仰角（°）滑块');

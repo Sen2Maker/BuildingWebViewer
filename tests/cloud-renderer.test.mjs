@@ -34,7 +34,7 @@ function item(name, offset = 0, z = [0,10], intensity = [2,4]) {
 
 const qa = fixture(), v = qa.viewer, a = item('a'), b = item('b',100,[10,100],[4,10]), c = item('c',200,[100,200],[10,20]);
 v.setClouds([a]); const entryA = v.activeClouds[0], pointsA = entryA.points;
-v.zoomBy(2); v.camera.pan = [1,2]; const worldTarget = v.target.map((value, i) => value + v.origin[i]);
+v.setNavigation({smoothing:false,zoomSpeed:1,pivot:'fixed'}); v.zoomBy(2); v.camera.pan = [1,2]; const worldTarget = v.target.map((value, i) => value + v.origin[i]);
 v.setClouds([a,b]);
 assert.equal(v.activeClouds[0],entryA); assert.equal(v.activeClouds[0].points,pointsA); assert(!qa.deleted.includes(pointsA.buffer));
 assert.deepEqual(v.target.map((value,i)=>value+v.origin[i]),worldTarget); assert.equal(v.camera.zoom,2); assert.deepEqual(v.camera.pan,[1,2]);

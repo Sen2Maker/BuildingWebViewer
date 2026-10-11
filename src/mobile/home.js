@@ -18,7 +18,7 @@ async function refreshMobileProjects(){
     if(p.status!=='ready'){const note=document.createElement('p');note.className='mobile-warning';note.textContent=p.error||t('导入未完成，可重试或清理');card.append(note);if(p.importJob)actions.append(mobileHomeButton('重试导入',async()=>{await mobileHomeAPI.retryImport({id:p.id});await refreshMobileProjects();}),mobileHomeButton('清理未完成导入',async()=>{await mobileHomeAPI.discardImport({id:p.id});await refreshMobileProjects();}));}
     if(mobileShowTrash)actions.append(mobileHomeButton('恢复项目',async()=>{await mobileHomeAPI.trashProject({id:p.id,trashed:false});await refreshMobileProjects();}));
     else{
-      for(const [tool,title] of [['lod','LOD 模型'],['wireframe','建筑线框'],['pointcloud','点云']])tools.append(mobileHomeButton(title,()=>mobileHomeOpen(p,tool)));
+      for(const [tool,title] of [['lod','LOD 模型'],['wireframe','建筑线框'],['pointcloud','点云'],['gaussian','高斯泼溅'],['generate','点云创作与修订']])tools.append(mobileHomeButton(title,()=>mobileHomeOpen(p,tool)));
       actions.append(mobileHomeButton('导出项目备份',async()=>{mobileHomeSay(t('正在导出备份…'));await mobileHomeAPI.backupProject({id:p.id});mobileHomeSay(t('已发起分享'));}),mobileHomeButton('添加文件',async()=>{mobileHomeSay(t('正在导入…'));await mobileHomeAPI.pickFiles({id:p.id});await refreshMobileProjects();mobileHomeSay(t('已保存'));}),mobileHomeButton('重命名',async()=>{const name=prompt(t('项目名称'),p.name);if(name){await mobileHomeAPI.renameProject({id:p.id,name});await refreshMobileProjects();}}),mobileHomeButton('移入回收站',async()=>{await mobileHomeAPI.trashProject({id:p.id,trashed:true});await refreshMobileProjects();}));
     }
     card.append(tools,actions);mobileHomeList.append(card);

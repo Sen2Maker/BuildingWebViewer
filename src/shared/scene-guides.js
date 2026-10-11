@@ -18,7 +18,7 @@ export function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
       ctx.fillText('XYZ'[i],x+right[i]*38,y-up[i]*38+4);
     });
   }
-  if(options.ruler) {
+  if(options.ruler && viewer.projection !== 'perspective') {
     const ruler=niceScale(viewer.baseHeight/viewer.camera.zoom/(height/scale));
     if(ruler) {
       ctx.strokeStyle='#526d66';ctx.fillStyle='#526d66';ctx.lineWidth=1.5;

@@ -23,9 +23,10 @@ export function mountPresentationControls({root=document,getViewers,pauseSync=ca
     if(kind==='number')input.oninput=input.onchange;
     return input;
   }
-  field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');field('legend','颜色图例','checkbox');
+  field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');
+  if(root.body.dataset.tool!=='gaussian')field('legend','颜色图例','checkbox');
   if(root.body.dataset.tool!=='lod')field('pointCountLabel','显示点数','checkbox');
-  if(root.body.dataset.tool!=='lod'){
+  if(root.body.dataset.tool!=='lod' && root.body.dataset.tool!=='gaussian'){
     field('pointStyle','点的样式','select',[['disc','圆点'],['square','方点'],['sphere','球形光照']]);
     const ratio=field('pointRatio','显示点比例（%）','number',[1,100,1]);
     const slider=el('input');slider.type='range';slider.min=1;slider.max=100;slider.step=1;slider.value=ratio.value;slider.setAttribute('aria-label',t('拖动调整显示点比例'));
@@ -37,7 +38,7 @@ export function mountPresentationControls({root=document,getViewers,pauseSync=ca
     ratio.oninput=ratio.onchange=()=>{if(ratio.value!==''&&ratio.checkValidity()){slider.value=ratio.value;schedule();}};
     const help=el('p','球形光照为拟球着色，不生成球体网格。比例抽样作用于当前勾选显示的点云，100% 恢复全部已加载点。');help.className='presentation-help';section.append(help);
   }
-  if(root.body.dataset.tool!=='pointcloud'){
+  if(root.body.dataset.tool!=='pointcloud' && root.body.dataset.tool!=='gaussian'){
     const style=field('lineStyle','线的样式','select',[['native','细线'],['cylinder','圆柱'],['box','方柱']]);
     const width=field('lineWidth','线宽（屏幕 px）','number',[.5,24,.5]),gradient=field('lineGradient','端点渐变（立体线）','checkbox');
     const end=field('lineEndColor','渐变终点颜色','color','#417ec4');

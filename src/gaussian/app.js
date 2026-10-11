@@ -1,0 +1,228 @@
+import { openWorkspaceSession } from '../shared/workspace-session.js';
+import { isMobileApp, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs } from '../shared/mobile-project.js';
+import { captureCameraSnapshot, applyCameraSnapshot } from '../shared/camera-controls.js';
+import { gsProjectBlob, gsReadProjectBlob } from './project-state.js';
+import { initializeLocale, t } from '../shared/i18n.js';
+import { ViewerProject } from '../shared/project-model.js';
+import { mountProjectTree } from '../shared/project-tree.js';
+import { projectFileKey, projectUniqueId } from '../shared/project-import.js';
+import { mountPointDrop } from '../shared/point-drop.js';
+import { archiveImportQueue } from '../shared/zip-import.js';
+import { mountGaussianEditor } from './editor-controls.js';
+import { mountViewerLayout } from '../shared/viewer-layout.js';
+import { GaussianViewer } from './renderer.js';
+import { gsParseCameras, gsParseGaussianPly } from './ply.js';
+
+async function gsBoot() {
+  initializeLocale();
+  const gs$ = id => document.getElementById(id);
+  const gsProject = new ViewerProject();
+  const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
+  let nativeSession=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
+  let gsEditor = null, gsViewer = null, gsSerial = 0, gsMode = 'multiple';
+  const gsAccept = name => /\.(ply|json|zip)$/i.test(name);
+  const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  const gsSay = message => { const note = gs$('data-notes'); note.textContent = message || ''; };
+  const gsError = message => { const box = gs$('error'); box.hidden = !message; box.querySelector('span').textContent = message || ''; };
+  const gsLoading = (message) => { const box = gs$('loading'); box.hidden = !message; if (message) box.querySelector('span').textContent = message; };
+
+  function gsCatalogFor(entry) {
+    const dir = (entry.path || '').split('/').slice(0, -1).join('/');
+    let best = null, bestLength = -1;
+    for (const catalog of gsCatalogs) {
+      const catalogDir = catalog.path.split('/').slice(0, -1).join('/');
+      if (catalogDir === '' || dir === catalogDir || dir.startsWith(`${catalogDir}/`)) {
+        if (catalogDir.length >= bestLength) { best = catalog; bestLength = catalogDir.length; }
+      }
+    }
+    return best;
+  }
+
+  function gsList() {
+    const query = gs$('search').value;
+    const matched = gsEntries.filter(entry => gsProject.matches(entry, query));
+    gs$('filter-count').textContent = t('匹配 {0} 项 · 已勾选 {1}', [matched.length, gsSelected.size]);
+    gs$('item-count').textContent = t('共 {0} 项', [gsEntries.length]);
+    gs$('select-all-splats').disabled = gsMode !== 'multiple' || !matched.length;
+    gs$('invert-splat-selection').disabled = gsMode !== 'multiple' || !matched.length;
+    gs$('gs-mode').value = gsMode;
+    gsTree?.render();
+    gsRefreshCameras();
+  }
+
+  function gsRefreshCameras() {
+    const select = gs$('gs-camera'), previous = select.value, catalogs = [];
+    for (const entry of gsSelected) {
+      const catalog = gsCatalogFor(entry);
+      if (catalog && !catalogs.includes(catalog)) catalogs.push(catalog);
+    }
+    select.replaceChildren();
+    const empty = document.createElement('option'); empty.value = ''; empty.textContent = t('不使用训练相机'); select.append(empty);
+    catalogs.forEach((catalog, catalogIndex) => catalog.cameras.forEach((camera, index) => {
+      const option = document.createElement('option'); option.value = `${catalogIndex}:${index}`; option.textContent = camera.name; select.append(option);
+    }));
+    select.dataset.catalogs = String(catalogs.length);
+    select.disabled = catalogs.length === 0;
+    select._catalogs = catalogs;
+    if ([...select.options].some(option => option.value === previous)) select.value = previous; else select.value = '';
+    gs$('gs-camera-note').textContent = catalogs.length
+      ? t('已记录 {0} 个训练相机。使用完整旋转、位置和焦距。', [catalogs.reduce((sum, catalog) => sum + catalog.cameras.length, 0)])
+      : t('把 cameras.json 和 point_cloud.ply 一起导入后，可以跳到训练机位。');
+  }
+
+  async function gsApply({preserveView = false} = {}) {
+    const serial = ++gsSerial;
+    const selected = [...gsSelected];
+    if (!selected.length) {
+      gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
+      gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
+      gs$('geometry-note').textContent = t('未选择数据时保持空白');
+      gsViewer?.clearSplats(); gsEditor?.sceneChanged(); gsList(); return;
+    }
+    gsLoading(t('正在读取文件…')); gs$('empty-state').hidden = true; gsError('');
+    const degree = Number(gs$('gs-sh').value), cap = Number(gs$('gs-cap').value);
+    const models = [];
+    let missingRest = false;
+    try {
+      for (const entry of selected) {
+        if (serial !== gsSerial) return;
+        if (!entry.parsed) {
+          gsLoading(t('正在读取 {0}…', [entry.treeName || entry.file.name]));
+          const buffer = await entry.file.arrayBuffer();
+          if (serial !== gsSerial) return;
+          entry.parsed = await gsParseGaussianPly(buffer, {includeRest: true, onProgress: (done, total) => gsLoading(t('正在解析 {0}（{1}%）', [entry.treeName || entry.file.name, Math.floor(done / total * 100)]))});
+        }
+        if (!entry.parsed.hasRest) missingRest = true;
+        entry.parsed.name = entry.treeName || entry.file.name;
+        gsEditor?.edits.attach(entry.parsed);if(entry.savedFlags){if(entry.savedFlags.length!==entry.parsed.count)throw Error('Gaussian snapshot does not match source');entry.parsed.editFlags=entry.savedFlags;entry.savedFlags=null;}
+        models.push(entry.parsed);
+      }
+      if (serial !== gsSerial) return;
+      const useDegree = degree;
+      gsViewer.setModels(models, {preserveView, maxSplats: cap, shDegree: useDegree});
+      gsEditor?.sceneChanged();
+      gsViewer.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value, shDegree: useDegree});
+      const shown = gsViewer.count, source = gsViewer.pointCount;
+      gs$('current-title').textContent = selected.map(entry => entry.treeName || entry.id).join('、');
+      gs$('scene-stats').textContent = t('已显示 {0} / {1} 个高斯', [shown.toLocaleString('zh-CN'), source.toLocaleString('zh-CN')]);
+      gs$('geometry-note').textContent = t('原始尺度 · 可撤销编辑 · 本地处理');
+      gs$('screenshot').disabled = false; gsLoading('');
+      gsSay(missingRest ? t('此文件没有球谐系数，已保持 0 阶。') : '');
+    } catch (error) {
+      if (serial !== gsSerial) return;
+      gsLoading(''); gsError(error.message); gs$('screenshot').disabled = !gsViewer?.count;
+    }
+    gsList();
+  }
+
+  function gsToggle(entry) {
+    if (gsMode === 'single') {
+      if (gsSelected.has(entry)) gsSelected.delete(entry); else { gsSelected.clear(); gsSelected.add(entry); }
+    } else if (gsSelected.has(entry)) gsSelected.delete(entry); else gsSelected.add(entry);
+    gsApply({preserveView: true});
+  }
+
+  const gsTree = mountProjectTree({
+    project: gsProject, container: gs$('splat-list'), root: gs$('project-root'), controls: gs$('project-controls'),
+    getEntries: () => gsEntries, getSelected: () => gsSelected, getMode: () => gsMode, getQuery: () => gs$('search').value,
+    onToggle: gsToggle, onChange: gsList, selectionHint: '勾选后显示高斯',
+    detail: entry => entry.parsed ? t('{0} 个高斯', [entry.parsed.sourceCount.toLocaleString('zh-CN')]) : gsBytes(entry.file.size),
+    onRemove: removed => { for (const entry of removed) { gsSelected.delete(entry); const index = gsEntries.indexOf(entry); if (index >= 0) gsEntries.splice(index, 1); } gsApply(); },
+    onVisibility: (members, checked) => {
+      if (gsMode === 'single') { gsSelected.clear(); if (checked && members.length === 1) gsSelected.add(members[0]); }
+      else for (const entry of members) checked ? gsSelected.add(entry) : gsSelected.delete(entry);
+      gsApply();
+    },
+    onGroupSelection: (members, checked) => { if (gsMode !== 'multiple') return; for (const entry of members) checked ? gsSelected.add(entry) : gsSelected.delete(entry); gsApply(); },
+  });
+
+  async function gsReceive(records) {
+    const keys = new Set(gsEntries.map(entry => entry.key)), names = new Set(gsEntries.map(entry => entry.id));
+    const cameraKeys = new Set(gsCatalogs.map(catalog => catalog.key));
+    let added = 0, duplicates = 0, camerasAdded = 0;
+    const warnings = [];
+    for (const record of records) {
+      const path = (record.path || record.file.webkitRelativePath || record.file.name).replaceAll('\\', '/');
+      const key = projectFileKey(record.file, path);
+      if (/\.json$/i.test(record.file.name)) {
+        if (cameraKeys.has(key)) { duplicates += 1; continue; }
+        try {
+          const cameras = gsParseCameras(await record.file.text());
+          gsCatalogs.push({key, path, cameras}); cameraKeys.add(key); camerasAdded += cameras.length; added += 1;
+        } catch (error) { warnings.push(error.message); }
+        continue;
+      }
+      if (!/\.ply$/i.test(record.file.name)) continue;
+      if (keys.has(key)) { duplicates += 1; continue; }
+      const entry = {id: projectUniqueId(path.replace(/\.ply$/i, ''), names), key, file: record.file, path};
+      gsProject.assign(entry, path); gsEntries.push(entry); keys.add(key); added += 1;
+    }
+    gs$('search').value = ''; gs$('source-note').textContent = t('文件留在本机 · 分组仅保留在本次页面'); gsList();
+    if (warnings.length) gsSay(warnings.join(' '));
+    else if (camerasAdded) gsSay(t('已记录 {0} 个训练相机。使用完整旋转、位置和焦距。', [camerasAdded]));
+    if (!added && !gsEntries.length) gsError(t('没有找到高斯 PLY。请选择 point_cloud.ply，或包含它的结果文件夹。'));
+    return {added, duplicates};
+  }
+
+  const gsImport = archiveImportQueue({
+    accepts: name => /\.(ply|json)$/i.test(name), receive: gsReceive,
+    onProgress: message => { gs$('drop-status').hidden = false; gs$('drop-status').textContent = message; }, onError: gsError,
+  });
+  const gsPick = event => { const records = [...event.target.files].map(file => ({file, path: file.webkitRelativePath || file.name})); event.target.value = ''; gsImport(records).catch(() => {}); };
+  mountPointDrop({zone: gs$('point-drop-zone'), status: gs$('drop-status'), accepts: gsAccept, onFiles: gsImport});
+  gs$('choose-file').onclick = () => gs$('file-input').click();
+  gs$('choose-folder').onclick = () => gs$('folder-input').click();
+  gs$('file-input').onchange = gsPick; gs$('folder-input').onchange = gsPick;
+  gs$('search').oninput = gsList;
+  gs$('clear-selection').onclick = () => { gsSelected.clear(); gsApply(); };
+  gs$('select-all-splats').onclick = () => { for (const entry of gsEntries.filter(entry => gsProject.matches(entry, gs$('search').value))) gsSelected.add(entry); gsApply(); };
+  gs$('invert-splat-selection').onclick = () => { for (const entry of gsEntries.filter(entry => gsProject.matches(entry, gs$('search').value))) gsSelected.has(entry) ? gsSelected.delete(entry) : gsSelected.add(entry); gsApply(); };
+  gs$('gs-mode').onchange = () => {
+    gsMode = gs$('gs-mode').value === 'single' ? 'single' : 'multiple';
+    if (gsMode === 'single' && gsSelected.size > 1) { const keep = [...gsSelected].at(-1); gsSelected.clear(); gsSelected.add(keep); }
+    gsApply({preserveView: true});
+  };
+  gs$('dismiss-error').onclick = () => gsError('');
+  gs$('gs-sh').onchange = () => gsApply({preserveView: true});
+  gs$('gs-cap').onchange = () => gsApply({preserveView: true});
+  const gsAppearance = () => gsViewer?.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value});
+  gs$('gs-scale').oninput = () => { gs$('gs-scale-value').value = Number(gs$('gs-scale').value).toFixed(2); gsAppearance(); };
+  gs$('gs-cutoff').oninput = () => { gs$('gs-cutoff-value').value = `${gs$('gs-cutoff').value}%`; gsAppearance(); };
+  gs$('gs-background').onchange = gsAppearance;
+  gs$('gs-camera').onchange = () => {
+    const [catalogIndex, cameraIndex] = gs$('gs-camera').value.split(':').map(Number);
+    const camera = gs$('gs-camera')._catalogs?.[catalogIndex]?.cameras[cameraIndex];
+    if (!camera || !gsViewer?.bounds) return;
+    try { gsViewer.applyTraining(camera); } catch(error) { gsError(error.message); }
+  };
+  gs$('fit-view').onclick = () => gsViewer?.fit();
+  gs$('zoom-in').onclick = () => gsViewer?.zoomBy(1.2);
+  gs$('zoom-out').onclick = () => gsViewer?.zoomBy(1 / 1.2);
+  for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => {
+    gsViewer?.setView(button.dataset.view); gs$('gs-camera').value = '';
+    for (const other of document.querySelectorAll('[data-view]')) { const active = other === button; other.classList.toggle('active', active); other.setAttribute('aria-pressed', String(active)); }
+  };
+  document.addEventListener('keydown', event => {
+    if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName) && event.key.toLowerCase() === 'f') { event.preventDefault(); gsViewer?.fit(); }
+  });
+  try {
+    gsViewer = new GaussianViewer(gs$('scene'), {onError: gsError});
+    gsEditor = mountGaussianEditor({viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
+    mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
+  } catch (error) { gsError(error.message); }
+  window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>e.parsed?.editFlags?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
+  if(nativeApp&&gsViewer)try{
+    nativeSession=await openWorkspaceSession({tool:'gaussian',restore:async({state,records,snapshot})=>{
+      await gsReceive(records);knownIds=[...new Set([...(state?.tree?.knownIds||[]),...gsEntries.map(e=>e.id)])];
+      if(state?.tree){const restored=restoreProjectTree(gsProject,gsEntries,state.tree);gsEntries.splice(0,gsEntries.length,...restored);}
+      const flags=snapshot?await gsReadProjectBlob(snapshot):new Map();for(const entry of gsEntries)entry.savedFlags=flags.get(entry.id)||null;
+      gsMode=state?.mode==='single'?'single':'multiple';gsSelected.clear();for(const id of state?.selected||[]){const entry=gsEntries.find(e=>e.id===id);if(entry)gsSelected.add(entry);}
+      restoreMobileInputs(state?.display);await gsApply();if(state?.camera&&gsViewer.count)applyCameraSnapshot([gsViewer],state.camera,{space:'raw-world',checkScene:false});
+    },capture:()=>({revision:editRevision,blob:()=>gsProjectBlob(gsEntries),state:{schemaVersion:1,tree:{...snapshotProjectTree(gsProject,gsEntries),knownIds},selected:[...gsSelected].map(e=>e.id),mode:gsMode,display:captureMobileInputs(),camera:gsViewer.count?captureCameraSnapshot(gsViewer,{space:'raw-world'}):null}}),
+    onStatus:(kind,e)=>{if(e)gsError(e.message);else gs$('source-note').textContent=t(kind==='saved'?'项目自动保存在此设备':'保存中…');},onBackground:()=>{gsViewer.fly?.leave();gsViewer.stopNavigation();},onForeground:()=>gsViewer.requestRender()});
+    if(nativeSession?.redirecting)return;await nativeSession.flush();
+    for(const id of ['choose-file','choose-folder'])gs$(id).onclick=()=>nativeSession.pick().catch(e=>gsError(e.message));
+  }catch(e){gsError(e.message);}
+  gsList();
+}
+gsBoot();

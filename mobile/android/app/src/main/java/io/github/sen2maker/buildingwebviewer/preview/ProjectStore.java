@@ -31,7 +31,15 @@ final class ProjectStore {
     list.sort((a,b)->Long.compare(b.optLong("updatedAt"),a.optLong("updatedAt")));return new JSONArray(list);
   }
   synchronized JSONObject saveState(String id,String tool,JSONObject state)throws Exception{
-    if(!Arrays.asList("lod","wireframe","pointcloud").contains(tool))throw new IOException("Invalid viewer");JSONObject p=get(id);p.getJSONObject("states").put(tool,state);p.put("tool",tool);put(p);return p;
+    if(tool==null||!tool.matches("[a-z][a-z0-9-]{0,47}"))throw new IOException("Invalid viewer");JSONObject p=get(id);p.getJSONObject("states").put(tool,state);p.put("tool",tool);put(p);return p;
+  }
+  /** Replace editor snapshot and its state in one atomic manifest commit. Old bytes remain recoverable until cleanup. */
+  synchronized JSONObject commitSnapshot(String id,String tool,File file,JSONObject state)throws Exception{
+    if(tool==null||!tool.matches("[a-z][a-z0-9-]{0,47}"))throw new IOException("Invalid editor");
+    JSONObject p=get(id);String path=".bwv/"+tool+".snapshot";JSONObject record=object(file,path);
+    JSONArray next=new JSONArray(),old=p.getJSONArray("files");
+    for(int i=0;i<old.length();i++)if(!old.getJSONObject(i).getString("path").equals(path))next.put(old.get(i));
+    next.put(record);state.put("snapshotKey",record.getString("key"));p.put("files",next);p.getJSONObject("states").put(tool,state);p.put("tool",tool);put(p);return state;
   }
   synchronized void rename(String id,String name)throws Exception{if(name==null||name.isBlank()||name.length()>120)throw new IOException("Invalid project name");JSONObject p=get(id);p.put("name",name);put(p);}
   synchronized void trash(String id,boolean value)throws Exception{JSONObject p=get(id);p.put("trashed",value);put(p);}
@@ -93,7 +101,7 @@ final class ProjectStore {
   JSONObject restoreBackup(File source,File stage)throws Exception{
     JSONObject metadata;try(ZipFile zip=new ZipFile(source)){ZipEntry entry=zip.getEntry("bwv-project.json");if(entry==null||entry.getSize()>4L*1024*1024)throw new IOException("Invalid project backup");try(InputStream in=zip.getInputStream(entry)){metadata=new JSONObject(readText(in));}}
     if(!metadata.optString("format").equals("BuildingWebViewer.project")||metadata.optInt("version")!=1)throw new IOException("Unsupported backup version");JSONObject saved=metadata.getJSONObject("project");JSONArray expected=saved.getJSONArray("files"),files=new JSONArray();Map<String,JSONObject> paths=new HashMap<>();for(int i=0;i<expected.length();i++){JSONObject f=expected.getJSONObject(i);String path=ArchivePolicy.path(f.getString("path"));if(paths.put(path,f)!=null)throw new IOException("Duplicate backup file");}
-    ArchiveImporter.extract(source,stage,(file,path)->{if(!path.startsWith("files/"))throw new IOException("Invalid backup member");String relative=path.substring(6);JSONObject original=paths.remove(relative);if(original==null)throw new IOException("Unexpected backup file");JSONObject record=object(file,relative);if(!record.getString("key").equals(original.getString("key")))throw new IOException("Backup file checksum mismatch");files.put(record);});
+    ArchiveImporter.extract(source,stage,(file,path)->{if(path.equals("bwv-project.json"))return;if(!path.startsWith("files/"))throw new IOException("Invalid backup member");String relative=path.substring(6);JSONObject original=paths.remove(relative);if(original==null)throw new IOException("Unexpected backup file");JSONObject record=object(file,relative);if(!record.getString("key").equals(original.getString("key")))throw new IOException("Backup file checksum mismatch");files.put(record);});
     if(!paths.isEmpty())throw new IOException("Backup is missing files");return new JSONObject().put("name",saved.optString("name","Restored project")).put("states",saved.optJSONObject("states")==null?new JSONObject():saved.getJSONObject("states")).put("files",files);
   }
   static void deleteTree(File file){File[] children=file.listFiles();if(children!=null)for(File child:children)deleteTree(child);file.delete();}

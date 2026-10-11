@@ -1,3 +1,4 @@
+import { gsViewSpec, gsProjectPosition } from './camera-geometry.js';
 import { isMobileApp, mobileShareBlob } from './mobile-project.js';
 import { t } from './i18n.js';
 import { drawSceneGuides } from './scene-guides.js';
@@ -32,6 +33,7 @@ export function renderImagePixels(viewer,width,height,{transparent=false}={}) {
   }
 }
 export function projectImagePoint(point, viewer, width, height) {
+  if(viewer.projection==='perspective'){const p=gsProjectPosition(point,gsViewSpec(viewer,width,height));return p?[p.x,p.y]:[NaN,NaN];}
   const [r,u]=viewer.basis(),h=viewer.baseHeight/viewer.camera.zoom,w=h*width/height;
   const p=point.map((v,i)=>v-viewer.target[i]);
   const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
@@ -70,7 +72,7 @@ export function mountImageExport({root=document,getViewers,pauseSync=callback=>c
   const details=el('details');details.append(el('summary','高级导出'));section.append(details);
   function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
   const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
-  const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'?[]:[['svg','SVG · 线框矢量']])]));
+  const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'||root.body.dataset.tool==='gaussian'?[]:[['svg','SVG · 线框矢量']])]));
   const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
   const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
   const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));

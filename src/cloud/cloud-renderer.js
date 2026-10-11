@@ -1,3 +1,4 @@
+import { installCameraNavigation, navigationBasis, navigationMatrix, pickCloudNavigationDepth } from '../shared/navigation-adapter.js';
 import { displayColorOverride } from '../shared/cloud-colors.js';
 import { currentPresentation, displaySampleIndices } from '../shared/render-style.js';
 import { updateSceneGuides } from '../shared/scene-guides.js';
@@ -114,6 +115,8 @@ export class CloudViewer {
       if (!this.gl) throw new Error(t('无法启用 WebGL，请检查浏览器的硬件加速设置。'));
       this.initGL();
     } catch (error) { this.onError(error.message); throw error; }
+    installCameraNavigation(this);
+    this.pickOrbitDepth=(...args)=>pickCloudNavigationDepth(this,...args);
     this.installEvents();
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
     this.resizeObserver.observe(canvas);
@@ -164,25 +167,20 @@ export class CloudViewer {
     listen('contextmenu', event => event.preventDefault());
     mountTouchCamera(this, listen);
     listen('pointerdown', event => {
-      if (event.pointerType === 'touch') return;
+      if (this.fly?.active || event.pointerType === 'touch') return;
       if (![0, 1, 2].includes(event.button)) return;
       event.preventDefault();
       this.canvas.setPointerCapture(event.pointerId);
+      this.beginOrbit(event.button!==0||event.shiftKey);
       this.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, pan: event.button !== 0 || event.shiftKey };
       this.canvas.style.cursor = 'grabbing';
     });
     listen('pointermove', event => {
-      if (event.pointerType === 'touch') return;
+      if (this.fly?.active || event.pointerType === 'touch') return;
       if (!this.drag || this.drag.id !== event.pointerId) return;
       const dx = event.clientX - this.drag.x, dy = event.clientY - this.drag.y;
       this.drag.x = event.clientX; this.drag.y = event.clientY;
-      if (this.drag.pan || event.shiftKey) {
-        const step = this.baseHeight / this.camera.zoom / Math.max(1, this.canvas.clientHeight);
-        this.camera.pan[0] -= dx * step; this.camera.pan[1] += dy * step;
-      } else {
-        this.camera.azimuth = (this.camera.azimuth - dx * .35) % 360;
-        this.camera.elevation = CLOUD_CLAMP(this.camera.elevation + dy * .3, -89, 90);
-      }
+      this.navigatePixels(dx,dy,this.drag.pan||event.shiftKey,event.ctrlKey||event.metaKey);
       this.requestRender();
     });
     const finish = event => {
@@ -192,6 +190,7 @@ export class CloudViewer {
       if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
     };
     for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) listen(name, finish);
+    listen('dblclick',event=>{if(this.fly?.active||event.button!==0)return;const rect=this.canvas.getBoundingClientRect();this.focusOrbit(event.clientX-rect.left,event.clientY-rect.top);});
     listen('wheel', event => {
       event.preventDefault();
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.canvas.clientHeight : 1);
@@ -199,7 +198,7 @@ export class CloudViewer {
     }, { passive: false });
     listen('webglcontextlost', event => {
       event.preventDefault();
-      this.contextLost = true;
+      this.stopNavigation();this.contextLost = true;
       this.onError(t('WebGL 显示上下文暂时丢失，正在等待浏览器恢复。'));
     });
     listen('webglcontextrestored', () => {
@@ -253,6 +252,7 @@ export class CloudViewer {
   }
 
   forgetClouds(keys) {
+    this.stopNavigation?.();
     this.ensureCache();
     if (this.activeClouds.some(entry => keys.has(entry.key))) {
       this.setClouds(this.activeClouds.filter(entry => !keys.has(entry.key)).map(entry => entry.item));
@@ -264,6 +264,7 @@ export class CloudViewer {
   }
 
   clearCache() {
+    this.stopNavigation?.();
     this.ensureCache();
     const active = new Set(this.activeClouds.map(entry => entry.key));
     for (const [key, entry] of this.entityCache) if (!active.has(key)) { this.deleteEntity(entry); this.entityCache.delete(key); }
@@ -320,6 +321,7 @@ export class CloudViewer {
 
   /** Independent immutable cloud objects share a camera; unchanged keys reuse GPU geometry. */
   setClouds(items, {wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null, preserveView = true} = {}) {
+    this.stopNavigation?.();
     this.ensureCache();
     if (!Array.isArray(items)) throw new Error(t('setClouds 需要点云条目数组。'));
     const keys = new Set(), created = [], next = [];
@@ -560,12 +562,10 @@ export class CloudViewer {
     return CLOUD_UNION([this.referenceBounds, this.options.showPoints && this.pointCount ? this.cloudBounds : null, this.options.showWire && this.edgeCount ? this.wireBounds : null]);
   }
 
-  basis() {
-    const e = this.camera.elevation * CLOUD_DEG, a = this.camera.azimuth * CLOUD_DEG;
-    return [[-Math.sin(a), Math.cos(a), 0], [-Math.cos(a) * Math.sin(e), -Math.sin(a) * Math.sin(e), Math.cos(e)], [Math.cos(a) * Math.cos(e), Math.sin(a) * Math.cos(e), Math.sin(e)]];
-  }
+  basis() { return navigationBasis(this); }
 
   fit() {
+    this.resetNavigation();
     const visible = this.visibleBounds();
     const bounds = visible ? visible.map(point => point.map((value, axis) => value - this.origin[axis])) : [[-1, -1, -1], [1, 1, 1]];
     this.target = bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2);
@@ -578,23 +578,22 @@ export class CloudViewer {
     const aspect = Math.max(1, this.canvas.clientWidth) / Math.max(1, this.canvas.clientHeight);
     this.baseHeight = Math.max(.001, maxY - minY, (maxX - minX) / aspect) * 1.22;
     this.camera.zoom = 1; this.camera.pan = [0, 0];
+    this.distance=Math.max(.001,this.baseHeight,Math.hypot(...bounds[1].map((v,i)=>v-bounds[0][i])))*2;this.near=Math.max(1e-6,this.distance*1e-5);
     this.render();
   }
 
   setView(view) {
+    this.stopNavigation();
     const values = { iso: [38, -55], top: [90, -90], front: [0, -90] }[view];
     if (!values) throw new Error(t("不支持的视角：{0}", [view]));
     [this.camera.elevation, this.camera.azimuth] = values;
     this.fit();
   }
 
-  zoomBy(factor) {
-    if (!Number.isFinite(factor) || factor <= 0) return;
-    this.camera.zoom = CLOUD_CLAMP(this.camera.zoom * factor, .02, 100);
-    this.render();
-  }
+  zoomBy(factor, precision=false, repivot=true) { this.navigationZoom(factor,precision,repivot); }
 
   matrix() {
+    if(this.projection==='perspective')return navigationMatrix(this);
     const [r, u, t] = this.basis();
     const height = this.baseHeight / this.camera.zoom, width = height * (this.exportTarget?.width || this.canvas.width) / Math.max(1, this.exportTarget?.height || this.canvas.height);
     const cx = CLOUD_DOT(this.target, r) + this.camera.pan[0], cy = CLOUD_DOT(this.target, u) + this.camera.pan[1];
@@ -614,6 +613,7 @@ export class CloudViewer {
   render() {
     if (this.disposed || this.contextLost) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
+    this.stepNavigation();
     const gl = this.gl, canvas = this.canvas, loc = this.locations, rect = canvas.getBoundingClientRect();
     const dpr = this.exportTarget?.scale || Math.min(window.devicePixelRatio || 1, 2);
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr)), height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
@@ -692,6 +692,7 @@ export class CloudViewer {
 
   dispose() {
     if (this.disposed) return;
+    this.fly?.dispose();if(typeof document!=='undefined')document.removeEventListener('visibilitychange',this.onNavigationVisibility);
     this.disposed = true;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();

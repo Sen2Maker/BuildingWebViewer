@@ -1,7 +1,7 @@
 {
   "index.html": {
     "title": "BuildingWebViewer · 三维数据工具箱 / 3D Data Workspace",
-    "description": "在浏览器中查看 LOD 建筑模型、OBJ 线框与点云，支持属性映射、几何计算和导出，数据仅在本机处理。Browser-based LOD mesh, wireframe and point cloud viewers with attribute mapping, geometric processing and export. Files stay on your device."
+    "description": "在浏览器中查看 LOD 建筑模型、OBJ 线框、点云与三维高斯泼溅，也可绘制和修订点云。数据仅在本机处理。Browser-based LOD mesh, wireframe, point cloud and Gaussian splatting viewers, plus point-cloud creation and editing. Files stay on your device."
   },
   "lod.html": {
     "title": "LOD 模型查看器 / LOD Model Viewer · BuildingWebViewer",
@@ -14,5 +14,13 @@
   "pointcloud.html": {
     "title": "点云查看器 / Point Cloud Viewer · BuildingWebViewer",
     "description": "本地点云查看与处理：TXT、XYZ、CSV、PTS、PLY、PCD，多文件叠加、RGB/HSV、属性映射、法向量计算与合并导出。Local point cloud viewing and processing: multi-file overlays, RGB/HSV, attribute mapping, normals and merged export."
+  },
+  "gaussian.html": {
+    "title": "高斯泼溅查看器 / Gaussian Splatting Viewer · BuildingWebViewer",
+    "description": "在浏览器中查看 3D Gaussian Splatting 的二进制 PLY：正交泼溅、球谐颜色、尺度与训练机位。文件只在本机处理。Local 3D Gaussian Splatting viewer for binary PLY, with spherical harmonics, scale and training-camera directions."
+  },
+  "generate.html": {
+    "title": "点云创作与修订 / Point Cloud Studio · BuildingWebViewer",
+    "description": "本地创建和修订点云：三维画笔、框选与套索、可恢复删除、裁剪、属性保留及项目保存。Create and refine point clouds locally with 3D drawing, rectangle/lasso selection, reversible deletion, cropping and editable projects."
   }
 }

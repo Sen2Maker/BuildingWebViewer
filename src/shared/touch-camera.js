@@ -9,7 +9,8 @@ export function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
       distance: points.length === 2 ? Math.hypot(points[0].x-points[1].x, points[0].y-points[1].y) : 0};
   };
   listen('pointerdown', event => {
-    if (event.pointerType !== 'touch') return;
+    if (viewer.fly?.active || event.pointerType !== 'touch') return;
+    if (!fingers.size) viewer.beginOrbit?.(false);
     event.preventDefault(); fingers.set(event.pointerId, {x:event.clientX,y:event.clientY});
     viewer.canvas.setPointerCapture(event.pointerId); previous = pose();
   });
@@ -19,13 +20,16 @@ export function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
     const next = pose();
     if (previous && next.count === previous.count) {
       const dx = next.x-previous.x, dy=next.y-previous.y;
-      if (next.count === 1) {
+      if (viewer.navigatePixels) {
+        viewer.navigatePixels(dx, dy, next.count !== 1);
+        if (next.count === 2 && previous.distance > 2 && next.distance > 2) viewer.zoomBy(next.distance/previous.distance,false,false);
+      } else if (next.count === 1) {
         viewer.camera.azimuth = (viewer.camera.azimuth-dx*.35)%360;
         viewer.camera.elevation = Math.max(minElevation,Math.min(90,viewer.camera.elevation+dy*.3));
       } else {
         const step=viewer.baseHeight/viewer.camera.zoom/Math.max(1,viewer.canvas.clientHeight);
         viewer.camera.pan[0]-=dx*step; viewer.camera.pan[1]+=dy*step;
-        if(previous.distance>2 && next.distance>2) viewer.zoomBy(next.distance/previous.distance);
+        if(previous.distance>2 && next.distance>2) viewer.zoomBy(next.distance/previous.distance,false,false);
       }
       viewer.requestRender();
     }
