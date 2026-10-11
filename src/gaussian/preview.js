@@ -29,6 +29,6 @@ export async function gsReadPreview(file, {limit=20000, onProgress=()=>{}, cance
 }
 
 export function gsViewingProfile(mode, mobile=false, software=false) {
-  if(mode==='auto')mode=(mobile||software)?'light':'full';
-  return mode==='points'?{limit:5000,dpr:.75,points:true}:mode==='light'?{limit:20000,dpr:software ? .65 : 1,points:false}:mode==='balanced'?{limit:100000,dpr:1,points:false}:{limit:0,dpr:2,points:false};
+  if(mode==='auto')mode=(mobile||software)?'balanced':'full';
+  return {limit:0,dpr:mode==='full'?2:1,points:mode==='points',interactionScale:mode==='full'?1:.65,interactionDegree:mode==='full'?3:1};
 }

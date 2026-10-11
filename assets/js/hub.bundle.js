@@ -17,7 +17,7 @@ const EN_MESSAGES = {
   "卸载前请导出项目备份。": "Back up projects before uninstalling.",
   "第三方声明": "Licenses",
   "项目链接": "Project links",
-  "手机默认轻量查看；完整模式可调整球谐和显示数量。编辑与导出位于编辑标签。": "Mobile defaults to light viewing. Full mode enables SH and display count controls. Editing and export are in the Edit tab.",
+  "全部高斯保留，画质可独立调整。编辑与导出位于编辑标签。": "All splats are retained; quality is adjustable independently. Editing and export are in the Edit tab.",
 
   '浏览': 'Browse',
   'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',

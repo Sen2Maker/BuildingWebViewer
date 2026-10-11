@@ -103,7 +103,7 @@ export function mountImageExport({root=document,getViewers,pauseSync=callback=>c
     let x=0;
     for(let i=0;i<list.length;i++){
       const viewer=list[i],pw=quickMode?viewer.canvas.width:Math.floor((i+1)*w/list.length)-Math.floor(i*w/list.length),ph=quickMode?viewer.canvas.height:h;
-      if(quickMode)ctx.drawImage(viewer.canvas,x,0);else{
+      if(quickMode){pauseSync(()=>viewer.render());ctx.drawImage(viewer.canvas,x,0);}else{
         const aa=Number(antialias.value),pixels=pauseSync(()=>renderImagePixels(viewer,pw*aa,ph*aa,{transparent}));const part=doc.createElement('canvas');part.width=pw*aa;part.height=ph*aa;
         part.getContext('2d').putImageData(new ImageData(pixels,pw*aa,ph*aa),0,0);ctx.drawImage(part,x,0,pw,ph);
       }

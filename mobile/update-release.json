@@ -1,11 +1,11 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 5,
-  "issuedAt": 1791719522,
-  "expiresAt": 1807271522,
+  "sequence": 6,
+  "issuedAt": 1791724141,
+  "expiresAt": 1807276141,
   "notes": {
-    "zh": "修复诊断版热更新包在不同构建目录下的可复现性，保持完整签名及哈希校验。\n新增高斯渲染诊断：GPU/WebGL 信息、实际显示数量、分辨率及手动 10 秒排序和绘制耗时采集。报告可复制、导出，App 首页可查看最近报告。\n此版本专注定位真机性能，不包含尚未验证的渲染优化和下降按钮修复。\n兼容 nativeApi 6，网页热更新，无需重装 App。",
-    "en": "Fix reproducible diagnostic web-update builds across directories without weakening signature or hash checks.\nGaussian rendering diagnostics: GPU/WebGL identity, submitted counts, resolution and a manual 10-second sort/draw sample. Copy or export the report; the App home retains the latest report.\nDiagnostic release only; experimental rendering and descend-control fixes are excluded.\nNative API 6 web hot update; no APK reinstall required."
+    "zh": "高斯画质档位保留全部数据，新增独立像素倍率与可关闭的交互降质；停止移动后恢复颜色与清晰度。减少重复着色计算及排序纹理分配，完善帧耗时诊断。兼容 nativeApi 6，无需重装 App。",
+    "en": "All Gaussian quality presets retain every splat. Independent pixel ratio and optional motion quality restore after movement. Reduce redundant shader work and sort allocations; extend frame timing diagnostics. Native API 6 hot update, no reinstall."
   }
 }

@@ -24,7 +24,7 @@ test('preview validates bounds and supports cancellation',async()=>{
  const f=file(10);await assert.rejects(()=>gsReadPreview({size:f.size-1,slice:f.slice}),/Incomplete/);
  await assert.rejects(()=>gsReadPreview(f,{cancelled:()=>true}),/cancelled/);
  await assert.rejects(()=>gsReadPreview(f,{limit:0}),/budget/);
- assert.equal(gsViewingProfile('auto',true).limit,20000);assert.equal(gsViewingProfile('auto',true,true).points,false);assert.equal(gsViewingProfile('auto',true,true).limit,20000);assert.equal(gsViewingProfile('full',true,true).limit,0);
+ assert.equal(gsViewingProfile('auto',true).limit,0);assert.equal(gsViewingProfile('auto',true,true).points,false);assert.equal(gsViewingProfile('auto',true,true).limit,0);assert.equal(gsViewingProfile('full',true,true).limit,0);
 });
 test('camera translation never requires reordering; rotation does',()=>{
  const viewer={sortDirty:false,sortForward:[0,0,1],target:[100,200,300],sortTarget:[0,0,0],basis:()=>[[1,0,0],[0,1,0],[0,0,1]]};

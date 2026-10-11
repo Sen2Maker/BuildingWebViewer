@@ -1,3 +1,5 @@
+import { gsCovariance } from './covariance.js';
+import { gsFrameQuality } from './quality.js';
 import { gsReanchorOrbit, gsSetOrbitBasis, gsOrbitRotate } from '../shared/orbit-camera.js';
 import { CameraNavigation, cameraNavigationSettings, cameraNavigationScale, CAMERA_NAV_STORAGE } from '../shared/camera-navigation.js';
 import { gsViewSpec, gsTrainingPose, gsProjectPosition } from '../shared/camera-geometry.js';
@@ -48,49 +50,29 @@ uniform bool uPointPreview;
 uniform float uFar;
 out vec4 vColor;
 out vec2 vPos;
-float gsRest(int id, int channel, int band) {
-  int texel = id * 12 + channel * 4 + (band >> 2);
-  vec4 value = texelFetch(uRest, ivec2(texel % uRestWidth, texel / uRestWidth), 0);
-  int component = band & 3;
-  if (component == 0) return value.r;
-  if (component == 1) return value.g;
-  if (component == 2) return value.b;
-  return value.a;
+// SH coefficients are packed four per texel. Fetch each texel once per channel.
+vec4 gsBands(int id, int channel, int group) {
+  int texel=id*12+channel*4+group;
+  return texelFetch(uRest,ivec2(texel%uRestWidth,texel/uRestWidth),0);
 }
 vec3 gsShade(vec3 dc, int id, vec3 direction) {
-  const float c0 = 0.28209479177387814;
-  const float c1 = 0.4886025119029199;
-  vec3 color = c0 * dc;
-  if (uDegree > 0) {
-    float x = direction.x, y = direction.y, z = direction.z;
-    vec3 band1 = vec3(
-      -c1 * y * gsRest(id, 0, 0) + c1 * z * gsRest(id, 0, 1) - c1 * x * gsRest(id, 0, 2),
-      -c1 * y * gsRest(id, 1, 0) + c1 * z * gsRest(id, 1, 1) - c1 * x * gsRest(id, 1, 2),
-      -c1 * y * gsRest(id, 2, 0) + c1 * z * gsRest(id, 2, 1) - c1 * x * gsRest(id, 2, 2));
-    color += band1;
-    if (uDegree > 1) {
-      float xx = x * x, yy = y * y, zz = z * z, xy = x * y, yz = y * z, xz = x * z;
-      for (int channel = 0; channel < 3; channel++) {
-        float value = 1.0925484305920792 * xy * gsRest(id, channel, 3)
-          + -1.0925484305920792 * yz * gsRest(id, channel, 4)
-          + 0.31539156525252005 * (2.0 * zz - xx - yy) * gsRest(id, channel, 5)
-          + -1.0925484305920792 * xz * gsRest(id, channel, 6)
-          + 0.5462742152960396 * (xx - yy) * gsRest(id, channel, 7);
-        if (uDegree > 2) {
-          value += -0.5900435899266435 * y * (3.0 * xx - yy) * gsRest(id, channel, 8)
-            + 2.890611442640554 * xy * z * gsRest(id, channel, 9)
-            + -0.4570457994644658 * y * (4.0 * zz - xx - yy) * gsRest(id, channel, 10)
-            + 0.3731763325901154 * z * (2.0 * zz - 3.0 * xx - 3.0 * yy) * gsRest(id, channel, 11)
-            + -0.4570457994644658 * x * (4.0 * zz - xx - yy) * gsRest(id, channel, 12)
-            + 1.445305721320277 * z * (xx - yy) * gsRest(id, channel, 13)
-            + -0.5900435899266435 * x * (xx - 3.0 * yy) * gsRest(id, channel, 14);
-        }
-        color[channel] += value;
-      }
+  vec3 color=0.28209479177387814*dc;
+  if(uDegree>0){
+    float x=direction.x,y=direction.y,z=direction.z;
+    float xx=x*x,yy=y*y,zz=z*z,xy=x*y,yz=y*z,xz=x*z;
+    vec4 b0=vec4(-0.4886025119029199*y,0.4886025119029199*z,-0.4886025119029199*x,uDegree>1?1.0925484305920792*xy:0.0);
+    vec4 b1=vec4(-1.0925484305920792*yz,0.31539156525252005*(2.0*zz-xx-yy),-1.0925484305920792*xz,0.5462742152960396*(xx-yy));
+    vec4 b2=vec4(-0.5900435899266435*y*(3.0*xx-yy),2.890611442640554*xy*z,-0.4570457994644658*y*(4.0*zz-xx-yy),0.3731763325901154*z*(2.0*zz-3.0*xx-3.0*yy));
+    vec4 b3=vec4(-0.4570457994644658*x*(4.0*zz-xx-yy),1.445305721320277*z*(xx-yy),-0.5900435899266435*x*(xx-3.0*yy),0.0);
+    for(int c=0;c<3;c++){
+      color[c]+=dot(gsBands(id,c,0),b0);
+      if(uDegree>1)color[c]+=dot(gsBands(id,c,1),b1);
+      if(uDegree>2)color[c]+=dot(gsBands(id,c,2),b2)+dot(gsBands(id,c,3),b3);
     }
   }
-  return clamp(color + vec3(0.5), 0.0, 1.0);
+  return clamp(color+vec3(0.5),0.0,1.0);
 }
+
 void main() {
   ivec2 orderUv = ivec2(gl_InstanceID % uWidth, gl_InstanceID / uWidth);
   int id = int(texelFetch(uOrder, orderUv, 0).r);
@@ -112,21 +94,9 @@ void main() {
     vec3 rgb=clamp(texelFetch(uDc,uv,0).xyz*0.28209479177387814+0.5,0.0,1.0);
     vColor=vec4(rgb*opacity,opacity);vPos=aCorner;return;
   }
-  vec3 scale = texelFetch(uScale, uv, 0).xyz * uScaleMul;
-  vec4 quat = texelFetch(uQuat, uv, 0);
-  float w = quat.x, x = quat.y, y = quat.z, z = quat.w;
-  float r00 = 1.0 - 2.0 * (y * y + z * z);
-  float r01 = 2.0 * (x * y - w * z);
-  float r02 = 2.0 * (x * z + w * y);
-  float r10 = 2.0 * (x * y + w * z);
-  float r11 = 1.0 - 2.0 * (x * x + z * z);
-  float r12 = 2.0 * (y * z - w * x);
-  float r20 = 2.0 * (x * z - w * y);
-  float r21 = 2.0 * (y * z + w * x);
-  float r22 = 1.0 - 2.0 * (x * x + y * y);
-  vec3 axis0 = vec3(r00, r10, r20) * scale.x;
-  vec3 axis1 = vec3(r01, r11, r21) * scale.y;
-  vec3 axis2 = vec3(r02, r12, r22) * scale.z;
+  vec4 shapeA=texelFetch(uScale,uv,0);
+  vec2 shapeB=texelFetch(uQuat,uv,0).xy;
+  mat3 covariance=mat3(shapeA.x,shapeA.y,shapeA.z,shapeA.y,shapeA.w,shapeB.x,shapeA.z,shapeB.x,shapeB.y)*(uScaleMul*uScaleMul);
   float worldHeight = uBaseHeight / uZoom;
   float worldWidth = worldHeight * uViewport.x / max(uViewport.y, 1.0);
   float pixelsPerWorld = uViewport.y / worldHeight;
@@ -138,12 +108,9 @@ void main() {
   vec2 slope = clamp(vec2(vx, vy) / max(depth, uNear), -slopeLimit, slopeLimit);
   vec3 jx = uPerspective ? uFocal.x / depth * (uRight + slope.x * (-uView)) : uRight * pixelsPerWorld;
   vec3 jy = uPerspective ? uFocal.y / depth * (uUp + slope.y * (-uView)) : uUp * pixelsPerWorld;
-  vec2 p0 = vec2(dot(axis0, jx), dot(axis0, jy));
-  vec2 p1 = vec2(dot(axis1, jx), dot(axis1, jy));
-  vec2 p2 = vec2(dot(axis2, jx), dot(axis2, jy));
-  float cov00 = p0.x * p0.x + p1.x * p1.x + p2.x * p2.x + 0.3;
-  float cov11 = p0.y * p0.y + p1.y * p1.y + p2.y * p2.y + 0.3;
-  float cov01 = p0.x * p0.y + p1.x * p1.y + p2.x * p2.y;
+  float cov00=dot(jx,covariance*jx)+0.3;
+  float cov11=dot(jy,covariance*jy)+0.3;
+  float cov01=dot(jx,covariance*jy);
   float mid = 0.5 * (cov00 + cov11);
   float disc = sqrt(max(0.0, mid * mid - (cov00 * cov11 - cov01 * cov01)));
   float lambda1 = mid + disc;
@@ -257,7 +224,7 @@ export class GaussianViewer {
     this.sortDirty = true;
     this.listeners = [];
     try {
-      this.gl = canvas.getContext('webgl2', {antialias: false, alpha: false, preserveDrawingBuffer: true});
+      this.gl = canvas.getContext('webgl2', {antialias: false, alpha: false, preserveDrawingBuffer: false, depth: false});
       if (!this.gl) throw Error(t('无法启用 WebGL2，请使用 Chrome 或 Edge，并打开硬件加速。'));
       const rendererInfo=this.gl.getExtension('WEBGL_debug_renderer_info');
       this.softwareRendering=Boolean(rendererInfo&&/swiftshader|llvmpipe|softpipe|software/i.test(this.gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL)||''));
@@ -303,7 +270,7 @@ export class GaussianViewer {
     }
     const corners = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, corners);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
     this.cornerBuffer = corners;
     this.textures = {};
     for (const name of ['order','center','scale','quat','dc','rest','flags']) this.textures[name] = gl.createTexture();
@@ -566,10 +533,18 @@ export class GaussianViewer {
     const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     if(height>maxTexture || (this.packed.rest && Math.ceil(count*12/width)>maxTexture)) throw Error('超出当前 GPU 纹理容量，请选择较少显示数量 / GPU texture capacity exceeded');
     const center = pixels(4, (data, index, at) => { data.set(this.packed.centers.subarray(index * 3, index * 3 + 3), at); data[at + 3] = this.packed.opacity[index]; });
-    const scale = pixels(4, (data, index, at) => data.set(this.packed.scale.subarray(index * 3, index * 3 + 3), at));
-    const quat = pixels(4, (data, index, at) => data.set(this.packed.quat.subarray(index * 4, index * 4 + 4), at));
+    const scale=new Float32Array(width*height*4), quat=new Float32Array(width*height*4);
+    for(let i=0;i<count;i++){
+      const a=i*3,b=i*4,p=this.packed;
+      const cov=gsCovariance(p.scale[a],p.scale[a+1],p.scale[a+2],p.quat[b],p.quat[b+1],p.quat[b+2],p.quat[b+3]);
+      scale[b]=cov[0];scale[b+1]=cov[1];scale[b+2]=cov[2];scale[b+3]=cov[3];quat[b]=cov[4];quat[b+1]=cov[5];
+    }
     const dc = pixels(4, (data, index, at) => data.set(this.packed.dc.subarray(index * 3, index * 3 + 3), at));
     this.textureSize = {width, height};
+    this.orderPixels=new Uint32Array(width*height);
+    gl.bindTexture(gl.TEXTURE_2D,this.textures.order);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.R32UI,width,height,0,gl.RED_INTEGER,gl.UNSIGNED_INT,null);
     this.putFloat(this.textures.center, width, height, center);
     this.putFloat(this.textures.scale, width, height, scale);
     this.putFloat(this.textures.quat, width, height, quat);
@@ -599,12 +574,15 @@ export class GaussianViewer {
     this.sortBusy=false;
     this.diagnosticProbe?.sort(message.sortMs,performance.now()-this.diagnosticSortStart);
     if(!this.packed || this.contextLost)return;
-    const gl=this.gl,{width,height}=this.textureSize;
-    const data=new Uint32Array(width*height);data.set(new Uint32Array(message.order));
-    gl.bindTexture(gl.TEXTURE_2D,this.textures.order);
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
-    gl.texImage2D(gl.TEXTURE_2D,0,gl.R32UI,width,height,0,gl.RED_INTEGER,gl.UNSIGNED_INT,data);
+    this.uploadOrder(new Uint32Array(message.order));
     this.sortForward=message.forward;this.sortTarget=[...this.target];this.sortDirty=false;this.sortedReady=true;this.requestRender();
+  }
+  uploadOrder(order) {
+    const started=performance.now(),gl=this.gl,{width,height}=this.textureSize;
+    this.orderPixels.set(order);
+    gl.bindTexture(gl.TEXTURE_2D,this.textures.order);
+    gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,width,height,gl.RED_INTEGER,gl.UNSIGNED_INT,this.orderPixels);
+    this.diagnosticProbe?.upload(performance.now()-started);
   }
   syncFlags(redraw=true) {
     if(!this.packed)return;
@@ -643,7 +621,7 @@ export class GaussianViewer {
   dispose() {
     this.fly?.dispose();
     this.stopNavigation(); document.removeEventListener('visibilitychange', this.onNavVisibility);
-    this.diagnosticProbe?.stop();
+    clearTimeout(this.qualityTimer);this.diagnosticProbe?.stop();
     this.disposed=true;this.sortWorker?.terminate();URL.revokeObjectURL(this.workerUrl);this.resizeObserver.disconnect();
     for(const [name,fn,options] of this.listeners)this.canvas.removeEventListener(name,fn,options);
     if(this.frame!==null)cancelAnimationFrame(this.frame);
@@ -674,15 +652,7 @@ export class GaussianViewer {
       this.sortKeys[index] = gsFloatSortKey(depth); this.sortOrder[index] = index;
     }
     gsRadixSort(this.sortKeys, this.sortOrder, this.sortTemp);
-    const {width, height} = this.textureSize, pixels = new Uint32Array(width * height);
-    pixels.set(this.sortOrder.subarray(0, count));
-    const gl = this.gl;
-    gl.bindTexture(gl.TEXTURE_2D, this.textures.order);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32UI, width, height, 0, gl.RED_INTEGER, gl.UNSIGNED_INT, pixels);
+    this.uploadOrder(this.sortOrder.subarray(0,count));
     this.sortedReady = true;
     this.sortForward = forward; this.sortTarget = [...target]; this.sortDirty = false;
   }
@@ -703,12 +673,23 @@ export class GaussianViewer {
   render() {
     if (this.disposed || this.contextLost || !this.gl || (!this.exportTarget && globalThis.document?.hidden)) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
+    const frameStarted=performance.now();
     if (!this.exportTarget && this.navigation.active) {
       this.applyNavigation(this.navigation.step(performance.now()));
       if (this.navigation.active) this.requestRender();
     }
     const gl = this.gl, canvas = this.canvas, rect = canvas.getBoundingClientRect();
-    const dpr = this.exportTarget?.scale || Math.min(globalThis.devicePixelRatio || 1, this.pixelRatioLimit || 2) * (!this.exportTarget && this.pixelRatioLimit<=1 && (this.interacting || this.navigation.active || this.fly?.active) ? .75 : 1);
+    const specNow=gsViewSpec(this,rect.width,rect.height);
+    const signature=[...specNow.eye,...specNow.basis.flat(),specNow.fx,specNow.fy,this.camera.zoom,...this.camera.pan];
+    const changed=this.qualityPose && signature.some((n,i)=>Math.abs(n-this.qualityPose[i])>1e-9);
+    if(!this.exportTarget){
+      this.qualityPose=signature;
+      if(changed){this.motionUntil=frameStarted+180;clearTimeout(this.qualityTimer);this.qualityTimer=setTimeout(()=>this.requestRender(),190);}
+    }
+    const moving=!this.exportTarget && frameStarted<(this.motionUntil||0);
+    const quality=gsFrameQuality({pixelRatio:this.pixelRatioLimit||2,devicePixelRatio:globalThis.devicePixelRatio||1,moving,interactionScale:this.interactionScale??1,interactionDegree:this.interactionDegree??3,degree:this.gauss.shDegree,exporting:Boolean(this.exportTarget)});
+    this.effectiveQuality={...quality,moving};
+    const dpr = this.exportTarget?.scale || quality.dpr;
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr));
     const height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
     if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
@@ -736,15 +717,16 @@ export class GaussianViewer {
       gl.uniform3fv(loc.uTarget, this.target); gl.uniform2fv(loc.uPan, this.camera.pan); gl.uniform2f(loc.uViewport, width, height);
       gl.uniform1f(loc.uBaseHeight, this.baseHeight); gl.uniform1f(loc.uZoom, this.camera.zoom);
       gl.uniform1f(loc.uScaleMul, this.gauss.scale); gl.uniform1f(loc.uCutoff, this.gauss.opacityCutoff);
-      gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? this.gauss.shDegree : 0);
+      gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? quality.degree : 0);
       gl.uniform1i(loc.uPointPreview, this.pointPreview?1:0);
       gl.uniform1f(loc.uFar, this.viewDistance || 0);
       if(!this.exportTarget)this.diagnosticProbe?.begin();
-      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.count);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.count);
       if(!this.exportTarget)this.diagnosticProbe?.end();
     }
     if (this.exportTarget) return;
     updateSceneGuides(this);
     this.onViewChange?.();
+    this.diagnosticProbe?.frame(frameStarted,performance.now()-frameStarted,moving);
   }
 }

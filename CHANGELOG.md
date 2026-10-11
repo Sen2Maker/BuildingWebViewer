@@ -6,6 +6,16 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.4] - 2026-10-11
+
+- 高斯各画质档位保留全部数据；手机默认使用全量流畅画质，旧项目的数量限制不再影响显示。
+- 新增独立像素倍率、交互降质开关和交互颜色阶数。移动时降低像素/球谐阶数，停止后恢复；切换画质不重新解析模型。截图导出保持所选完整颜色。
+- 预计算静态协方差；每个高斯改用 4 顶点三角形带；球谐纹理按四系数读取，减少重复着色计算。后台排序返回后复用顺序数组与纹理存储。
+- 不再为了截图永久保留高斯默认绘图缓冲区；快速截图在同一任务内重绘并复制，高级截图继续使用独立帧缓冲区。
+- 诊断新增主线程整帧、排序纹理上传及连续交互绘图间隔，明确它们不是 GPU 耗时或屏幕呈现 FPS。首页入口改为“渲染诊断”。
+- Retain all Gaussians in every quality preset; independently tune pixels and temporary motion SH quality, restoring after motion. Reuse sort uploads, precompute covariance, draw four-vertex strips and fetch packed SH bands. Extend opt-in timing diagnostics; preserve quick and advanced screenshots.
+- nativeApi 6 不变，通过签名网页热更新分发，无需重装 APK。真实 Adreno 730 性能仍需用户复测；本地验证结果见 docs/validation/v1.4.4.md。
+
 ## [1.4.3] - 2026-10-11
 
 - 修复共享依赖目录通过符号链接参与构建时，兼容脚本包含本机路径、导致热更新包无法与 CI 重建产物一致的问题；固定依赖路径表示，保留原有签名及字节校验。

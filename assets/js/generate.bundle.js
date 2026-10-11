@@ -28,7 +28,7 @@ const EN_MESSAGES = {
   "卸载前请导出项目备份。": "Back up projects before uninstalling.",
   "第三方声明": "Licenses",
   "项目链接": "Project links",
-  "手机默认轻量查看；完整模式可调整球谐和显示数量。编辑与导出位于编辑标签。": "Mobile defaults to light viewing. Full mode enables SH and display count controls. Editing and export are in the Edit tab.",
+  "全部高斯保留，画质可独立调整。编辑与导出位于编辑标签。": "All splats are retained; quality is adjustable independently. Editing and export are in the Edit tab.",
 
   '浏览': 'Browse',
   'App 本地 v{0} · Android {1} · WebView {2}': 'Local app v{0} · Android {1} · WebView {2}',
@@ -1994,7 +1994,7 @@ function mountImageExport({root=document,getViewers,pauseSync=callback=>callback
     let x=0;
     for(let i=0;i<list.length;i++){
       const viewer=list[i],pw=quickMode?viewer.canvas.width:Math.floor((i+1)*w/list.length)-Math.floor(i*w/list.length),ph=quickMode?viewer.canvas.height:h;
-      if(quickMode)ctx.drawImage(viewer.canvas,x,0);else{
+      if(quickMode){pauseSync(()=>viewer.render());ctx.drawImage(viewer.canvas,x,0);}else{
         const aa=Number(antialias.value),pixels=pauseSync(()=>renderImagePixels(viewer,pw*aa,ph*aa,{transparent}));const part=doc.createElement('canvas');part.width=pw*aa;part.height=ph*aa;
         part.getContext('2d').putImageData(new ImageData(pixels,pw*aa,ph*aa),0,0);ctx.drawImage(part,x,0,pw,ph);
       }
