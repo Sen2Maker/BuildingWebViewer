@@ -1,11 +1,11 @@
 {
-  "version": "1.4.7",
+  "version": "1.5.0",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 9,
-  "issuedAt": 1791884484,
-  "expiresAt": 1807436484,
+  "sequence": 10,
+  "issuedAt": 1791892138,
+  "expiresAt": 1807444138,
   "notes": {
-    "zh": "优化完整高斯的默认着色、纹理寻址与屏幕外剔除，减少原本低于透明度阈值的外围绘制；编辑标记纹理采用单字节存储。不下采样，保留完整模型。提供默认关闭的投影复用对照开关；新增自动旋转诊断及事件、动画调度延迟统计。",
-    "en": "Optimize full-resolution direct Gaussian shaders, texture addressing and conservative offscreen/transparent-support rejection; compact edit flags. No source sampling. Optional projection reuse is off by default. Add automatic orbit diagnostics and event/animation scheduling timings."
+    "zh": "新增 Android 原生高斯只读查看器：本机项目直接读取、完整高斯渲染、独立触摸相机、PNG 截图和原生诊断，不下采样。保留 App 内兼容查看。本版本需要安装完整 APK。",
+    "en": "Add an Android native read-only Gaussian viewer with direct local project access, full splat rendering, native gestures, PNG capture and diagnostics. No sampling. In-App compatibility view remains available. Install the complete APK for this version."
   }
 }

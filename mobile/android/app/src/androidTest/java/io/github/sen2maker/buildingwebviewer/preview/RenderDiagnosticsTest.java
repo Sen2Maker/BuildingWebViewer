@@ -27,7 +27,7 @@ public class RenderDiagnosticsTest {
    waitFor(scenario,"document.readyState==='complete'&&!!document.getElementById('projects')?.children.length");
    scenario.onActivity(a->a.getBridge().getWebView().loadUrl("https://localhost/gaussian.html?project="+id+"&lang=en"));
    waitFor(scenario,"!!document.querySelector('#splat-list input[type=checkbox]')&&typeof bwvReturnToProjectHome==='function'");
-   assertTrue(js(scenario,"document.querySelector('#splat-list input[type=checkbox]').click();true"));
+   assertTrue(js(scenario,"if(document.getElementById('gs-native-readonly')?.checked)document.getElementById('gs-native-readonly').click();document.querySelector('#splat-list input[type=checkbox]').click();true"));
    waitFor(scenario,"document.getElementById('scene-stats').textContent.includes('1,000')&&document.getElementById('loading').hidden");
    assertTrue(js(scenario,"document.getElementById('gs-diagnostics').click();true"));
    waitFor(scenario,"!!document.querySelector('#render-diagnostic-dialog textarea')");

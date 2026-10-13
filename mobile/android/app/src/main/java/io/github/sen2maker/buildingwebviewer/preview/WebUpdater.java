@@ -11,7 +11,7 @@ import java.util.zip.*;
 
 /** Local-first updates. All network update decisions require native signature verification. */
 class WebUpdater {
-  static final int NATIVE_API=6;
+  static final int NATIVE_API=7;
   static final String SITE="https://sen2maker.github.io/BuildingWebViewer/";
   static final String REPO=SignedUpdate.REPO;
   final Context context; final File root; final SharedPreferences prefs;
@@ -33,6 +33,19 @@ class WebUpdater {
     }catch(Exception ignored){return null;}
   }
   boolean compatible(File folder){try{return readJson(new File(folder,"native-web.json")).getInt("nativeApi")==NATIVE_API;}catch(Exception ignored){return false;}}
+  String nativeShader(String name)throws IOException {
+    if(!Arrays.asList("gaussian-vertex.glsl","gaussian-fragment.glsl").contains(name))throw new IOException("Unknown native shader");
+    String active=prefs.getString("active",null);
+    if(active!=null)try{
+      File folder=ArchivePolicy.within(root,active);
+      if(compatible(folder)&&VersionPolicy.compare(currentVersion(folder.getPath()),bundledVersion())>0){
+        JSONObject verified=SignedUpdate.verify(readJson(new File(folder,"update-receipt.json")),trust(),System.currentTimeMillis()/1000,false);
+        if(verified.getInt("nativeApi")==NATIVE_API&&verified.getString("version").equals(currentVersion(folder.getPath())))
+          try(InputStream in=new FileInputStream(new File(folder,"assets/native/"+name))){return readLimited(in,65536);}
+      }
+    }catch(Exception ignored){}
+    try(InputStream in=context.getAssets().open("public/assets/native/"+name)){return readLimited(in,65536);}
+  }
   void healthy(){prefs.edit().putBoolean("booting",false).apply();}
   static String readLimited(InputStream in,int maximum)throws IOException{
     ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] bytes=new byte[8192];int n;
@@ -85,7 +98,7 @@ class WebUpdater {
     try{
       download(update.getJSONObject("web"),zip,SignedUpdate.MAX_WEB,null);
       Set<String> names=new HashSet<>();long expanded=0;int count=0;
-      try(ZipInputStream in=new ZipInputStream(new FileInputStream(zip))){ZipEntry e;byte[] b=new byte[65536];while((e=in.getNextEntry())!=null){if(++count>3000)throw new IOException("Too many update entries");String name=ArchivePolicy.path(e.getName());if(!names.add(name)||name.equals("update-receipt.json"))throw new IOException("Duplicate or reserved update entry");File f=ArchivePolicy.within(web,name);if(e.isDirectory()){f.mkdirs();continue;}if(!name.matches(".*\\.(html|js|css|json|svg|png|ico|xml|md|txt)$")&&!name.equals(".nojekyll"))throw new IOException("Unexpected update file");f.getParentFile().mkdirs();try(FileOutputStream out=new FileOutputStream(f)){int n;while((n=in.read(b))!=-1){expanded+=n;if(expanded>64L*1024*1024)throw new IOException("Expanded update too large");out.write(b,0,n);}}}}
+      try(ZipInputStream in=new ZipInputStream(new FileInputStream(zip))){ZipEntry e;byte[] b=new byte[65536];while((e=in.getNextEntry())!=null){if(++count>3000)throw new IOException("Too many update entries");String name=ArchivePolicy.path(e.getName());if(!names.add(name)||name.equals("update-receipt.json"))throw new IOException("Duplicate or reserved update entry");File f=ArchivePolicy.within(web,name);if(e.isDirectory()){f.mkdirs();continue;}if(!name.matches(".*\\.(html|js|css|json|svg|png|ico|xml|md|txt|glsl)$")&&!name.equals(".nojekyll"))throw new IOException("Unexpected update file");f.getParentFile().mkdirs();try(FileOutputStream out=new FileOutputStream(f)){int n;while((n=in.read(b))!=-1){expanded+=n;if(expanded>64L*1024*1024)throw new IOException("Expanded update too large");out.write(b,0,n);}}}}
       if(!compatible(web)||!new File(web,"assets/mobile/index.html").isFile()||!new File(web,"assets/js/capacitor.js").isFile()||!currentVersion(web.getPath()).equals(update.getString("version")))throw new IOException("Incomplete web update");
       JSONObject notes=readJson(new File(web,"release-notes.json"));
       if(!notes.getString("version").equals(update.getString("version"))||!notes.getJSONObject("notes").getString("zh").equals(update.getJSONObject("notes").getString("zh"))||!notes.getJSONObject("notes").getString("en").equals(update.getJSONObject("notes").getString("en")))throw new IOException("Release notes mismatch");

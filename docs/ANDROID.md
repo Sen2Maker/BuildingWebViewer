@@ -1,5 +1,9 @@
 # Android Preview
 
+**v1.5.0：原生高斯查看** — 安装本版本完整 APK 后，在项目的高斯模块勾选 PLY，点击“打开原生全量画面”。独立 GLES 3 画面支持全量渲染、触摸相机、PNG 截图与 10 秒诊断，不下采样。需要 GLES 3；容量不足会明确报错。关闭“App 原生只读查看”可使用 App 内兼容模式。原生模式显示原始数据，不应用旧编辑隐藏记录，目前不导入训练相机或网页书签。实际手机性能需要对照验证。
+
+**Native Gaussian view** — Install the full v1.5.0 APK, select project PLY files and open the native view. It renders all splats with GLES 3, native gestures, PNG capture and diagnostics. No sampling; capacity failures are explicit. The in-App compatibility view retains previous edit masks, training cameras and web bookmarks. Real-device performance still needs comparison.
+
 App 复用五个三维工具，文件和项目保存在手机内。网页不需要安装 Node 或 Android SDK；下面的依赖仅用于构建 APK。
 
 ## 安装与使用

@@ -6,6 +6,13 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.5.0] - 2026-10-13
+
+- Android 新增独立的原生高斯只读查看器：直接读取本机项目，使用 GLES 3 与独立 GL 线程渲染全部高斯，原生触摸旋转、平移和缩放。
+- 支持高画质 PNG 截图、自动／手动 10 秒原生诊断。保留 App 内兼容查看，旧编辑记录仍由兼容模式处理；原生模式显示原始完整数据。
+- 原生着色器与网页着色器由同一源码生成，后续可信热更新可更新着色器。本版本新增原生接口，需要安装完整 APK；不改变网页版。
+- Add a native Android read-only Gaussian viewer with full local data, GLES 3 rendering, native camera gestures, PNG capture and diagnostics. Keep the in-App compatibility viewer for previous edits. This version requires a complete APK; real-device performance needs comparison.
+
 ## [1.4.7] - 2026-10-13
 
 - 优化默认高斯绘制：固定纹理地址使用位运算、低阶颜色跳过高阶计算、提前保守屏幕外剔除，并缩小原本已低于透明度阈值的外围绘制区域。保留全部数据、可见椭圆形状和精确深度排序。

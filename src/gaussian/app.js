@@ -1,3 +1,4 @@
+import { mountNativeGaussian } from './native-view.js';
 import { mountRenderDiagnostics } from '../shared/render-diagnostics.js';
 import { openWorkspaceSession } from '../shared/workspace-session.js';
 import { isMobileApp, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs } from '../shared/mobile-project.js';
@@ -41,7 +42,7 @@ async function gsBoot() {
   const initialQuality=gsViewingProfile('auto',mobileView);resolution.value=initialQuality.dpr;interaction.checked=initialQuality.interactionScale<1;motionDegree.value=initialQuality.interactionDegree;
   const gsProject = new ViewerProject();
   const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
-  let nativeSession=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
+  let nativeSession=null,nativeGaussian=null,preservedWebCamera=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
   let gsEditor = null, gsViewer = null, gsSerial = 0, gsMode = 'multiple';
   const gsAccept = name => /\.(ply|json|zip)$/i.test(name);
   const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -85,7 +86,7 @@ async function gsBoot() {
     gs$('select-all-splats').disabled = gsMode !== 'multiple' || !matched.length;
     gs$('invert-splat-selection').disabled = gsMode !== 'multiple' || !matched.length;
     gs$('gs-mode').value = gsMode;
-    gsTree?.render();
+    gsTree?.render();nativeGaussian?.refresh();
     gsRefreshCameras();
   }
 
@@ -112,6 +113,16 @@ async function gsBoot() {
   async function gsApply({preserveView = false} = {}) {
     const serial = ++gsSerial;
     const selected = [...gsSelected];
+    if(nativeGaussian?.enabled){
+      gsLoading('');gsError('');gsViewer?.clearSplats();gsEditor?.setLoading(false);
+      gs$('empty-state').hidden=false;gs$('screenshot').disabled=true;
+      gs$('current-title').textContent=label('App 原生高斯查看','App native Gaussian viewer');
+      gs$('scene-stats').textContent=label('已选择 ','Selected ')+selected.length+label(' 个文件 · 点击“打开原生全量画面”',' files · open the native full-resolution view');
+      gs$('empty-state').querySelector('h3').textContent=label('原生只读 · 全量渲染','Native read-only · all splats');
+      gs$('empty-state').querySelector('p').textContent=label('在上方打开独立原生画面，浏览和截屏。','Open the native view above to browse and capture.');
+      document.querySelectorAll('.viewer-toolbar,.gs-edit-toolbar,.viewport,.viewer-inspector').forEach(node=>node.classList.add('native-view-hidden'));gsList();return;
+    }
+    document.querySelectorAll('.native-view-hidden').forEach(node=>node.classList.remove('native-view-hidden'));
     if (!selected.length) {
       gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
       gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
@@ -263,15 +274,16 @@ async function gsBoot() {
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }
   window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>gsEntryFlags(e)?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
+  if(nativeApp&&gsViewer){nativeGaussian=await mountNativeGaussian({container:document.querySelector('.main-heading').parentElement,getEntries:()=>[...gsSelected],onModeChange:()=>gsApply({preserveView:true})});}
   if(nativeApp&&gsViewer)try{
     nativeSession=await openWorkspaceSession({tool:'gaussian',restore:async({state,records,snapshot})=>{
       await gsReceive(records);knownIds=[...new Set([...(state?.tree?.knownIds||[]),...gsEntries.map(e=>e.id)])];
       if(state?.tree){const restored=restoreProjectTree(gsProject,gsEntries,state.tree);gsEntries.splice(0,gsEntries.length,...restored);}
       const flags=snapshot?await gsReadProjectBlob(snapshot):new Map();for(const entry of gsEntries)entry.savedFlags=flags.get(entry.id)||null;
       gsMode=state?.mode==='single'?'single':'multiple';gsSelected.clear();for(const id of state?.selected||[]){const entry=gsEntries.find(e=>e.id===id);if(entry)gsSelected.add(entry);}
-      restoreMobileInputs(state?.display);await gsApply();if(state?.camera&&gsViewer.count)applyCameraSnapshot([gsViewer],state.camera,{space:'raw-world',checkScene:false});
+      preservedWebCamera=state?.camera||null;restoreMobileInputs(state?.display);await gsApply();if(state?.camera&&gsViewer.count)applyCameraSnapshot([gsViewer],state.camera,{space:'raw-world',checkScene:false});
       return {snapshotUnchanged:Boolean(snapshot)};
-    },capture:()=>({revision:editRevision,blob:()=>gsProjectBlob(gsEntries),state:{schemaVersion:1,tree:{...snapshotProjectTree(gsProject,gsEntries),knownIds},selected:[...gsSelected].map(e=>e.id),mode:gsMode,display:captureMobileInputs(),camera:gsViewer.count?captureCameraSnapshot(gsViewer,{space:'raw-world'}):null}}),
+    },capture:()=>({revision:editRevision,blob:()=>gsProjectBlob(gsEntries),state:{schemaVersion:1,tree:{...snapshotProjectTree(gsProject,gsEntries),knownIds},selected:[...gsSelected].map(e=>e.id),mode:gsMode,display:captureMobileInputs(),camera:gsViewer.count?captureCameraSnapshot(gsViewer,{space:'raw-world'}):preservedWebCamera}}),
     onStatus:(kind,e)=>{if(e)gsError(e.message);else gs$('source-note').textContent=t(kind==='saved'?'项目自动保存在此设备':kind==='dirty'?'待自动保存':'保存中…');},onBackground:()=>{gsViewer.fly?.leave();gsViewer.stopNavigation();},onForeground:()=>gsViewer.requestRender()});
     if(nativeSession?.redirecting)return;await nativeSession.flush();
     for(const id of ['choose-file','choose-folder'])gs$(id).onclick=()=>nativeSession.pick().catch(e=>gsError(e.message));

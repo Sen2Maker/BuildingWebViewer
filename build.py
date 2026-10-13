@@ -115,6 +115,17 @@ def main():
     cli.add_argument('--check', action='store_true', help='Fail if tracked bundles are stale; do not write')
     args = cli.parse_args()
     config = project_config()
+    renderer_source = (HERE / 'src/gaussian/renderer.js').read_text(encoding='utf-8')
+    for constant, name in [('GS_VERTEX', 'gaussian-vertex.glsl'), ('GS_FRAGMENT', 'gaussian-fragment.glsl')]:
+        match = re.search(r'export const ' + constant + r' = `([\s\S]*?)`;', renderer_source)
+        if not match: raise ValueError('Missing native Gaussian shader: ' + constant)
+        shader = match[1].replace('int flags = int(texelFetch(uFlags, uv, 0).r * 255.0 + 0.5);', 'int flags = 0;') + '\n'
+        target = HERE / 'assets/native' / name
+        if args.check:
+            if not target.exists() or target.read_text() != shader: raise SystemExit('Stale native shader: ' + name)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(shader, encoding='utf-8')
     target_map = HERE / 'sitemap.xml'
     if args.check:
         if not target_map.exists() or target_map.read_text(encoding='utf-8') != sitemap(config):

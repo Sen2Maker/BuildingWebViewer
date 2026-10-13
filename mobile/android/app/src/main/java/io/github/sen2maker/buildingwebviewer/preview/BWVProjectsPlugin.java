@@ -28,7 +28,7 @@ public class BWVProjectsPlugin extends Plugin {
     String version="unknown";
     if(android.os.Build.VERSION.SDK_INT>=26){android.content.pm.PackageInfo engine=android.webkit.WebView.getCurrentWebViewPackage();if(engine!=null)version=engine.versionName;}
     else{java.util.regex.Matcher match=java.util.regex.Pattern.compile("Chrome/([0-9.]+)").matcher(bridge.getWebView().getSettings().getUserAgentString());if(match.find())version=match.group(1);}
-    call.resolve(new JSObject().put("current",updater.currentVersion(bridge.getServerBasePath())).put("apkVersion",getContext().getPackageManager().getPackageInfo(getContext().getPackageName(),0).versionName).put("android",android.os.Build.VERSION.RELEASE).put("webview",version));
+    call.resolve(new JSObject().put("current",updater.currentVersion(bridge.getServerBasePath())).put("apkVersion",getContext().getPackageManager().getPackageInfo(getContext().getPackageName(),0).versionName).put("nativeGaussian",((android.app.ActivityManager)getContext().getSystemService(android.content.Context.ACTIVITY_SERVICE)).getDeviceConfigurationInfo().reqGlEsVersion>=0x30000).put("android",android.os.Build.VERSION.RELEASE).put("webview",version));
   }catch(Exception error){call.reject(error.getMessage());}});}
   @PluginMethod public void checkUpdate(PluginCall call){
     java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();
@@ -61,6 +61,11 @@ public class BWVProjectsPlugin extends Plugin {
   }catch(Exception error){call.reject(error.getMessage());}});}
   @PluginMethod public void installWebUpdate(PluginCall call){NETWORK.execute(()->{try{String path=updater.install();call.resolve(new JSObject().put("installed",true));}catch(Exception error){call.reject(error.getMessage());}});}
   @PluginMethod public void activateWebUpdate(PluginCall call){String path=updater.startupPath();call.resolve();if(path!=null)getActivity().runOnUiThread(()->bridge.setServerBasePath(path));}
+  @PluginMethod public void openNativeGaussian(PluginCall call){IO.execute(()->{try{
+    String id=call.getString("id");JSONArray keys=call.getData().getJSONArray("keys");NativeGaussianActivity.authorizedFiles(store,id,keys);
+    getActivity().runOnUiThread(()->{try{Intent intent=new Intent(getContext(),NativeGaussianActivity.class).putExtra("project",id).putExtra("keys",keys.toString()).putExtra("lang",call.getString("lang","zh"));startActivityForResult(call,intent,"nativeGaussianReturned");}catch(Exception error){call.reject(error.getMessage());}});
+  }catch(Exception error){call.reject(error.getMessage());}});}
+  @ActivityCallback private void nativeGaussianReturned(PluginCall call,ActivityResult result){if(call==null)return;boolean compatibility=result.getData()!=null&&result.getData().getBooleanExtra("compatibility",false);call.resolve(new JSObject().put("compatibility",compatibility));}
   @PluginMethod public void cleanupStorage(PluginCall call){run(call,()->new JSONObject().put("freed",store.cleanup()));}
   @PluginMethod public void emptyTrash(PluginCall call){run(call,()->new JSONObject().put("freed",store.emptyTrash()));}
   @PluginMethod public void backupProject(PluginCall call){run(call,()->{File dir=new File(getContext().getCacheDir(),"exports/"+ProjectStore.id());File file=store.backup(call.getString("id"),dir);share(file,"application/zip");return new JSONObject();});}

@@ -27,7 +27,7 @@ public class GaussianMobileTest {
    waitFor(scenario,"document.readyState==='complete'&&!!document.getElementById('projects')?.children.length");
    scenario.onActivity(a->a.getBridge().getWebView().loadUrl("https://localhost/gaussian.html?project="+id+"&lang=en"));
    waitFor(scenario,"!!document.querySelector('#splat-list input[type=checkbox]')&&typeof bwvReturnToProjectHome==='function'");
-   assertTrue(js(scenario,"document.querySelector('#splat-list input[type=checkbox]').click();true"));
+   assertTrue(js(scenario,"if(document.getElementById('gs-native-readonly')?.checked)document.getElementById('gs-native-readonly').click();document.querySelector('#splat-list input[type=checkbox]').click();true"));
    waitFor(scenario,"document.getElementById('scene-stats').textContent.includes('100,000 / 100,000')&&document.getElementById('loading').hidden");
    assertTrue(js(scenario,"!document.getElementById('gs-distance-enabled').checked&&!document.getElementById('settings-panel-edit').querySelector('fieldset').disabled&&document.getElementById('error').hidden"));
    assertTrue(js(scenario,"document.querySelector('[data-open-settings=edit]').click();document.querySelector('#settings-panel-edit>button').click();true"));

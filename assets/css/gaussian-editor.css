@@ -13,3 +13,7 @@
 
 .gs-edit-fields{border:0;padding:0;min-width:0;margin:12px 0}.gs-edit-fields:disabled{opacity:.45}.gs-edit-fields select{width:100%;margin:6px 0}#settings-panel-edit{padding:14px}.gs-edit-fields .gs-edit-hint{display:block}.gs-edit-fields .gs-edit-toolbar label{display:flex}.gs-edit-fields .gs-edit-toolbar button{min-height:40px}.gs-edit-fields>button{margin:8px 0}.inspector-tabs{overflow-x:auto;flex-shrink:0}
 .gs-active-edit{border-color:#c39154!important;color:#805c32!important;background:#fff6e9!important}
+
+.native-gaussian-entry{border:1px solid #c4dbd0;border-radius:10px;background:#edf6f1;padding:12px;margin:8px 0;display:flex;flex-wrap:wrap;align-items:center;gap:10px}.native-gaussian-entry label{display:flex;align-items:center;gap:8px;font-size:13px}.native-gaussian-entry p{flex-basis:100%;margin:0}.native-gaussian-entry button{padding:10px 14px;background:#246953;color:white;border-color:#246953}
+
+.native-view-hidden{display:none!important}
