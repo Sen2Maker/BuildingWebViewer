@@ -1,11 +1,11 @@
 {
-  "version": "1.6.1",
+  "version": "1.6.2",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 12,
-  "issuedAt": 1791907961,
-  "expiresAt": 1807459961,
+  "sequence": 13,
+  "issuedAt": 1791910115,
+  "expiresAt": 1807462115,
   "notes": {
-    "zh": "修正原生高斯漫游：前后左右在水平面移动，高度独立；新增左右双摇杆和中间升降控制，支持同时移动与观察。控制器叠放在画面内，不再挤压视口，工具栏与按钮改为紧凑平面样式。需要覆盖安装完整 APK，保留项目与书签。",
-    "en": "Fix native Gaussian navigation: planar forward/strafe, separate height, move/look thumb pads and independent rise/lower controls. Simultaneous inputs are supported. Overlay controls keep the viewport size unchanged; streamline toolbar styling. Install the full APK; projects and views remain."
+    "zh": "修复原生相机输入数字裁切、完成按钮提交与漫游缩放；模拟器验证摇杆对应的实际画面方向。需要覆盖安装完整 APK，项目与书签保留。",
+    "en": "Fix clipped native camera numeric inputs, commit edits on Done, and optical zoom in fly mode. Verify actual image directions from move/look pads. Install the full APK; projects and views remain."
   }
 }

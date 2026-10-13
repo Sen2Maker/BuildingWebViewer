@@ -6,6 +6,14 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.6.2] - 2026-10-14
+
+- 修复原生相机数字输入框被主题内边距裁切，改为自适应高度、紧凑对齐布局和完整宽度滑块；完成按钮提交当前输入。
+- 漫游中缩放改为光学放大，保持相机位置；兼容旧书签默认倍率。
+- Android 模拟器用真实摇杆事件与渲染截图验证右移、右转、抬头的画面方向，保留全量高斯渲染。原生修复需覆盖安装 APK。
+- Fix clipped native camera fields and commit focused edits on Done. Fly zoom adjusts optical magnification without moving the eye; old views default to 1×. Verify rendered move/look directions on Android.
+
+
 ## [1.6.1] - 2026-10-14
 
 - 修正漫游坐标：前后左右沿水平面移动，不再随俯仰升降；高度使用独立世界 Z 轴。
