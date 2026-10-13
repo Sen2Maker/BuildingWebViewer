@@ -6,6 +6,14 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.7] - 2026-10-13
+
+- 优化默认高斯绘制：固定纹理地址使用位运算、低阶颜色跳过高阶计算、提前保守屏幕外剔除，并缩小原本已低于透明度阈值的外围绘制区域。保留全部数据、可见椭圆形状和精确深度排序。
+- 额外提供投影复用对照开关，默认关闭；不同 GPU 收益不同，缓冲预算或初始化失败时回退到直接绘制。
+- 仅剔除整个投影四边形都在屏幕外的高斯；保留边缘重叠的大高斯。编辑标记纹理由 RGBA32F 改为 R8，片元颜色去掉冗余除法。
+- 新增自动旋转 10 秒诊断并恢复原视角；诊断区分事件送达、动画回调等待、实际绘制路径与额外投影缓冲开销。
+- Optimize direct full-resolution drawing, skip invisible support and offscreen quads, compact edit flags, and avoid redundant shader work. Projection reuse is an optional experiment, off by default. Add reversible automatic orbit diagnostics and scheduler timings; phone gains require comparison.
+
 ## [1.4.6] - 2026-10-13
 
 - 高斯相机尺寸通过 ResizeObserver 缓存，减少逐帧布局读取；相机面板按变化节流更新，运动画质延迟恢复以减少画布尺寸来回切换。

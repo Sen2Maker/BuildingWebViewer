@@ -1,11 +1,11 @@
 {
-  "version": "1.4.6",
+  "version": "1.4.7",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 8,
-  "issuedAt": 1791877741,
-  "expiresAt": 1807429741,
+  "sequence": 9,
+  "issuedAt": 1791884484,
+  "expiresAt": 1807436484,
   "notes": {
-    "zh": "减少高斯查看器界面刷新与画布尺寸切换，优化精确深度排序，新增分阶段性能诊断。加载提示支持长文件名与独立进度条，高斯解析显示真实百分比。保留全部数据；同时提供完整 APK 与兼容热更新。",
-    "en": "Reduce Gaussian UI and canvas resize overhead, optimize exact depth sorting and add phase diagnostics. Loading cards wrap long filenames and show a separate activity bar or real parsing progress. Retain all data; provide a full APK and compatible web update."
+    "zh": "优化完整高斯的默认着色、纹理寻址与屏幕外剔除，减少原本低于透明度阈值的外围绘制；编辑标记纹理采用单字节存储。不下采样，保留完整模型。提供默认关闭的投影复用对照开关；新增自动旋转诊断及事件、动画调度延迟统计。",
+    "en": "Optimize full-resolution direct Gaussian shaders, texture addressing and conservative offscreen/transparent-support rejection; compact edit flags. No source sampling. Optional projection reuse is off by default. Add automatic orbit diagnostics and event/animation scheduling timings."
   }
 }

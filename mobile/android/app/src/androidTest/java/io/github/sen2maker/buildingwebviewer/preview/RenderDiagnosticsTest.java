@@ -32,9 +32,13 @@ public class RenderDiagnosticsTest {
    assertTrue(js(scenario,"document.getElementById('gs-diagnostics').click();true"));
    waitFor(scenario,"!!document.querySelector('#render-diagnostic-dialog textarea')");
    assertTrue(js(scenario,"window.report=JSON.parse(document.querySelector('#render-diagnostic-dialog textarea').value);report.webVersion==='"+updates.bundledVersion()+"'&&report.scene.sourceSplats===1000&&report.graphics.webgl.includes('WebGL 2')&&report.native.apkVersion.length>0"));
-   assertTrue(js(scenario,"Array.from(document.querySelectorAll('#render-diagnostic-dialog button')).find(b=>b.textContent==='Sample for 10 seconds').click();document.querySelector('[data-view=top]').click();true"));
+   assertTrue(js(scenario,"report.scene.projectionPipeline==='direct'"));
+   assertTrue(js(scenario,"document.getElementById('gs-gpu-projection').click();true"));
+   waitFor(scenario,"Array.from(document.querySelectorAll('#render-diagnostic-dialog button')).find(b=>b.textContent==='Refresh report').click();JSON.parse(document.querySelector('#render-diagnostic-dialog textarea').value).scene.projectionPipeline==='project-once'");
+   assertTrue(js(scenario,"document.getElementById('scene').getContext('webgl2').getError()===0"));
+   assertTrue(js(scenario,"Array.from(document.querySelectorAll('#render-diagnostic-dialog button')).find(b=>b.textContent==='Automatic orbit sample (10 seconds)').click();true"));
    SystemClock.sleep(11000);
-   assertTrue(js(scenario,"window.saved=JSON.parse(localStorage.getItem('bwv-render-diagnostic-v1'));saved.measurement.durationMs>=9000&&saved.measurement.cpuDrawSubmission.samples>0"));
+   assertTrue(js(scenario,"window.saved=JSON.parse(localStorage.getItem('bwv-render-diagnostic-v1'));saved.measurement.durationMs>=9000&&saved.measurement.cpuDrawSubmission.samples>0&&saved.measurement.sampleMode==='automatic-orbit'&&saved.schema===4"));
    assertTrue(js(scenario,"window.bwvReturnToProjectHome();true"));
    waitFor(scenario,"!!document.getElementById('show-diagnostics')");
    assertTrue(js(scenario,"document.getElementById('show-diagnostics').click();true"));

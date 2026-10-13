@@ -1413,7 +1413,7 @@ async function nativeExportWriter(name){
 
 // Source: src/shared/render-diagnostics.js
 
-const diagnosticSamples=()=>Object.fromEntries(['gpu','submit','sort','roundTrip','upload','frameCpu','frameInterval','interactionInterval','inputInterval','inputToDraw','cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,[]]));
+const diagnosticSamples=()=>Object.fromEntries(['gpu','submit','sort','roundTrip','upload','frameCpu','frameInterval','interactionInterval','inputInterval','inputToDraw','eventDelivery','rafQueue','cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,[]]));
 const RENDER_DIAGNOSTIC_KEY='bwv-render-diagnostic-v1';
 function classifyRenderer(name) {
   if(!name)return 'unknown (renderer identity unavailable)';
@@ -1428,14 +1428,17 @@ function diagnosticSummary(values) {
 /** Queries run asynchronously only while a user-requested sample is active. */
 class RenderDiagnosticProbe {
   constructor(viewer){this.viewer=viewer;this.active=false;this.queries=[];this.samples=diagnosticSamples();this.contextLosses=0;this.onLost=()=>{this.contextLosses++;this.active=false;this.queries=[];};viewer.canvas.addEventListener('webglcontextlost',this.onLost);}
-  start(){this.stop();this.samples=diagnosticSamples();this.lastFrame=0;this.lastMoving=false;this.lastInput=0;this.pendingInput=0;this.resizeCount=0;this.frameCount=0;this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
+  start(autoRotate=false){this.stop();this.samples=diagnosticSamples();this.lastFrame=0;this.lastMoving=false;this.lastInput=0;this.pendingInput=0;this.resizeCount=0;this.frameCount=0;this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.sampleMode=autoRotate?'automatic-orbit':'manual';
+    if(autoRotate){const v=this.viewer;v.stopNavigation();this.savedPose=JSON.parse(JSON.stringify({generation:v.generation,camera:v.camera,target:v.target,trainingPose:v.trainingPose,orbitLens:v.orbitLens,distance:v.distance,flyPose:v.flyPose}));v.leaveTraining();this.orbitStart=v.camera.azimuth;v.requestRender();}
+    this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
   poll(){const gl=this.viewer.gl,ext=this.ext;if(!ext||gl.isContextLost())return;const disjoint=gl.getParameter(ext.GPU_DISJOINT_EXT);if(disjoint)this.disjoint=true;while(this.queries.length&&(disjoint||gl.getQueryParameter(this.queries[0],gl.QUERY_RESULT_AVAILABLE))){const q=this.queries.shift();if(!disjoint)this.add('gpu',gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6);gl.deleteQuery(q);}}
   add(key,value){if(Number.isFinite(value)&&this.samples[key].length<600)this.samples[key].push(value);}
   begin(){if(!this.active)return;this.poll();this.cpuStart=performance.now();const gl=this.viewer.gl;if(this.ext&&this.queries.length<3){this.query=gl.createQuery();gl.beginQuery(this.ext.TIME_ELAPSED_EXT,this.query);}}
   end(){if(this.cpuStart==null)return;const gl=this.viewer.gl;if(this.query){gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queries.push(this.query);this.query=null;}this.add('submit',performance.now()-this.cpuStart);this.cpuStart=null;}
   sort(ms,roundTrip){if(this.active){this.add('sort',ms);this.add('roundTrip',roundTrip);}}
   upload(ms){if(this.active)this.add('upload',ms);}
-  input(at){if(!this.active)return;if(this.lastInput)this.add('inputInterval',at-this.lastInput);this.lastInput=at;if(!this.pendingInput)this.pendingInput=at;}
+  input(at,eventTime){if(!this.active)return;if(Number.isFinite(eventTime)&&eventTime>0&&at>=eventTime&&at-eventTime<60000)this.add('eventDelivery',at-eventTime);if(this.lastInput)this.add('inputInterval',at-this.lastInput);this.lastInput=at;if(!this.pendingInput)this.pendingInput=at;}
+  raf(ms){if(this.active)this.add('rafQueue',ms);}
   resize(){if(this.active)this.resizeCount++;}
   frame(started,cpuMs,moving,phases={}){
     if(!this.active)return;
@@ -1446,9 +1449,10 @@ class RenderDiagnosticProbe {
     if(this.lastFrame){const interval=started-this.lastFrame;this.add('frameInterval',interval);if(moving&&this.lastMoving)this.add('interactionInterval',interval);}
     this.lastFrame=started;this.lastMoving=moving;
   }
-  stop(){if(this.active)this.duration=performance.now()-this.started;this.active=false;clearTimeout(this.timer);clearInterval(this.pollTimer);this.poll();for(const q of this.queries)this.viewer.gl.deleteQuery(q);this.queries=[];}
+  motion(now){if(!this.active||!this.savedPose)return;if(this.viewer.generation!==this.savedPose.generation){this.stop();return;}this.viewer.camera.azimuth=this.orbitStart+(now-this.started)*.02;this.viewer.requestRender();}
+  stop(){if(this.savedPose){const v=this.viewer,s=this.savedPose;this.savedPose=null;if(v.generation===s.generation){for(const key of ['camera','target','trainingPose','orbitLens','distance','flyPose'])v[key]=s[key];v.requestRender();}}if(this.active)this.duration=performance.now()-this.started;this.active=false;clearTimeout(this.timer);clearInterval(this.pollTimer);this.poll();for(const q of this.queries)this.viewer.gl.deleteQuery(q);this.queries=[];}
   snapshot(){const v=this.viewer,gl=v.gl;let info={contextLost:gl.isContextLost(),contextLosses:this.contextLosses};if(!gl.isContextLost()){const ext=gl.getExtension('WEBGL_debug_renderer_info');const renderer=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null;info={...info,renderer,classification:classifyRenderer(renderer),vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,maskedRenderer:gl.getParameter(gl.RENDERER),webgl:gl.getParameter(gl.VERSION),shadingLanguage:gl.getParameter(gl.SHADING_LANGUAGE_VERSION),attributes:gl.getContextAttributes(),maxTextureSize:gl.getParameter(gl.MAX_TEXTURE_SIZE),gpuTimerSupported:Boolean(gl.getExtension('EXT_disjoint_timer_query_webgl2'))};}
-    return {schema:3,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy,effectiveQuality:v.effectiveQuality||null,interactionScale:v.interactionScale??1,interactionDegree:v.interactionDegree??3},measurement:{startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint),drawnFrames:this.frameCount||0,orderUploadCpu:diagnosticSummary(this.samples.upload),frameCpu:diagnosticSummary(this.samples.frameCpu),drawInterval:diagnosticSummary(this.samples.frameInterval),interactionDrawInterval:diagnosticSummary(this.samples.interactionInterval),inputEventInterval:diagnosticSummary(this.samples.inputInterval),inputToDrawStart:diagnosticSummary(this.samples.inputToDraw),canvasResizes:this.resizeCount||0,framePhases:Object.fromEntries(['cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,diagnosticSummary(this.samples[k])]))},limits:'CPU draw submission, frame CPU and upload CPU are not GPU completion times. Draw intervals include on-demand idle gaps; interaction intervals are consecutive motion frames, not presentation FPS. Input-to-draw is event-handler-to-frame-start latency, not presentation latency. Phase timings are CPU elapsed times and can include driver waits. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
+    return {schema:4,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),projectionPipeline:v.activePipeline||'direct',projectionBufferBytes:v.projectionPass?.allocatedBytes||0,projectionFallback:v.projectionFallback||null,shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy,effectiveQuality:v.effectiveQuality||null,interactionScale:v.interactionScale??1,interactionDegree:v.interactionDegree??3},measurement:{sampleMode:this.sampleMode||'manual',startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint),drawnFrames:this.frameCount||0,orderUploadCpu:diagnosticSummary(this.samples.upload),frameCpu:diagnosticSummary(this.samples.frameCpu),drawInterval:diagnosticSummary(this.samples.frameInterval),interactionDrawInterval:diagnosticSummary(this.samples.interactionInterval),inputEventInterval:diagnosticSummary(this.samples.inputInterval),inputToDrawStart:diagnosticSummary(this.samples.inputToDraw),eventTimestampToHandler:diagnosticSummary(this.samples.eventDelivery),animationCallbackWait:diagnosticSummary(this.samples.rafQueue),canvasResizes:this.resizeCount||0,framePhases:Object.fromEntries(['cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,diagnosticSummary(this.samples[k])]))},limits:'CPU draw submission, frame CPU and upload CPU are not GPU completion times. Draw intervals include on-demand idle gaps; interaction intervals are consecutive motion frames, not presentation FPS. Input-to-draw is event-handler-to-frame-start latency, not presentation latency. Event delivery uses browser event timestamps, not hardware touch sampling. Animation wait includes browser/GPU scheduling. GPU timing, when available, includes both projection and drawing. Phase timings are CPU elapsed times and can include driver waits. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
 }
 function saveRenderDiagnostic(report){try{localStorage.setItem(RENDER_DIAGNOSTIC_KEY,JSON.stringify(report));}catch{}}
 function readRenderDiagnostic(){try{return JSON.parse(localStorage.getItem(RENDER_DIAGNOSTIC_KEY)||'null');}catch{return null;}}
@@ -1465,7 +1469,18 @@ function showRenderDiagnostics(probe=null){
   const buttons=document.createElement('div');buttons.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:12px';
   const button=(zh,eng,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=word(zh,eng);b.style.cssText='padding:10px 14px;border:1px solid #bfd4cb;border-radius:8px;background:white;color:#244c42;cursor:pointer';b.onclick=async()=>{try{await fn();}catch(e){status.textContent=String(e.message||e);}};buttons.append(b);return b;};
   const previousFocus=document.activeElement;const close=()=>{overlay.remove();document.removeEventListener('keydown',key,true);previousFocus?.focus();};const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}if(e.key==='Tab'){const list=[...box.querySelectorAll('button,textarea')].filter(x=>!x.disabled);if(e.shiftKey&&document.activeElement===list[0]){e.preventDefault();list.at(-1).focus();}else if(!e.shiftKey&&document.activeElement===list.at(-1)){e.preventDefault();list[0].focus();}}};document.addEventListener('keydown',key,true);
-  if(probe){button('刷新报告','Refresh report',async()=>{report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);update();});button('采集 10 秒','Sample for 10 seconds',()=>{if(probe.active){status.textContent=word('正在采集，请稍后再试','Sampling in progress');return;}probe.start();close();const toast=document.createElement('div');toast.setAttribute('role','status');toast.textContent=word('诊断采集中：请转动视角（10 秒）','Sampling: move the camera (10 seconds)');toast.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;padding:12px;border-radius:8px;background:#214b43;color:white;pointer-events:none';document.body.append(toast);setTimeout(async()=>{probe.stop();report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);toast.textContent=word('采集完成：打开“诊断”复制报告','Sample saved: open Diagnostics to copy');setTimeout(()=>toast.remove(),4000);},10100);});}
+  if(probe){
+    button('刷新报告','Refresh report',async()=>{report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);update();});
+    const sample=auto=>{
+      if(probe.active){status.textContent=word('正在采集，请稍后再试','Sampling in progress');return;}
+      if(auto&&!probe.viewer.count){status.textContent=word('请先加载模型','Load a model first');return;}
+      probe.start(auto);close();const toast=document.createElement('div');toast.setAttribute('role','status');
+      toast.textContent=auto?word('自动旋转诊断中（10 秒），完成后恢复视角','Automatic orbit sample (10 seconds); view restored afterward'):word('诊断采集中：请转动视角（10 秒）','Sampling: move the camera (10 seconds)');
+      toast.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;padding:12px;border-radius:8px;background:#214b43;color:white;pointer-events:none';document.body.append(toast);
+      setTimeout(async()=>{probe.stop();report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);toast.textContent=word('采集完成：打开“诊断”复制报告','Sample saved: open Diagnostics to copy');setTimeout(()=>toast.remove(),4000);},10100);
+    };
+    button('采集 10 秒','Sample for 10 seconds',()=>sample(false));button('自动旋转采集 10 秒','Automatic orbit sample (10 seconds)',()=>sample(true));
+  }
   button('复制报告','Copy report',async()=>{if(!report)return;saveRenderDiagnostic(report);try{await navigator.clipboard.writeText(text.value);}catch{text.focus();text.select();if(!document.execCommand('copy'))throw Error(word('请长按报告手动复制','Select the report and copy manually'));}status.textContent=word('已复制','Copied');});
   button('导出报告','Export report',async()=>{if(!report)return;const blob=new Blob([text.value],{type:'text/plain'}),name='BuildingWebViewer-diagnostics.txt';if(mobileProjects())await mobileShareBlob(blob,name);else{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}});
   if(mobileProjects())button('启动诊断','Startup diagnostics',()=>mobileProjects().showDiagnostics());
@@ -3634,6 +3649,69 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
 }
 
 
+// Source: src/gaussian/support.js
+/** Match the existing fragment alpha rejection; never a source-data cutoff. */
+const GS_FRAGMENT_ALPHA=1/255;
+function gsOpacityRadius(opacity){
+ if(opacity<GS_FRAGMENT_ALPHA)return 0;
+ return Math.min(3,Math.sqrt(Math.max(0,2*Math.log(opacity*255)))+.02);
+}
+
+
+// Source: src/gaussian/projection-pass.js
+/** WebGL2 transform feedback computes the same projection/color once per splat.
+ * No CPU readback, quantization or population reduction. Direct rendering remains
+ * available on allocation/driver failure and for lightweight point previews. */
+const GS_PROJECTED_BYTES=44;
+const GS_PROJECTED_LIMIT=96*1024*1024;
+const GS_PROJECTED_VERTEX=`#version 300 es
+precision highp float;
+layout(location=0) in vec2 aCorner;
+layout(location=1) in vec3 aClip;
+layout(location=2) in vec2 aAxisX;
+layout(location=3) in vec2 aAxisY;
+layout(location=4) in vec4 aColor;
+out vec4 vColor;
+out vec2 vPos;
+void main(){gl_Position=vec4(aClip.xy+aCorner.x*aAxisX+aCorner.y*aAxisY,0.0,1.0);vColor=aColor;vPos=aCorner*aClip.z;}`;
+function gsProjectionCapacity(count){return Number.isSafeInteger(count)&&count>0&&count*GS_PROJECTED_BYTES<=GS_PROJECTED_LIMIT;}
+class GaussianProjectionPass {
+ constructor(gl,vertex,fragment,corners){
+  this.gl=gl;this.count=0;this.programs=[];this.buffers=[];this.vaos=[];
+  const shader=(type,source)=>{const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){const error=gl.getShaderInfoLog(s);gl.deleteShader(s);throw Error(error);}return s;};
+  const program=(vs,feedback)=>{const p=gl.createProgram();this.programs.push(p);const shaders=[];try{shaders.push(shader(gl.VERTEX_SHADER,vs));shaders.push(shader(gl.FRAGMENT_SHADER,fragment));for(const s of shaders)gl.attachShader(p,s);if(feedback)gl.transformFeedbackVaryings(p,['gClip','gAxisX','gAxisY','vColor'],gl.INTERLEAVED_ATTRIBS);gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(p));return p;}finally{for(const s of shaders)gl.deleteShader(s);}};
+  try{
+   this.project=program(vertex,true);this.draw=program(GS_PROJECTED_VERTEX,false);
+   this.output=gl.createBuffer();this.buffers.push(this.output);this.feedback=gl.createTransformFeedback();
+   this.projectVAO=gl.createVertexArray();this.drawVAO=gl.createVertexArray();this.vaos.push(this.projectVAO,this.drawVAO);
+   gl.bindVertexArray(this.drawVAO);gl.bindBuffer(gl.ARRAY_BUFFER,corners);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+   gl.bindBuffer(gl.ARRAY_BUFFER,this.output);
+   for(const [index,size,offset]of [[1,3,0],[2,2,12],[3,2,20],[4,4,28]]){gl.enableVertexAttribArray(index);gl.vertexAttribPointer(index,size,gl.FLOAT,false,GS_PROJECTED_BYTES,offset);gl.vertexAttribDivisor(index,1);}
+   gl.bindVertexArray(null);gl.bindBuffer(gl.ARRAY_BUFFER,null);
+  }catch(e){this.dispose();throw e;}
+ }
+ prepare(count){
+  if(!gsProjectionCapacity(count))return false;
+  if(this.count===count)return true;
+  const gl=this.gl;gl.bindBuffer(gl.ARRAY_BUFFER,this.output);gl.bufferData(gl.ARRAY_BUFFER,count*GS_PROJECTED_BYTES,gl.DYNAMIC_COPY);
+  // One allocation-time query, never a per-frame driver query.
+  const valid=gl.getBufferParameter(gl.ARRAY_BUFFER,gl.BUFFER_SIZE)===count*GS_PROJECTED_BYTES;
+  gl.bindBuffer(gl.ARRAY_BUFFER,null);if(valid)this.count=count;return valid;
+ }
+ projectAndDraw(count){
+  const gl=this.gl;
+  gl.bindVertexArray(this.projectVAO);gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK,this.feedback);
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER,0,this.output);gl.enable(gl.RASTERIZER_DISCARD);
+  gl.beginTransformFeedback(gl.POINTS);gl.drawArrays(gl.POINTS,0,count);gl.endTransformFeedback();
+  gl.disable(gl.RASTERIZER_DISCARD);gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER,0,null);gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK,null);
+  gl.useProgram(this.draw);gl.bindVertexArray(this.drawVAO);gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,count);gl.bindVertexArray(null);
+ }
+ get allocatedBytes(){return this.count*GS_PROJECTED_BYTES;}
+ release(){this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.output);this.gl.bufferData(this.gl.ARRAY_BUFFER,0,this.gl.DYNAMIC_COPY);this.gl.bindBuffer(this.gl.ARRAY_BUFFER,null);this.count=0;}
+ dispose(){const gl=this.gl;gl.bindVertexArray(null);gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK,null);for(const p of this.programs)gl.deleteProgram(p);for(const b of this.buffers)gl.deleteBuffer(b);for(const v of this.vaos)gl.deleteVertexArray(v);if(this.feedback)gl.deleteTransformFeedback(this.feedback);}
+}
+
+
 // Source: src/gaussian/covariance.js
 /** Symmetric R diag(scale²) Rᵀ, packed as xx, xy, xz, yy, yz, zz. */
 function gsCovariance(sx,sy,sz,w,x,y,z) {
@@ -3728,6 +3806,8 @@ function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
 
 
 
+
+
 const GS_DEG = Math.PI / 180;
 const GS_DOT = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const GS_CLAMP = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -3740,7 +3820,14 @@ precision highp float;
 precision highp int;
 precision highp sampler2D;
 precision highp usampler2D;
+#ifdef GS_PROJECT_ONCE
+const vec2 aCorner=vec2(0.0);
+out vec3 gClip;
+out vec2 gAxisX;
+out vec2 gAxisY;
+#else
 layout(location=0) in vec2 aCorner;
+#endif
 uniform usampler2D uOrder;
 uniform sampler2D uCenter;
 uniform sampler2D uScale;
@@ -3769,10 +3856,11 @@ uniform bool uPointPreview;
 uniform float uFar;
 out vec4 vColor;
 out vec2 vPos;
+float gsRadius=3.0;
 // SH coefficients are packed four per texel. Fetch each texel once per channel.
 vec4 gsBands(int id, int channel, int group) {
   int texel=id*12+channel*4+group;
-  return texelFetch(uRest,ivec2(texel%uRestWidth,texel/uRestWidth),0);
+  return texelFetch(uRest,ivec2(texel&2047,texel>>11),0);
 }
 vec3 gsShade(vec3 dc, int id, vec3 direction) {
   vec3 color=0.28209479177387814*dc;
@@ -3780,9 +3868,10 @@ vec3 gsShade(vec3 dc, int id, vec3 direction) {
     float x=direction.x,y=direction.y,z=direction.z;
     float xx=x*x,yy=y*y,zz=z*z,xy=x*y,yz=y*z,xz=x*z;
     vec4 b0=vec4(-0.4886025119029199*y,0.4886025119029199*z,-0.4886025119029199*x,uDegree>1?1.0925484305920792*xy:0.0);
-    vec4 b1=vec4(-1.0925484305920792*yz,0.31539156525252005*(2.0*zz-xx-yy),-1.0925484305920792*xz,0.5462742152960396*(xx-yy));
-    vec4 b2=vec4(-0.5900435899266435*y*(3.0*xx-yy),2.890611442640554*xy*z,-0.4570457994644658*y*(4.0*zz-xx-yy),0.3731763325901154*z*(2.0*zz-3.0*xx-3.0*yy));
-    vec4 b3=vec4(-0.4570457994644658*x*(4.0*zz-xx-yy),1.445305721320277*z*(xx-yy),-0.5900435899266435*x*(xx-3.0*yy),0.0);
+    vec4 b1=vec4(0.0),b2=vec4(0.0),b3=vec4(0.0);
+    if(uDegree>1)b1=vec4(-1.0925484305920792*yz,0.31539156525252005*(2.0*zz-xx-yy),-1.0925484305920792*xz,0.5462742152960396*(xx-yy));
+    if(uDegree>2){b2=vec4(-0.5900435899266435*y*(3.0*xx-yy),2.890611442640554*xy*z,-0.4570457994644658*y*(4.0*zz-xx-yy),0.3731763325901154*z*(2.0*zz-3.0*xx-3.0*yy));
+    b3=vec4(-0.4570457994644658*x*(4.0*zz-xx-yy),1.445305721320277*z*(xx-yy),-0.5900435899266435*x*(xx-3.0*yy),0.0);}
     for(int c=0;c<3;c++){
       color[c]+=dot(gsBands(id,c,0),b0);
       if(uDegree>1)color[c]+=dot(gsBands(id,c,1),b1);
@@ -3792,18 +3881,24 @@ vec3 gsShade(vec3 dc, int id, vec3 direction) {
   return clamp(color+vec3(0.5),0.0,1.0);
 }
 
-void main() {
-  ivec2 orderUv = ivec2(gl_InstanceID % uWidth, gl_InstanceID / uWidth);
+void projectGaussian() {
+#ifdef GS_PROJECT_ONCE
+  gAxisX=vec2(0.0);gAxisY=vec2(0.0);
+  int instance=gl_VertexID;
+#else
+  int instance=gl_InstanceID;
+#endif
+  ivec2 orderUv = ivec2(instance & 2047, instance >> 11);
   int id = int(texelFetch(uOrder, orderUv, 0).r);
-  ivec2 uv = ivec2(id % uWidth, id / uWidth);
+  ivec2 uv = ivec2(id & 2047, id >> 11);
   vec4 centerA = texelFetch(uCenter, uv, 0);
   vec3 center = centerA.xyz;
   float opacity = centerA.w;
   if(uFar>0.0)opacity*=clamp((uFar-length(center-uEye))/(uFar*.1),0.0,1.0);
   vPos = aCorner * 3.0;
-  int flags = int(texelFetch(uFlags, uv, 0).r + 0.5);
+  int flags = int(texelFetch(uFlags, uv, 0).r * 255.0 + 0.5);
   float depth = -dot(center - uEye, -uView);
-  if (opacity <= 0.0 || opacity < uCutoff || (flags & 6) != 0 || (uPerspective && depth <= uNear)) { vColor = vec4(0.0); gl_Position = vec4(2.0, 2.0, 0.0, 1.0); return; }
+  if (opacity < 1.0/255.0 || opacity < uCutoff || (flags & 6) != 0 || (uPerspective && depth <= uNear)) { vColor = vec4(0.0); gl_Position = vec4(2.0, 2.0, 0.0, 1.0); return; }
   if (uPointPreview) {
     vec3 rel = center - uEye;
     float h = uBaseHeight / uZoom;
@@ -3813,8 +3908,14 @@ void main() {
     vec3 rgb=clamp(texelFetch(uDc,uv,0).xyz*0.28209479177387814+0.5,0.0,1.0);
     vColor=vec4(rgb*opacity,opacity);vPos=aCorner;return;
   }
+  // Outside this support every original fragment already fails alpha >= 1/255.
+  // A small guard avoids removing threshold pixels through float rounding.
+
   vec4 shapeA=texelFetch(uScale,uv,0);
-  vec2 shapeB=texelFetch(uQuat,uv,0).xy;
+  vec3 shapeB=texelFetch(uQuat,uv,0).xyz;
+  gsRadius=shapeB.z;
+  if(uFar>0.0)gsRadius=min(3.0,sqrt(max(0.0,2.0*log(opacity*255.0)))+0.02);
+  vPos=aCorner*gsRadius;
   mat3 covariance=mat3(shapeA.x,shapeA.y,shapeA.z,shapeA.y,shapeA.w,shapeB.x,shapeA.z,shapeB.x,shapeB.y)*(uScaleMul*uScaleMul);
   float worldHeight = uBaseHeight / uZoom;
   float worldWidth = worldHeight * uViewport.x / max(uViewport.y, 1.0);
@@ -3828,24 +3929,46 @@ void main() {
   vec3 jx = uPerspective ? uFocal.x / depth * (uRight + slope.x * (-uView)) : uRight * pixelsPerWorld;
   vec3 jy = uPerspective ? uFocal.y / depth * (uUp + slope.y * (-uView)) : uUp * pixelsPerWorld;
   float cov00=dot(jx,covariance*jx)+0.3;
-  float cov11=dot(jy,covariance*jy)+0.3;
-  float cov01=dot(jx,covariance*jy);
+  vec3 covarianceY=covariance*jy;
+  float cov11=dot(jy,covarianceY)+0.3;
+  float cov01=dot(jx,covarianceY);
+  float cx = dot(uTarget, uRight) + uPan.x;
+  float cy = dot(uTarget, uUp) + uPan.y;
+  vec2 clip = vec2((dot(center, uRight) - cx) / worldWidth, (dot(center, uUp) - cy) / worldHeight) * 2.0;
+  if (uPerspective) clip = vec2(vx, vy) / depth * uFocal * 2.0 / uViewport;
+  // Cauchy-Schwarz bounds both original rotated-quad axes by sqrt(2*variance).
+  bool outsideCenter=any(greaterThan(abs(clip),vec2(1.0)));
+  if(outsideCenter){
+    vec2 conservative=gsRadius*sqrt(2.0*max(vec2(cov00,cov11),vec2(0.0)))*2.0/uViewport;
+    if(any(greaterThan(abs(clip)-conservative,vec2(1.0)))){vColor=vec4(0.0);gl_Position=vec4(2.0,2.0,0.0,1.0);return;}
+  }
   float mid = 0.5 * (cov00 + cov11);
   float disc = sqrt(max(0.0, mid * mid - (cov00 * cov11 - cov01 * cov01)));
   float lambda1 = mid + disc;
   float lambda2 = max(mid - disc, 1e-4);
   vec2 eigen = abs(cov01) < 1e-4 ? (cov00 >= cov11 ? vec2(1.0, 0.0) : vec2(0.0, 1.0)) : normalize(vec2(cov01, lambda1 - cov00));
   vec2 ortho = vec2(-eigen.y, eigen.x);
-  vec2 offset = aCorner.x * eigen * (3.0 * sqrt(lambda1)) + aCorner.y * ortho * (3.0 * sqrt(lambda2));
-  float cx = dot(uTarget, uRight) + uPan.x;
-  float cy = dot(uTarget, uUp) + uPan.y;
-  vec2 clip = vec2((dot(center, uRight) - cx) / worldWidth, (dot(center, uUp) - cy) / worldHeight) * 2.0;
-  if (uPerspective) clip = vec2(vx, vy) / depth * uFocal * 2.0 / uViewport;
-  clip += offset * vec2(2.0 / uViewport.x, 2.0 / uViewport.y);
+  vec2 axisX=eigen*(gsRadius*sqrt(lambda1))*2.0/uViewport;
+  vec2 axisY=ortho*(gsRadius*sqrt(lambda2))*2.0/uViewport;
+  vec2 offset=aCorner.x*axisX+aCorner.y*axisY;
+
+  // Cull only when the entire original quad lies beyond the viewport.
+  // Center-only culling would incorrectly remove wide edge-overlapping splats.
+  vec2 support=abs(axisX)+abs(axisY);
+  if(outsideCenter&&any(greaterThan(abs(clip)-support,vec2(1.0)))){vColor=vec4(0.0);gl_Position=vec4(2.0,2.0,0.0,1.0);return;}
+#ifdef GS_PROJECT_ONCE
+  gAxisX=axisX;gAxisY=axisY;
+#endif
+  clip += offset;
   gl_Position = vec4(clip, 0.0, 1.0);
   vec3 rgb = gsShade(texelFetch(uDc, uv, 0).xyz, id, uPerspective ? normalize(center - uEye) : uView);
   if ((flags & 1) != 0) rgb = mix(rgb, vec3(1.0, 0.55, 0.08), 0.65);
   vColor = vec4(rgb * opacity, opacity);
+}
+void main(){projectGaussian();
+#ifdef GS_PROJECT_ONCE
+  gClip=vec3(gl_Position.xy,gsRadius);
+#endif
 }`;
 
 const GS_FRAGMENT = `#version 300 es
@@ -3854,9 +3977,10 @@ in vec4 vColor;
 in vec2 vPos;
 out vec4 fragColor;
 void main() {
-  float alpha = vColor.a * exp(-0.5 * dot(vPos, vPos));
+  float weight = exp(-0.5 * dot(vPos, vPos));
+  float alpha = vColor.a * weight;
   if (alpha < 1.0 / 255.0) discard;
-  fragColor = vec4(vColor.rgb * (alpha / max(vColor.a, 1e-6)), alpha);
+  fragColor = vec4(vColor.rgb * weight, alpha);
 }`;
 
 function gsFloatSortKey(value) {
@@ -3940,6 +4064,7 @@ class GaussianViewer {
     this.frame = null;
     this.contextLost = false;
     this.interacting = false;
+    this.gpuProjection=false;
     this.sortDirty = true;
     this.listeners = [];
     try {
@@ -3996,9 +4121,17 @@ class GaussianViewer {
     gl.bindBuffer(gl.ARRAY_BUFFER, corners);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
     this.cornerBuffer = corners;
+    this.projectionPass?.dispose();this.projectionPass=null;this.projectionFallback=null;this.projectionBlockedCount=null;this.projectionInitTried=false;
     this.textures = {};
     for (const name of ['order','center','scale','quat','dc','rest','flags']) this.textures[name] = gl.createTexture();
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  }
+
+  ensureProjectionPass(){
+    if(this.projectionInitTried)return;this.projectionInitTried=true;const gl=this.gl;
+    try{this.projectionPass=new GaussianProjectionPass(gl,GS_VERTEX.replace('#version 300 es','#version 300 es\n#define GS_PROJECT_ONCE'),GS_FRAGMENT,this.cornerBuffer);
+      this.projectLocations={};for(const name of Object.keys(this.locations))this.projectLocations[name]=gl.getUniformLocation(this.projectionPass.project,name);
+    }catch(error){this.projectionFallback='GPU projection initialization failed';}
   }
 
   installEvents() {
@@ -4006,7 +4139,7 @@ class GaussianViewer {
     this.canvas.style.touchAction = 'none';
     this.canvas.style.cursor = 'grab';
     listen('contextmenu', event => event.preventDefault());
-    for(const name of ['pointermove','wheel'])listen(name,()=>this.diagnosticProbe?.input(performance.now()),{passive:true});
+    for(const name of ['pointermove','wheel'])listen(name,event=>{if(name==='wheel'||event.buttons||event.pointerType==='touch')this.diagnosticProbe?.input(performance.now(),event.timeStamp);},{passive:true});
     mountTouchCamera(this, listen);
     listen('pointerdown', event => {
       if (this.fly?.active) return;
@@ -4182,7 +4315,7 @@ class GaussianViewer {
   clearSplats() {
     this.fly?.leave();
     this.stopNavigation();
-    this.models = []; this.sourceMap = []; this.trainingPose = null; this.packed = null; this.generation++; this.sortBusy=false; this.sortedReady=false; this.count = 0; this.pointCount = 0; this.bounds = null;
+    this.models = []; this.sourceMap = []; this.trainingPose = null; this.packed = null; this.generation++; this.sortBusy=false; this.sortedReady=false; this.count = 0; this.pointCount = 0; this.bounds = null;this.projectionPass?.release();this.projectionBlockedCount=null;
     this.buffers = {}; this.activeClouds = []; this.sortDirty = true; this.render();
   }
 
@@ -4262,7 +4395,7 @@ class GaussianViewer {
     for(let i=0;i<count;i++){
       const a=i*3,b=i*4,p=this.packed;
       const cov=gsCovariance(p.scale[a],p.scale[a+1],p.scale[a+2],p.quat[b],p.quat[b+1],p.quat[b+2],p.quat[b+3]);
-      scale[b]=cov[0];scale[b+1]=cov[1];scale[b+2]=cov[2];scale[b+3]=cov[3];quat[b]=cov[4];quat[b+1]=cov[5];
+      scale[b]=cov[0];scale[b+1]=cov[1];scale[b+2]=cov[2];scale[b+3]=cov[3];quat[b]=cov[4];quat[b+1]=cov[5];quat[b+2]=gsOpacityRadius(p.opacity[i]);
     }
     const dc = pixels(4, (data, index, at) => data.set(this.packed.dc.subarray(index * 3, index * 3 + 3), at));
     this.textureSize = {width, height};
@@ -4317,9 +4450,12 @@ class GaussianViewer {
   }
   syncFlags(redraw=true) {
     if(!this.packed)return;
-    const {width,height}=this.textureSize, data=new Float32Array(width*height*4);
-    for(let i=0;i<this.sourceMap.length;i++){const [model,id]=this.sourceMap[i];data[i*4]=model.editFlags?.[id]||0;this.flags[i]=data[i*4];}
-    this.putFloat(this.textures.flags,width,height,data);
+    const {width,height}=this.textureSize, data=new Uint8Array(width*height);
+    for(let i=0;i<this.sourceMap.length;i++){const [model,id]=this.sourceMap[i];data[i]=model.editFlags?.[id]||0;this.flags[i]=data[i];}
+    const gl=this.gl;gl.bindTexture(gl.TEXTURE_2D,this.textures.flags);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.R8,width,height,0,gl.RED,gl.UNSIGNED_BYTE,data);
     if(redraw)this.requestRender();
   }
   applyTraining(camera) {
@@ -4357,7 +4493,7 @@ class GaussianViewer {
     for(const [name,fn,options] of this.listeners)this.canvas.removeEventListener(name,fn,options);
     if(this.frame!==null)cancelAnimationFrame(this.frame);
     for(const texture of Object.values(this.textures))this.gl.deleteTexture(texture);
-    this.gl.deleteProgram(this.program);this.gl.deleteBuffer(this.cornerBuffer);
+    this.projectionPass?.dispose();this.gl.deleteProgram(this.program);this.gl.deleteBuffer(this.cornerBuffer);
   }
 
   putFloat(texture, width, height, data) {
@@ -4398,13 +4534,15 @@ class GaussianViewer {
 
   requestRender() {
     if (this.frame !== null || this.disposed) return;
-    this.frame = requestAnimationFrame(() => { this.frame = null; this.render(); });
+    const requested=performance.now();
+    this.frame = requestAnimationFrame(() => { this.frame = null; this.diagnosticProbe?.raf(performance.now()-requested);this.render(); });
   }
 
   render() {
     if (this.disposed || this.contextLost || !this.gl || (!this.exportTarget && globalThis.document?.hidden)) return;
     if (this.frame !== null) { cancelAnimationFrame(this.frame); this.frame = null; }
     const frameStarted=performance.now();
+    this.diagnosticProbe?.motion(frameStarted);
     if (!this.exportTarget && this.navigation.active) {
       this.applyNavigation(this.navigation.step(performance.now()));
       if (this.navigation.active) this.requestRender();
@@ -4439,8 +4577,16 @@ class GaussianViewer {
     gl.clearColor(clear[0], clear[1], clear[2], clear[3]); gl.clear(gl.COLOR_BUFFER_BIT);
     if (this.count && this.packed) {
       const spec = gsViewSpec(this,width,height);
-      const [right, up, forward] = spec.basis, loc = this.locations;
-      gl.useProgram(this.program);
+      if((this.pointPreview||this.gpuProjection===false)&&this.projectionPass?.count)this.projectionPass.release();
+      let useProjected=false;
+      if(!this.pointPreview&&this.gpuProjection===true)this.ensureProjectionPass();
+      if(!this.pointPreview&&this.gpuProjection!==false&&this.projectionPass&&this.projectionBlockedCount!==this.count){
+        try{useProjected=this.projectionPass.prepare(this.count);if(!useProjected){this.projectionFallback='Projection buffer capacity/allocation limit';this.projectionBlockedCount=this.count;}}
+        catch(error){this.projectionFallback='GPU projection allocation failed';this.projectionBlockedCount=this.count;}
+      }
+      this.activePipeline=useProjected?'project-once':'direct';if(useProjected)this.projectionFallback=null;
+      const [right, up, forward] = spec.basis, loc = useProjected?this.projectLocations:this.locations;
+      gl.useProgram(useProjected?this.projectionPass.project:this.program);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.cornerBuffer);
       gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(0, 0);
       const bind = (unit, name) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, this.textures[name]); };
@@ -4456,7 +4602,8 @@ class GaussianViewer {
       gl.uniform1f(loc.uFar, this.viewDistance || 0);
       phases.glPrepare=mark()-phaseStart;phaseStart=mark();
       if(!this.exportTarget)this.diagnosticProbe?.begin();
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.count);
+      if(useProjected)this.projectionPass.projectAndDraw(this.count);
+      else gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.count);
       if(!this.exportTarget)this.diagnosticProbe?.end();
     }
     if (this.exportTarget) return;
@@ -4714,13 +4861,16 @@ async function gsBoot() {
     const o=document.createElement('option');o.value=value;o.textContent=label(zh,english);profileSelect.append(o);
   }
   profileLabel.append(profileSelect);const controls=gs$('settings-panel-display').querySelector('.render-controls');controls.prepend(profileLabel);
+  const pipelineLabel=document.createElement('label'),pipelineToggle=document.createElement('input');pipelineToggle.type='checkbox';pipelineToggle.checked=false;
+  pipelineToggle.id='gs-gpu-projection';pipelineLabel.append(pipelineToggle,document.createTextNode(label('试用投影复用（全量）','Try projection reuse (all splats)')));controls.append(pipelineLabel);pipelineToggle.setAttribute('aria-label',label('试用投影复用（全量）','Try projection reuse (all splats)'));pipelineLabel.title=label('不同 GPU 效果不同，可开关对比；两种方式都保留全部高斯。','Results vary by GPU. Compare on/off; both retain all splats.');
+  pipelineToggle.onchange=()=>{if(gsViewer){gsViewer.gpuProjection=pipelineToggle.checked;gsViewer.projectionBlockedCount=null;gsViewer.requestRender();}};
   const performanceNote=document.createElement('p');performanceNote.className='presentation-help';performanceNote.textContent=label('始终保留全部高斯。交互降质仅降低像素与颜色阶数，停止移动后恢复；不会抽稀。截图导出使用设定的完整颜色。','All splats are retained. Interaction quality changes pixels and color bands only, restoring after motion stops. Image export uses the selected full color quality.');profileLabel.after(performanceNote);
   const qualityField=(id,zh,eng,type,min,max,step,value)=>{const labelEl=document.createElement('label');labelEl.textContent=label(zh,eng);const input=document.createElement('input');input.id=id;input.type=type;if(min!=null){input.min=min;input.max=max;input.step=step;}input.value=value;input.setAttribute('aria-label',label(zh,eng));labelEl.append(input);controls.append(labelEl);return input;};
   const resolution=qualityField('gs-resolution','渲染像素倍率','Render pixel ratio','range',.5,2,.25,1),resolutionValue=document.createElement('output');resolution.after(resolutionValue);
   const interaction=qualityField('gs-interaction-quality','移动时降低画质','Reduce quality during motion','checkbox',null,null,null,'on');
   const motionLabel=document.createElement('label');motionLabel.textContent=label('移动时颜色阶数','Color bands during motion');const motionDegree=document.createElement('select');motionDegree.id='gs-motion-sh';motionDegree.setAttribute('aria-label',motionLabel.textContent);for(const n of [0,1,2,3]){const o=document.createElement('option');o.value=n;o.textContent=String(n);motionDegree.append(o);}motionLabel.append(motionDegree);controls.append(motionLabel);
   const profile=()=>gsViewingProfile(profileSelect.value,mobileView,gsViewer?.softwareRendering);
-  function applyQuality(){if(!gsViewer)return;gsViewer.pixelRatioLimit=Number(resolution.value);gsViewer.interactionScale=interaction.checked?.65:1;gsViewer.interactionDegree=interaction.checked?Number(motionDegree.value):3;gsViewer.pointPreview=profile().points;resolutionValue.value=Number(resolution.value).toFixed(2)+'×';motionDegree.disabled=!interaction.checked;gsViewer.requestRender();}
+  function applyQuality(){if(!gsViewer)return;gsViewer.gpuProjection=pipelineToggle.checked;gsViewer.pixelRatioLimit=Number(resolution.value);gsViewer.interactionScale=interaction.checked?.65:1;gsViewer.interactionDegree=interaction.checked?Number(motionDegree.value):3;gsViewer.pointPreview=profile().points;resolutionValue.value=Number(resolution.value).toFixed(2)+'×';motionDegree.disabled=!interaction.checked;gsViewer.requestRender();}
   function presetQuality(){const q=profile();resolution.value=q.dpr;interaction.checked=q.interactionScale<1;motionDegree.value=q.interactionDegree;applyQuality();}
   resolution.oninput=interaction.onchange=motionDegree.onchange=applyQuality;
   const initialQuality=gsViewingProfile('auto',mobileView);resolution.value=initialQuality.dpr;interaction.checked=initialQuality.interactionScale<1;motionDegree.value=initialQuality.interactionDegree;

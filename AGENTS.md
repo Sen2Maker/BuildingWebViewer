@@ -10,3 +10,11 @@
 - Follow `docs/RELEASING.md`. Run `python3 scripts/check.py`, then `python3 scripts/release.py` before publication. Include source and generated assets in the same commit. GitHub Pages is deployed from a published stable Release, not an ordinary push.
 
 - Every new published version, including hot-update-only patches, must include a complete APK built for the same version. Hot updates supplement the APK for installed users; never require new users to install an older APK first. Do not reuse an older APK in a new release manifest.
+
+## Release workflow to reuse
+
+- Once the user authorizes the proposed version, finish publication without asking again for the same release action. Preserve browser/security approval requirements when they actually block an action.
+- Reuse the exact tested APK and signed web update when source and bundled web assets have not changed. Documentation-only edits require rebuilding the Web ZIP/checksum, not recompiling or resigning the APK. Verify the existing signature and artifact hashes before uploading.
+- Commit source/generated files and an immutable annotated version tag; push main and that tag once. Upload the six release attachments in one batch, then publish the stable Release.
+- github-pages now allows main and version tags v*. Release-triggered deployment is the normal path; do not manually dispatch after every release. Inspect the failed job before retrying only if automatic deployment fails.
+- Completion means source CI and Pages succeeded, all live entry versions/builds match, the signed live update manifest matches this version, and public APK/update hashes match. Never report success based only on a Release page.
