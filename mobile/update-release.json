@@ -1,11 +1,11 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.1",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 11,
-  "issuedAt": 1791903634,
-  "expiresAt": 1807455634,
+  "sequence": 12,
+  "issuedAt": 1791907961,
+  "expiresAt": 1807459961,
   "notes": {
-    "zh": "App 高斯模块默认原生全量查看，移除兼容切换和编辑入口；新增漫游、相机滑块与数值输入、项目书签及 JSON 导入导出。优化完整属性解析、分阶段进度、首次渲染预热和原生诊断。本版本需要覆盖安装完整 APK，不下采样。",
-    "en": "Gaussian projects open directly in the native full-data viewer. Add fly navigation, camera sliders/numbers, persistent project views and JSON import/export. Optimize attribute packing, staged loading, initial render warmup and diagnostics. Install the full APK; no sampling."
+    "zh": "修正原生高斯漫游：前后左右在水平面移动，高度独立；新增左右双摇杆和中间升降控制，支持同时移动与观察。控制器叠放在画面内，不再挤压视口，工具栏与按钮改为紧凑平面样式。需要覆盖安装完整 APK，保留项目与书签。",
+    "en": "Fix native Gaussian navigation: planar forward/strafe, separate height, move/look thumb pads and independent rise/lower controls. Simultaneous inputs are supported. Overlay controls keep the viewport size unchanged; streamline toolbar styling. Install the full APK; projects and views remain."
   }
 }

@@ -6,6 +6,13 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.6.1] - 2026-10-14
+
+- 修正漫游坐标：前后左右沿水平面移动，不再随俯仰升降；高度使用独立世界 Z 轴。
+- 左侧移动摇杆、中间升降键、右侧视角摇杆分别处理平移、高度与旋转，松开／取消触摸立即停止；多控件输入互不清空。
+- 控制器叠放在画面底部，不再挤压渲染视口；收紧工具栏、去除按钮阴影，并提供明确标签与按下反馈。保留截图、相机、项目书签与全部高斯。
+- Fix planar fly navigation and separate height/look controls. Add native thumb pads with independent multitouch input and compact overlay styling. Native code changed; install the full APK.
+
 ## [1.6.0] - 2026-10-13
 
 - App 项目高斯工具直接进入原生全量查看器；移除手动原生开关、兼容画面和高斯编辑入口，沿用浅色圆角与紧凑工具栏风格。网页保留原查看器，手机网页增加 App 推荐提示。

@@ -11,7 +11,7 @@ import java.util.zip.*;
 
 /** Local-first updates. All network update decisions require native signature verification. */
 class WebUpdater {
-  static final int NATIVE_API=8;
+  static final int NATIVE_API=9;
   static final String SITE="https://sen2maker.github.io/BuildingWebViewer/";
   static final String REPO=SignedUpdate.REPO;
   final Context context; final File root; final SharedPreferences prefs;

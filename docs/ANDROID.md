@@ -1,8 +1,8 @@
 # Android Preview
 
-**v1.6.0：高斯直接原生查看** — 安装完整 APK，点项目的“高斯泼溅”即可进入原生工作台，不再切换旧查看器。单个 PLY 自动载入；多个文件在“项目”里勾选。支持漫游、相机滑块／数字、项目书签与原生 JSON 导入导出、PNG 截图及诊断，保留全部高斯。原生端显示原始数据，不提供高斯编辑。旧网页书签／训练机位文件与原生书签格式独立；网页保持现有功能。容量不足明确报错，首次预热时间与解析阶段在诊断中记录。
+**v1.6.1：高斯直接原生查看** — 安装完整 APK，点项目的“高斯泼溅”即可进入原生工作台，不再切换旧查看器。单个 PLY 自动载入；多个文件在“项目”里勾选。漫游操作：左摇杆上下为前后、左右为平移；中间升降键控制高度；右摇杆控制转向与抬头／低头。支持相机滑块／数字、项目书签与原生 JSON 导入导出、PNG 截图及诊断，保留全部高斯。原生端显示原始数据，不提供高斯编辑。旧网页书签／训练机位文件与原生书签格式独立；网页保持现有功能。容量不足明确报错，首次预热时间与解析阶段在诊断中记录。
 
-**Native Gaussian workspace** — Install the full v1.6.0 APK, then open Gaussian from a project. One PLY opens automatically; select multiple files in Project. Native fly navigation, camera sliders/numbers, persistent views, native JSON import/export, PNG capture and diagnostics retain all splats. Gaussian editing and web bookmark/training-camera formats are separate; browser functionality remains available.
+**Native Gaussian workspace** — Install the full v1.6.1 APK, then open Gaussian from a project. One PLY opens automatically; select multiple files in Project. Native fly navigation, camera sliders/numbers, persistent views, native JSON import/export, PNG capture and diagnostics retain all splats. Gaussian editing and web bookmark/training-camera formats are separate; browser functionality remains available.
 
 App 复用五个三维工具，文件和项目保存在手机内。网页不需要安装 Node 或 Android SDK；下面的依赖仅用于构建 APK。
 
