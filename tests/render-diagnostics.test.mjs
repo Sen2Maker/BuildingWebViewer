@@ -11,3 +11,9 @@ test('frame diagnostics separate idle gaps, interaction intervals and upload CPU
  p.start();p.frame(100,3,true);p.frame(120,4,true);p.frame(5000,2,false);p.upload(7);p.stop();
  assert.equal(p.frameCount,3);assert.deepEqual(p.samples.frameInterval,[20,4880]);assert.deepEqual(p.samples.interactionInterval,[20]);assert.deepEqual(p.samples.upload,[7]);
 });
+test('phase and input timings distinguish delayed redraws and reset between samples',()=>{
+ const p=new RenderDiagnosticProbe({canvas:{addEventListener(){}},gl:{getExtension(){return null;},isContextLost(){return false;}}});
+ p.start();p.input(100);p.input(110);p.resize();p.frame(125,6,true,{resize:2,controls:1});p.stop();
+ assert.deepEqual(p.samples.inputInterval,[10]);assert.deepEqual(p.samples.inputToDraw,[25]);assert.deepEqual(p.samples.resize,[2]);assert.equal(p.resizeCount,1);
+ p.start();assert.equal(p.resizeCount,0);assert.equal(p.samples.inputToDraw.length,0);p.stop();
+});

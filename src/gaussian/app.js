@@ -44,7 +44,10 @@ async function gsBoot() {
   const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   const gsSay = message => { const note = gs$('data-notes'); note.textContent = message || ''; };
   const gsError = message => { const box = gs$('error'); box.hidden = !message; box.querySelector('span').textContent = message || ''; };
-  const gsLoading = (message) => { const box = gs$('loading'); box.hidden = !message; if (message) box.querySelector('span').textContent = message; };
+  const gsLoading = (message, fraction=null) => { const box = gs$('loading'); box.hidden = !message; if (message) box.querySelector('span').textContent = message;
+    let progress=box.querySelector('progress');if(!progress){progress=document.createElement('progress');progress.max=1;progress.setAttribute('aria-label',label('文件解析进度','File parsing progress'));box.append(progress);}
+    const known=Number.isFinite(fraction);progress.hidden=!known;box.classList.toggle('has-progress',known);if(known)progress.value=Math.max(0,Math.min(1,fraction));
+  };
 
   const distanceLabel=document.createElement('label'),distanceToggle=document.createElement('input'),distanceRange=document.createElement('input'),distanceValue=document.createElement('output');
   distanceToggle.type='checkbox';distanceToggle.id='gs-distance-enabled';distanceToggle.setAttribute('aria-label',label('限制视距','Limit viewing distance'));
@@ -124,7 +127,7 @@ async function gsBoot() {
         if (!entry.parsed || entry.parsed.preview) {
           gsLoading(t('正在读取 {0}…', [entry.treeName || entry.file.name]));
           if(entry.parsed&&!entry.parsed.preview){entry.savedFlags=entry.parsed.editFlags;gsEditor?.edits.releaseGeometry(entry.parsed);}
-          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]));};
+          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]),total>0?done/total:null);};
           const parsed=await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true,onProgress});
           if(serial!==gsSerial)return;
           if(entry.savedFlags){

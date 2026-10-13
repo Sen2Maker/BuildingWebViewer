@@ -233,7 +233,12 @@ export class GaussianViewer {
     this.installEvents();
     this.onNavVisibility = () => { if (document.hidden) this.stopNavigation(); };
     document.addEventListener('visibilitychange', this.onNavVisibility);
-    this.resizeObserver = new ResizeObserver(() => this.requestRender());
+    this.viewportSize = canvas.getBoundingClientRect();
+    this.resizeObserver = new ResizeObserver(entries => {
+      const rect=entries[0]?.contentRect;
+      if(rect)this.viewportSize={width:rect.width,height:rect.height};
+      this.requestRender();
+    });
     this.resizeObserver.observe(canvas);
     this.render();
   }
@@ -282,6 +287,7 @@ export class GaussianViewer {
     this.canvas.style.touchAction = 'none';
     this.canvas.style.cursor = 'grab';
     listen('contextmenu', event => event.preventDefault());
+    for(const name of ['pointermove','wheel'])listen(name,()=>this.diagnosticProbe?.input(performance.now()),{passive:true});
     mountTouchCamera(this, listen);
     listen('pointerdown', event => {
       if (this.fly?.active) return;
@@ -684,13 +690,14 @@ export class GaussianViewer {
       this.applyNavigation(this.navigation.step(performance.now()));
       if (this.navigation.active) this.requestRender();
     }
-    const gl = this.gl, canvas = this.canvas, rect = canvas.getBoundingClientRect();
+    const gl = this.gl, canvas = this.canvas, rect = this.viewportSize || canvas.getBoundingClientRect();
+    const phases={},mark=()=>performance.now();let phaseStart=frameStarted;
     const specNow=gsViewSpec(this,rect.width,rect.height);
     const signature=[...specNow.eye,...specNow.basis.flat(),specNow.fx,specNow.fy,this.camera.zoom,...this.camera.pan];
     const changed=this.qualityPose && signature.some((n,i)=>Math.abs(n-this.qualityPose[i])>1e-9);
     if(!this.exportTarget){
       this.qualityPose=signature;
-      if(changed){this.motionUntil=frameStarted+180;clearTimeout(this.qualityTimer);this.qualityTimer=setTimeout(()=>this.requestRender(),190);}
+      if(changed){this.motionUntil=frameStarted+450;clearTimeout(this.qualityTimer);this.qualityTimer=setTimeout(()=>this.requestRender(),470);}
     }
     const moving=!this.exportTarget && frameStarted<(this.motionUntil||0);
     const quality=gsFrameQuality({pixelRatio:this.pixelRatioLimit||2,devicePixelRatio:globalThis.devicePixelRatio||1,moving,interactionScale:this.interactionScale??1,interactionDegree:this.interactionDegree??3,degree:this.gauss.shDegree,exporting:Boolean(this.exportTarget)});
@@ -698,7 +705,9 @@ export class GaussianViewer {
     const dpr = this.exportTarget?.scale || quality.dpr;
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr));
     const height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
-    if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
+    phases.cameraAndLayout=mark()-phaseStart;phaseStart=mark();
+    if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; this.diagnosticProbe?.resize(); }
+    phases.resize=mark()-phaseStart;phaseStart=mark();
     gl.viewport(0, 0, width, height);
     const clear = this.exportTarget?.transparent ? [0, 0, 0, 0] : GS_BACKGROUNDS[this.gauss.background];
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND);
@@ -726,13 +735,14 @@ export class GaussianViewer {
       gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? quality.degree : 0);
       gl.uniform1i(loc.uPointPreview, this.pointPreview?1:0);
       gl.uniform1f(loc.uFar, this.viewDistance || 0);
+      phases.glPrepare=mark()-phaseStart;phaseStart=mark();
       if(!this.exportTarget)this.diagnosticProbe?.begin();
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.count);
       if(!this.exportTarget)this.diagnosticProbe?.end();
     }
     if (this.exportTarget) return;
-    updateSceneGuides(this);
-    this.onViewChange?.();
-    this.diagnosticProbe?.frame(frameStarted,performance.now()-frameStarted,moving);
+    phaseStart=mark();updateSceneGuides(this,rect);phases.guides=mark()-phaseStart;
+    phaseStart=mark();this.onViewChange?.();phases.controls=mark()-phaseStart;
+    this.diagnosticProbe?.frame(frameStarted,performance.now()-frameStarted,moving,phases);
   }
 }

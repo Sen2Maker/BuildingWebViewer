@@ -1,11 +1,11 @@
 {
-  "version": "1.4.5",
+  "version": "1.4.6",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 7,
-  "issuedAt": 1791868774,
-  "expiresAt": 1807420774,
+  "sequence": 8,
+  "issuedAt": 1791877741,
+  "expiresAt": 1807429741,
   "notes": {
-    "zh": "App 入口与网页版分离，移除诊断中切回旧内置页面的按钮，修复启动生命周期事件与诊断日志阻塞；复用高斯排序缓冲区。每次更新同时提供完整新版 APK 和签名热更新包。原生诊断与入口修复请覆盖安装本版 APK，项目保留。",
-    "en": "Separate App navigation from the browser hub, remove bundled-page downgrade recovery, guard startup lifecycle events and move diagnostic writes off the UI thread. Recycle Gaussian sort buffers. Every update includes a full current APK and a signed web update. Install this APK for the native fixes; projects are retained."
+    "zh": "减少高斯查看器界面刷新与画布尺寸切换，优化精确深度排序，新增分阶段性能诊断。加载提示支持长文件名与独立进度条，高斯解析显示真实百分比。保留全部数据；同时提供完整 APK 与兼容热更新。",
+    "en": "Reduce Gaussian UI and canvas resize overhead, optimize exact depth sorting and add phase diagnostics. Loading cards wrap long filenames and show a separate activity bar or real parsing progress. Retain all data; provide a full APK and compatible web update."
   }
 }

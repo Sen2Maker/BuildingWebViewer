@@ -6,6 +6,13 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.6] - 2026-10-13
+
+- 高斯相机尺寸通过 ResizeObserver 缓存，减少逐帧布局读取；相机面板按变化节流更新，运动画质延迟恢复以减少画布尺寸来回切换。
+- 精确深度排序从四轮改为三轮，保留全部 32 位排序键、全部高斯和稳定排序；新增输入延迟、画布切换次数和分阶段 CPU 诊断。
+- 各查看器加载提示支持长文件名换行及独立活动进度条；高斯解析显示真实百分比进度。未知总量时不显示虚假百分比。
+- Cache Gaussian viewport dimensions, throttle camera UI, stabilize motion quality, retain exact sorting with three radix passes, add phase diagnostics and clearer loading progress.
+
 ## [1.4.5] - 2026-10-13
 
 - App 在网页脚本启动前启用独立项目导航；启动中的首页按钮和旧 `index.html` 路径均返回 App 项目首页，网页版流程保持独立。

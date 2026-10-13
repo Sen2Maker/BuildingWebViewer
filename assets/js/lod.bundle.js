@@ -2420,15 +2420,15 @@ function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
   }
   ctx.restore();
 }
-function updateSceneGuides(viewer) {
+function updateSceneGuides(viewer, viewport = null) {
   if(viewer.exportTarget || !viewer.canvas.ownerDocument) return;
   const doc=viewer.canvas.ownerDocument, parent=viewer.canvas.parentElement;
   if(!parent) return;
   if(!viewer.guideCanvas){viewer.guideCanvas=doc.createElement('canvas');viewer.guideCanvas.className='scene-guides';viewer.guideCanvas.setAttribute('aria-hidden','true');parent.append(viewer.guideCanvas);}
   viewer.guideCanvas.hidden=!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount);
-  parent.classList.add('shared-scene-overlays');
-  const canvas=viewer.guideCanvas, rect=viewer.canvas.getBoundingClientRect(), dpr=Math.min(globalThis.devicePixelRatio||1,2);
-  const w=Math.round(Math.min(420,rect.width)*dpr),h=Math.round(160*dpr);canvas.style.width=`${w/dpr}px`;
+  if(!parent.classList.contains('shared-scene-overlays'))parent.classList.add('shared-scene-overlays');
+  const canvas=viewer.guideCanvas, rect=viewport||viewer.canvas.getBoundingClientRect(), dpr=Math.min(globalThis.devicePixelRatio||1,2);
+  const w=Math.round(Math.min(420,rect.width)*dpr),h=Math.round(160*dpr);const cssWidth=`${w/dpr}px`;if(canvas.style.width!==cssWidth)canvas.style.width=cssWidth;
   if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
   const ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(0,h-rect.height*dpr);
   drawSceneGuides(ctx,viewer,w,rect.height*dpr,dpr);ctx.restore();

@@ -9,3 +9,13 @@
 .back-home:focus-visible{outline:2px solid #3e9687;outline-offset:3px}
 @media(max-width:1100px){.app-header{padding:0 19px}}
 @media(max-width:700px){.app-header{padding:0 13px;gap:8px}.app-header h1{font-size:16px}.header-right .local-tag{padding:6px;font-size:10px}.back-home{width:27px;height:29px}}
+
+/* Keep long local filenames readable without squeezing the activity indicator. */
+.loading{left:50%;right:auto;top:64px;transform:translateX(-50%);width:360px;max-width:calc(100% - 32px);box-sizing:border-box;display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px 12px;padding:16px;z-index:20;background:#ffffffF5;box-shadow:0 8px 32px #173b3633;font-size:14px;line-height:1.5}
+.loading i{width:18px;height:18px;box-sizing:border-box;align-self:start;margin-top:2px}
+.loading>span{min-width:0;overflow-wrap:anywhere;white-space:normal;max-height:6em;overflow:auto}
+.loading::after{content:"";grid-column:1/-1;height:8px;border-radius:8px;background:linear-gradient(90deg,#dbe9e4 0%,#237d69 45%,#dbe9e4 90%);background-size:200% 100%;animation:loading-track 1.4s ease-in-out infinite}
+.loading progress{grid-column:1/-1;width:100%;height:12px;accent-color:#237d69}
+.loading.has-progress::after{display:none}
+@keyframes loading-track{from{background-position:100% 0}to{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.loading::after,.loading i{animation:none}}

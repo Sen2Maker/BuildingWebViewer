@@ -1413,6 +1413,7 @@ async function nativeExportWriter(name){
 
 // Source: src/shared/render-diagnostics.js
 
+const diagnosticSamples=()=>Object.fromEntries(['gpu','submit','sort','roundTrip','upload','frameCpu','frameInterval','interactionInterval','inputInterval','inputToDraw','cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,[]]));
 const RENDER_DIAGNOSTIC_KEY='bwv-render-diagnostic-v1';
 function classifyRenderer(name) {
   if(!name)return 'unknown (renderer identity unavailable)';
@@ -1426,24 +1427,28 @@ function diagnosticSummary(values) {
 }
 /** Queries run asynchronously only while a user-requested sample is active. */
 class RenderDiagnosticProbe {
-  constructor(viewer){this.viewer=viewer;this.active=false;this.queries=[];this.samples={gpu:[],submit:[],sort:[],roundTrip:[],upload:[],frameCpu:[],frameInterval:[],interactionInterval:[]};this.contextLosses=0;this.onLost=()=>{this.contextLosses++;this.active=false;this.queries=[];};viewer.canvas.addEventListener('webglcontextlost',this.onLost);}
-  start(){this.stop();this.samples={gpu:[],submit:[],sort:[],roundTrip:[],upload:[],frameCpu:[],frameInterval:[],interactionInterval:[]};this.lastFrame=0;this.lastMoving=false;this.frameCount=0;this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
+  constructor(viewer){this.viewer=viewer;this.active=false;this.queries=[];this.samples=diagnosticSamples();this.contextLosses=0;this.onLost=()=>{this.contextLosses++;this.active=false;this.queries=[];};viewer.canvas.addEventListener('webglcontextlost',this.onLost);}
+  start(){this.stop();this.samples=diagnosticSamples();this.lastFrame=0;this.lastMoving=false;this.lastInput=0;this.pendingInput=0;this.resizeCount=0;this.frameCount=0;this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
   poll(){const gl=this.viewer.gl,ext=this.ext;if(!ext||gl.isContextLost())return;const disjoint=gl.getParameter(ext.GPU_DISJOINT_EXT);if(disjoint)this.disjoint=true;while(this.queries.length&&(disjoint||gl.getQueryParameter(this.queries[0],gl.QUERY_RESULT_AVAILABLE))){const q=this.queries.shift();if(!disjoint)this.add('gpu',gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6);gl.deleteQuery(q);}}
   add(key,value){if(Number.isFinite(value)&&this.samples[key].length<600)this.samples[key].push(value);}
   begin(){if(!this.active)return;this.poll();this.cpuStart=performance.now();const gl=this.viewer.gl;if(this.ext&&this.queries.length<3){this.query=gl.createQuery();gl.beginQuery(this.ext.TIME_ELAPSED_EXT,this.query);}}
   end(){if(this.cpuStart==null)return;const gl=this.viewer.gl;if(this.query){gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queries.push(this.query);this.query=null;}this.add('submit',performance.now()-this.cpuStart);this.cpuStart=null;}
   sort(ms,roundTrip){if(this.active){this.add('sort',ms);this.add('roundTrip',roundTrip);}}
   upload(ms){if(this.active)this.add('upload',ms);}
-  frame(started,cpuMs,moving){
+  input(at){if(!this.active)return;if(this.lastInput)this.add('inputInterval',at-this.lastInput);this.lastInput=at;if(!this.pendingInput)this.pendingInput=at;}
+  resize(){if(this.active)this.resizeCount++;}
+  frame(started,cpuMs,moving,phases={}){
     if(!this.active)return;
     this.frameCount++;
+    if(this.pendingInput&&started>=this.pendingInput){this.add('inputToDraw',started-this.pendingInput);this.pendingInput=0;}
+    for(const [key,ms]of Object.entries(phases))if(this.samples[key])this.add(key,ms);
     this.add('frameCpu',cpuMs);
     if(this.lastFrame){const interval=started-this.lastFrame;this.add('frameInterval',interval);if(moving&&this.lastMoving)this.add('interactionInterval',interval);}
     this.lastFrame=started;this.lastMoving=moving;
   }
   stop(){if(this.active)this.duration=performance.now()-this.started;this.active=false;clearTimeout(this.timer);clearInterval(this.pollTimer);this.poll();for(const q of this.queries)this.viewer.gl.deleteQuery(q);this.queries=[];}
   snapshot(){const v=this.viewer,gl=v.gl;let info={contextLost:gl.isContextLost(),contextLosses:this.contextLosses};if(!gl.isContextLost()){const ext=gl.getExtension('WEBGL_debug_renderer_info');const renderer=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null;info={...info,renderer,classification:classifyRenderer(renderer),vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,maskedRenderer:gl.getParameter(gl.RENDERER),webgl:gl.getParameter(gl.VERSION),shadingLanguage:gl.getParameter(gl.SHADING_LANGUAGE_VERSION),attributes:gl.getContextAttributes(),maxTextureSize:gl.getParameter(gl.MAX_TEXTURE_SIZE),gpuTimerSupported:Boolean(gl.getExtension('EXT_disjoint_timer_query_webgl2'))};}
-    return {schema:2,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy,effectiveQuality:v.effectiveQuality||null,interactionScale:v.interactionScale??1,interactionDegree:v.interactionDegree??3},measurement:{startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint),drawnFrames:this.frameCount||0,orderUploadCpu:diagnosticSummary(this.samples.upload),frameCpu:diagnosticSummary(this.samples.frameCpu),drawInterval:diagnosticSummary(this.samples.frameInterval),interactionDrawInterval:diagnosticSummary(this.samples.interactionInterval)},limits:'CPU draw submission, frame CPU and upload CPU are not GPU completion times. Draw intervals include on-demand idle gaps; interaction intervals are consecutive motion frames, not presentation FPS. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
+    return {schema:3,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy,effectiveQuality:v.effectiveQuality||null,interactionScale:v.interactionScale??1,interactionDegree:v.interactionDegree??3},measurement:{startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint),drawnFrames:this.frameCount||0,orderUploadCpu:diagnosticSummary(this.samples.upload),frameCpu:diagnosticSummary(this.samples.frameCpu),drawInterval:diagnosticSummary(this.samples.frameInterval),interactionDrawInterval:diagnosticSummary(this.samples.interactionInterval),inputEventInterval:diagnosticSummary(this.samples.inputInterval),inputToDrawStart:diagnosticSummary(this.samples.inputToDraw),canvasResizes:this.resizeCount||0,framePhases:Object.fromEntries(['cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,diagnosticSummary(this.samples[k])]))},limits:'CPU draw submission, frame CPU and upload CPU are not GPU completion times. Draw intervals include on-demand idle gaps; interaction intervals are consecutive motion frames, not presentation FPS. Input-to-draw is event-handler-to-frame-start latency, not presentation latency. Phase timings are CPU elapsed times and can include driver waits. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
 }
 function saveRenderDiagnostic(report){try{localStorage.setItem(RENDER_DIAGNOSTIC_KEY,JSON.stringify(report));}catch{}}
 function readRenderDiagnostic(){try{return JSON.parse(localStorage.getItem(RENDER_DIAGNOSTIC_KEY)||'null');}catch{return null;}}
@@ -3051,7 +3056,14 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{},
   nearInput.onchange=()=>{const n=Number(nearInput.value);if(Number.isFinite(n)&&n>=.00001){viewer.near=n;viewer.requestRender();}};nearLabel.append(nearInput);cameraPanel.append(nearLabel);
   cameraPanel.append(make('p',text('训练相机使用原始旋转、位置和焦距，并按图像比例适配视口。开始手动浏览时保留当前倾斜角和垂直视野，再进行环绕调整。','Training views preserve rotation, position and focal lengths, fitted to the viewport. Manual navigation preserves the current roll and vertical field of view before orbiting.'),'presentation-help'));
   const poseInfo=make('p',null,'presentation-help');cameraPanel.append(poseInfo);
-  viewer.onViewChange=()=>{if(document.activeElement!==nearInput)nearInput.value=viewer.near;projection.value=viewer.projection;for(const s of sliders){const back=(viewer.flyPose||viewer.trainingPose)?.basis[2];const v=s.name==='fov'?viewer.fov:back?(s.name==='elevation'?Math.asin(Math.max(-1,Math.min(1,back[2])))*180/Math.PI:Math.atan2(back[1],back[0])*180/Math.PI):viewer.camera[s.name];if(document.activeElement!==s.number)s.number.value=Number(v.toFixed(2));if(document.activeElement!==s.range)s.range.value=v;}const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight);poseInfo.textContent='XYZ: '+spec.eye.map((v,i)=>(v+viewer.origin[i]).toFixed(3)).join(' / ');};
+  let lastCameraUI='',lastCameraAt=-Infinity,cameraUITimer;
+  const setValue=(el,value)=>{if(el.value!==String(value))el.value=value;};
+  viewer.onViewChange=()=>{
+    if(cameraPanel.closest('[hidden]'))return;
+    const now=performance.now();if(now-lastCameraAt<80){clearTimeout(cameraUITimer);cameraUITimer=setTimeout(()=>viewer.onViewChange?.(),85);return;}lastCameraAt=now;
+    const state=JSON.stringify([viewer.near,viewer.projection,viewer.fov,viewer.distance,viewer.baseHeight,viewer.orbitLens,viewer.camera,viewer.target,viewer.flyPose,viewer.trainingPose,viewer.origin]);
+    if(state===lastCameraUI)return;lastCameraUI=state;
+    if(document.activeElement!==nearInput)setValue(nearInput,viewer.near);setValue(projection,viewer.projection);for(const s of sliders){const back=(viewer.flyPose||viewer.trainingPose)?.basis[2];const v=s.name==='fov'?viewer.fov:back?(s.name==='elevation'?Math.asin(Math.max(-1,Math.min(1,back[2])))*180/Math.PI:Math.atan2(back[1],back[0])*180/Math.PI):viewer.camera[s.name];if(document.activeElement!==s.number)setValue(s.number,Number(v.toFixed(2)));if(document.activeElement!==s.range)setValue(s.range,v);}const size=viewer.viewportSize||viewer.canvas;const spec=gsViewSpec(viewer,size.width||size.clientWidth,size.height||size.clientHeight);poseInfo.textContent='XYZ: '+spec.eye.map((v,i)=>(v+viewer.origin[i]).toFixed(3)).join(' / ');};
   const bookPanel=document.getElementById('bookmark-controls'),bookName=make('input'),bookList=make('select');bookName.placeholder=text('视角名称','View name');bookName.setAttribute('aria-label',text('视角名称','View name'));bookList.setAttribute('aria-label',text('高斯视角书签','Gaussian bookmarks'));bookPanel.append(bookName,bookList);
   let bookmarks=[];const key='BuildingWebViewer.gaussian.camera.v1';try{const saved=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(saved))bookmarks=saved.slice(0,50);}catch{}
   function listBooks(){bookList.replaceChildren();for(let i=0;i<bookmarks.length;i++){const o=make('option',bookmarks[i].name);o.value=i;bookList.append(o);}}
@@ -3191,15 +3203,15 @@ function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
   }
   ctx.restore();
 }
-function updateSceneGuides(viewer) {
+function updateSceneGuides(viewer, viewport = null) {
   if(viewer.exportTarget || !viewer.canvas.ownerDocument) return;
   const doc=viewer.canvas.ownerDocument, parent=viewer.canvas.parentElement;
   if(!parent) return;
   if(!viewer.guideCanvas){viewer.guideCanvas=doc.createElement('canvas');viewer.guideCanvas.className='scene-guides';viewer.guideCanvas.setAttribute('aria-hidden','true');parent.append(viewer.guideCanvas);}
   viewer.guideCanvas.hidden=!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount);
-  parent.classList.add('shared-scene-overlays');
-  const canvas=viewer.guideCanvas, rect=viewer.canvas.getBoundingClientRect(), dpr=Math.min(globalThis.devicePixelRatio||1,2);
-  const w=Math.round(Math.min(420,rect.width)*dpr),h=Math.round(160*dpr);canvas.style.width=`${w/dpr}px`;
+  if(!parent.classList.contains('shared-scene-overlays'))parent.classList.add('shared-scene-overlays');
+  const canvas=viewer.guideCanvas, rect=viewport||viewer.canvas.getBoundingClientRect(), dpr=Math.min(globalThis.devicePixelRatio||1,2);
+  const w=Math.round(Math.min(420,rect.width)*dpr),h=Math.round(160*dpr);const cssWidth=`${w/dpr}px`;if(canvas.style.width!==cssWidth)canvas.style.width=cssWidth;
   if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
   const ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(0,h-rect.height*dpr);
   drawSceneGuides(ctx,viewer,w,rect.height*dpr,dpr);ctx.restore();
@@ -3644,7 +3656,7 @@ function gsFrameQuality({pixelRatio=1,devicePixelRatio=1,moving=false,interactio
 // Source: src/gaussian/sort-worker.js
 // Bundled worker code: no CDN or network dependency. A generation rejects stale results.
 const GS_SORT_WORKER = `
-let centers=null, generation=0,keys,src,dst,recycled=null;const counts=new Uint32Array(256);
+let centers=null, generation=0,keys,src,dst,recycled=null;const counts=new Uint32Array(2048);
 const f=new Float32Array(1),u=new Uint32Array(f.buffer);
 onmessage=e=>{
  const m=e.data;
@@ -3653,7 +3665,7 @@ onmessage=e=>{
  if(!centers||m.generation!==generation)return;
  const started=performance.now(), n=centers.length/3;
  for(let i=0;i<n;i++){f[0]=centers[i*3]*m.forward[0]+centers[i*3+1]*m.forward[1]+centers[i*3+2]*m.forward[2];const b=u[0];keys[i]=(b&0x80000000?~b:b|0x80000000)>>>0;src[i]=i;}
- for(let s=0;s<32;s+=8){counts.fill(0);for(let i=0;i<n;i++)counts[(keys[src[i]]>>>s)&255]++;let sum=0;for(let b=0;b<256;b++){const c=counts[b];counts[b]=sum;sum+=c;}for(let i=0;i<n;i++){const id=src[i];dst[counts[(keys[id]>>>s)&255]++]=id;}const t=src;src=dst;dst=t;}
+ for(let s=0;s<32;s+=11){const mask=s===22?1023:2047, buckets=mask+1;counts.fill(0);for(let i=0;i<n;i++)counts[(keys[src[i]]>>>s)&mask]++;let sum=0;for(let b=0;b<buckets;b++){const c=counts[b];counts[b]=sum;sum+=c;}for(let i=0;i<n;i++){const id=src[i];dst[counts[(keys[id]>>>s)&mask]++]=id;}const t=src;src=dst;dst=t;}
  const order=recycled?new Uint32Array(recycled):new Uint32Array(n);recycled=null;order.set(src);postMessage({generation,forward:m.forward,sortMs:performance.now()-started,order:order.buffer},[order.buffer]);
 };`;
 
@@ -3940,7 +3952,12 @@ class GaussianViewer {
     this.installEvents();
     this.onNavVisibility = () => { if (document.hidden) this.stopNavigation(); };
     document.addEventListener('visibilitychange', this.onNavVisibility);
-    this.resizeObserver = new ResizeObserver(() => this.requestRender());
+    this.viewportSize = canvas.getBoundingClientRect();
+    this.resizeObserver = new ResizeObserver(entries => {
+      const rect=entries[0]?.contentRect;
+      if(rect)this.viewportSize={width:rect.width,height:rect.height};
+      this.requestRender();
+    });
     this.resizeObserver.observe(canvas);
     this.render();
   }
@@ -3989,6 +4006,7 @@ class GaussianViewer {
     this.canvas.style.touchAction = 'none';
     this.canvas.style.cursor = 'grab';
     listen('contextmenu', event => event.preventDefault());
+    for(const name of ['pointermove','wheel'])listen(name,()=>this.diagnosticProbe?.input(performance.now()),{passive:true});
     mountTouchCamera(this, listen);
     listen('pointerdown', event => {
       if (this.fly?.active) return;
@@ -4391,13 +4409,14 @@ class GaussianViewer {
       this.applyNavigation(this.navigation.step(performance.now()));
       if (this.navigation.active) this.requestRender();
     }
-    const gl = this.gl, canvas = this.canvas, rect = canvas.getBoundingClientRect();
+    const gl = this.gl, canvas = this.canvas, rect = this.viewportSize || canvas.getBoundingClientRect();
+    const phases={},mark=()=>performance.now();let phaseStart=frameStarted;
     const specNow=gsViewSpec(this,rect.width,rect.height);
     const signature=[...specNow.eye,...specNow.basis.flat(),specNow.fx,specNow.fy,this.camera.zoom,...this.camera.pan];
     const changed=this.qualityPose && signature.some((n,i)=>Math.abs(n-this.qualityPose[i])>1e-9);
     if(!this.exportTarget){
       this.qualityPose=signature;
-      if(changed){this.motionUntil=frameStarted+180;clearTimeout(this.qualityTimer);this.qualityTimer=setTimeout(()=>this.requestRender(),190);}
+      if(changed){this.motionUntil=frameStarted+450;clearTimeout(this.qualityTimer);this.qualityTimer=setTimeout(()=>this.requestRender(),470);}
     }
     const moving=!this.exportTarget && frameStarted<(this.motionUntil||0);
     const quality=gsFrameQuality({pixelRatio:this.pixelRatioLimit||2,devicePixelRatio:globalThis.devicePixelRatio||1,moving,interactionScale:this.interactionScale??1,interactionDegree:this.interactionDegree??3,degree:this.gauss.shDegree,exporting:Boolean(this.exportTarget)});
@@ -4405,7 +4424,9 @@ class GaussianViewer {
     const dpr = this.exportTarget?.scale || quality.dpr;
     const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr));
     const height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
-    if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; }
+    phases.cameraAndLayout=mark()-phaseStart;phaseStart=mark();
+    if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) { canvas.width = width; canvas.height = height; this.diagnosticProbe?.resize(); }
+    phases.resize=mark()-phaseStart;phaseStart=mark();
     gl.viewport(0, 0, width, height);
     const clear = this.exportTarget?.transparent ? [0, 0, 0, 0] : GS_BACKGROUNDS[this.gauss.background];
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND);
@@ -4433,14 +4454,15 @@ class GaussianViewer {
       gl.uniform1i(loc.uWidth, this.textureSize.width); gl.uniform1i(loc.uRestWidth, this.restSize.width); gl.uniform1i(loc.uDegree, this.packed.rest ? quality.degree : 0);
       gl.uniform1i(loc.uPointPreview, this.pointPreview?1:0);
       gl.uniform1f(loc.uFar, this.viewDistance || 0);
+      phases.glPrepare=mark()-phaseStart;phaseStart=mark();
       if(!this.exportTarget)this.diagnosticProbe?.begin();
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.count);
       if(!this.exportTarget)this.diagnosticProbe?.end();
     }
     if (this.exportTarget) return;
-    updateSceneGuides(this);
-    this.onViewChange?.();
-    this.diagnosticProbe?.frame(frameStarted,performance.now()-frameStarted,moving);
+    phaseStart=mark();updateSceneGuides(this,rect);phases.guides=mark()-phaseStart;
+    phaseStart=mark();this.onViewChange?.();phases.controls=mark()-phaseStart;
+    this.diagnosticProbe?.frame(frameStarted,performance.now()-frameStarted,moving,phases);
   }
 }
 
@@ -4710,7 +4732,10 @@ async function gsBoot() {
   const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   const gsSay = message => { const note = gs$('data-notes'); note.textContent = message || ''; };
   const gsError = message => { const box = gs$('error'); box.hidden = !message; box.querySelector('span').textContent = message || ''; };
-  const gsLoading = (message) => { const box = gs$('loading'); box.hidden = !message; if (message) box.querySelector('span').textContent = message; };
+  const gsLoading = (message, fraction=null) => { const box = gs$('loading'); box.hidden = !message; if (message) box.querySelector('span').textContent = message;
+    let progress=box.querySelector('progress');if(!progress){progress=document.createElement('progress');progress.max=1;progress.setAttribute('aria-label',label('文件解析进度','File parsing progress'));box.append(progress);}
+    const known=Number.isFinite(fraction);progress.hidden=!known;box.classList.toggle('has-progress',known);if(known)progress.value=Math.max(0,Math.min(1,fraction));
+  };
 
   const distanceLabel=document.createElement('label'),distanceToggle=document.createElement('input'),distanceRange=document.createElement('input'),distanceValue=document.createElement('output');
   distanceToggle.type='checkbox';distanceToggle.id='gs-distance-enabled';distanceToggle.setAttribute('aria-label',label('限制视距','Limit viewing distance'));
@@ -4790,7 +4815,7 @@ async function gsBoot() {
         if (!entry.parsed || entry.parsed.preview) {
           gsLoading(t('正在读取 {0}…', [entry.treeName || entry.file.name]));
           if(entry.parsed&&!entry.parsed.preview){entry.savedFlags=entry.parsed.editFlags;gsEditor?.edits.releaseGeometry(entry.parsed);}
-          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]));};
+          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]),total>0?done/total:null);};
           const parsed=await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true,onProgress});
           if(serial!==gsSerial)return;
           if(entry.savedFlags){
