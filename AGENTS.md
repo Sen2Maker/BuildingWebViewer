@@ -8,3 +8,5 @@
 - The user's current explicit request to publish the first v1.0 release authorizes publishing v1.0.0 after the pre-publication report. It is not standing authorization to publish later versions.
 - Use `main` as the primary branch. Avoid unnecessary branches or repository-wide rewrites. Never include user datasets, credentials or local absolute data paths in a release.
 - Follow `docs/RELEASING.md`. Run `python3 scripts/check.py`, then `python3 scripts/release.py` before publication. Include source and generated assets in the same commit. GitHub Pages is deployed from a published stable Release, not an ordinary push.
+
+- Every new published version, including hot-update-only patches, must include a complete APK built for the same version. Hot updates supplement the APK for installed users; never require new users to install an older APK first. Do not reuse an older APK in a new release manifest.

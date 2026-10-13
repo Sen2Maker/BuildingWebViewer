@@ -1302,7 +1302,7 @@ function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
   let pending=null;
   return function returnHome(){
     if(pending)return pending;
-    pending=Promise.resolve().then(flush).then(()=>navigate(`assets/mobile/index.html?lang=${language()==='en'?'en':'zh'}`)).finally(()=>{pending=null;});
+    pending=Promise.resolve().then(flush).then(()=>navigate(`/assets/mobile/index.html?lang=${language()==='en'?'en':'zh'}`)).finally(()=>{pending=null;});
     return pending;
   };
 }
@@ -1361,7 +1361,7 @@ function createMobileSaver({read,write,status=()=>{}}){
 async function mountMobileProject({receive,getState,restoreState,onBackground=()=>{},onForeground=()=>{},root=document}){
   const api=mobileProjects();if(!api)return null;
   const id=new URL(root.location.href).searchParams.get('project');
-  if(!id){root.location.replace('assets/mobile/index.html');return null;}
+  if(!id){root.location.replace('/assets/mobile/index.html');return null;}
   const status=root.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');root.querySelector('header').append(status);
   let ready=false;
   const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
@@ -1369,7 +1369,8 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
   const flush=autosave.flush, schedule=()=>{if(ready)autosave.schedule();};
   const goHome=createMobileHomeNavigation({flush,navigate:url=>root.location.replace(url),language:()=>root.documentElement.lang});
   const home=root.querySelector('.back-home');
-  if(home){home.href='assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
+  if(home){home.href='/assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
+  globalThis.bwvNavigateProjectHome=()=>goHome().catch(()=>{});
   globalThis.bwvReturnToProjectHome=()=>{
     // Existing viewer Escape handlers close open settings/menus before leaving the project.
     const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});

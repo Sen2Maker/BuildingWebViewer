@@ -1,11 +1,11 @@
 {
-  "version": "1.4.4",
+  "version": "1.4.5",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 6,
-  "issuedAt": 1791724141,
-  "expiresAt": 1807276141,
+  "sequence": 7,
+  "issuedAt": 1791868774,
+  "expiresAt": 1807420774,
   "notes": {
-    "zh": "高斯画质档位保留全部数据，新增独立像素倍率与可关闭的交互降质；停止移动后恢复颜色与清晰度。减少重复着色计算及排序纹理分配，完善帧耗时诊断。兼容 nativeApi 6，无需重装 App。",
-    "en": "All Gaussian quality presets retain every splat. Independent pixel ratio and optional motion quality restore after movement. Reduce redundant shader work and sort allocations; extend frame timing diagnostics. Native API 6 hot update, no reinstall."
+    "zh": "App 入口与网页版分离，移除诊断中切回旧内置页面的按钮，修复启动生命周期事件与诊断日志阻塞；复用高斯排序缓冲区。每次更新同时提供完整新版 APK 和签名热更新包。原生诊断与入口修复请覆盖安装本版 APK，项目保留。",
+    "en": "Separate App navigation from the browser hub, remove bundled-page downgrade recovery, guard startup lifecycle events and move diagnostic writes off the UI thread. Recycle Gaussian sort buffers. Every update includes a full current APK and a signed web update. Install this APK for the native fixes; projects are retained."
   }
 }

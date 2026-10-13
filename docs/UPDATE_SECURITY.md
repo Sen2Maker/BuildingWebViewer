@@ -29,7 +29,7 @@ python3 mobile/sign-update.py --key /secure/location/update-key.pem \
   --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt"
 ```
 
-准备阶段输出 unsigned 清单，签名阶段才输出可发布的 `mobile-update.json`。纯网页更新无需重新编译 APK：签名时用 `--reuse-apk-from /path/to/previous-signed-mobile-update.json` 替代 `--apk`，复用先前已验签且 nativeApi 相同的安装包引用。网页版本与 APK 版本分别记录；原生接口变化则拒绝复用。每次变更序号必须递增；已发布清单及标签不覆盖。CI 从 Release 下载清单并独立验签、重建网页包比对哈希，核对 APK 哈希后才部署。
+准备阶段输出 unsigned 清单，签名阶段才输出可发布的 `mobile-update.json`。每次发布（包括小型网页热更新）都构建同版本完整 APK，并使用 `--apk` 签名。热更新供已安装用户使用，新用户直接安装最新 APK；不再复用旧 APK 引用。每次变更序号必须递增；已发布清单及标签不覆盖。CI 从 Release 下载清单并独立验签、重建网页包比对哈希，核对 APK 哈希后才部署。
 
 密钥轮换当前采用 APK 更新：新 APK 可带旧、新公钥，迁移后后续 APK 移除旧公钥。不能从网页清单自动导入陌生公钥。若签名钥匙泄露，必须发布可信新 APK，不能仅靠网页热更新恢复信任。
 

@@ -12,7 +12,7 @@ public class StartupTest {
    }
    assertTrue("Real native project home did not render",ready);
    SystemClock.sleep(1500);snapshot("startup-home.png");
-   scenario.onActivity(a->{String report=a.diagnostics.report();assertTrue(report.contains("https://localhost/assets/mobile/index.html"));assertTrue(report.contains("Actual URL: https://localhost/assets/mobile/index.html"));assertEquals("",a.diagnostics.lastFailure);assertTrue(report.contains("Bundled asset OK"));a.showDiagnostics();});
+   scenario.onActivity(a->{String report=a.diagnostics.report();assertTrue(report.contains("https://localhost/assets/mobile/index.html"));assertTrue(report.contains("Actual URL: https://localhost/assets/mobile/index.html"));assertEquals("",a.diagnostics.lastFailure);assertTrue(report.contains("Bundled asset OK"));assertFalse(report.contains("Cannot read properties of undefined"));a.showDiagnostics();});
    SystemClock.sleep(1500);snapshot("startup-diagnostics.png");
   }
  }
@@ -27,6 +27,15 @@ public class StartupTest {
    assertTrue("Failed main-frame load must expose native diagnostics",captured);
    scenario.onActivity(a->{String report=a.diagnostics.report();assertTrue(report.contains("WEB_ERROR main code="));assertTrue(report.contains("localhostassets"));assertFalse(report.contains("WebView below configured minimum"));});
    SystemClock.sleep(1500);snapshot("startup-error-diagnostics.png");
+  }
+ }
+ @Test public void browserHubRedirectsToAppAndDiagnosticsCannotDowngrade()throws Exception{
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+   SystemClock.sleep(2000);scenario.onActivity(a->a.getBridge().getWebView().loadUrl("https://localhost/index.html?lang=en"));
+   boolean ready=false;
+   for(int i=0;i<100;i++){ArrayBlockingQueue<String> value=new ArrayBlockingQueue<>(1);scenario.onActivity(a->a.getBridge().getWebView().evaluateJavascript("location.pathname==='/assets/mobile/index.html'&&!!document.getElementById('projects')?.children.length",value::offer));if("true".equals(value.poll(5,TimeUnit.SECONDS))){ready=true;break;}SystemClock.sleep(200);}
+   assertTrue("Browser hub must not remain inside App",ready);
+   scenario.onActivity(a->{a.showDiagnostics();java.util.ArrayList<android.view.View> found=new java.util.ArrayList<>();a.diagnostics.activeDialog.getWindow().getDecorView().findViewsWithText(found,"Use bundled pages",android.view.View.FIND_VIEWS_WITH_TEXT);assertTrue(found.isEmpty());});
   }
  }
  private void snapshot(String name)throws Exception{

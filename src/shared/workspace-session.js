@@ -6,7 +6,7 @@ import { createMobileHomeNavigation } from './mobile-navigation.js';
 export async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
   const api=mobileProjects();if(!api)return null;
   const id=new URL(location.href).searchParams.get('project');
-  if(!id){location.replace('assets/mobile/index.html');return {redirecting:true};}
+  if(!id){location.replace('/assets/mobile/index.html');return {redirecting:true};}
   const status=document.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');document.querySelector('header').append(status);
   const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':kind==='dirty'?'Pending autosave':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':kind==='dirty'?'待自动保存':'保存失败');onStatus(kind,error);};
   const project=await api.getProject({id});
@@ -32,7 +32,8 @@ export async function openWorkspaceSession({tool, restore, capture, onStatus, be
   const autosave=createAutosave({save:flush,onDirty:()=>report('dirty')});
   const schedule=autosave.schedule, saveNow=autosave.flush;
   const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await saveNow();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
-  const link=document.querySelector('.back-home');if(link){link.href='assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
+  const link=document.querySelector('.back-home');if(link){link.href='/assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
+  globalThis.bwvNavigateProjectHome=()=>home().catch(()=>{});
   globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});else saveNow().catch(()=>{});};
   const background=()=>{autosave.pause().catch(()=>{});onBackground();};
   const foreground=()=>{autosave.resume();onForeground();};

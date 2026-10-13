@@ -570,12 +570,18 @@ export class GaussianViewer {
   }
 
   receiveSort(message) {
-    if(message.generation!==this.generation)return;
-    this.sortBusy=false;
-    this.diagnosticProbe?.sort(message.sortMs,performance.now()-this.diagnosticSortStart);
-    if(!this.packed || this.contextLost)return;
-    this.uploadOrder(new Uint32Array(message.order));
-    this.sortForward=message.forward;this.sortTarget=[...this.target];this.sortDirty=false;this.sortedReady=true;this.requestRender();
+    try {
+      if(message.generation!==this.generation)return;
+      this.sortBusy=false;
+      this.diagnosticProbe?.sort(message.sortMs,performance.now()-this.diagnosticSortStart);
+      if(!this.packed || this.contextLost)return;
+      // uploadOrder copies into persistent texture staging memory; return the transferred buffer.
+      this.uploadOrder(new Uint32Array(message.order));
+      this.sortForward=message.forward;this.sortTarget=[...this.target];this.sortDirty=false;this.sortedReady=true;this.requestRender();
+    } finally {
+      if(this.sortWorker && message.order instanceof ArrayBuffer)
+        this.sortWorker.postMessage({type:'recycle',generation:message.generation,order:message.order},[message.order]);
+    }
   }
   uploadOrder(order) {
     const started=performance.now(),gl=this.gl,{width,height}=this.textureSize;

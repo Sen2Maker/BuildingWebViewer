@@ -1,0 +1,4 @@
+.native-app .app-header .back-home{min-width:64px;width:auto;white-space:nowrap;padding:5px 8px;font-size:13px}
+.native-app .native-app-badge{font-size:9px;padding:3px 6px;border:1px solid #d5e6df;border-radius:5px;color:#5a8374;letter-spacing:.08em}
+.native-app .app-header .local-tag{display:none}
+.native-app .footer-links a[href*="sen2maker.github.io/BuildingWebViewer"]{display:none}

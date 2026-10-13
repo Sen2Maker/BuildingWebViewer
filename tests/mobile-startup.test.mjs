@@ -7,3 +7,8 @@ test('Capacitor concatenates start path: local home must retain localhost author
  assert.ok(fs.existsSync(new URL('../assets/mobile/index.html',import.meta.url)));
  assert.equal(c.server.url,undefined,'Cold start must never use a remote URL');
 });
+
+ test('native diagnostics cannot downgrade into bundled browser pages',()=>{
+  const source=fs.readFileSync(new URL('../mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/StartupDiagnostics.java',import.meta.url),'utf8');
+  assert.ok(!source.includes('setServerAssetPath'));assert.ok(!source.includes('Use bundled pages'));
+ });

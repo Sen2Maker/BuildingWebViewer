@@ -13,6 +13,7 @@ def fetch(url,limit):
 raw=fetch(base+'mobile-update.json',65536)
 signed=verify(json.loads(raw))
 assert {key:signed[key] for key in expected}==expected,'Signed manifest differs from the tagged build'
+assert signed['apk']['version']==expected['version'],'Every new release must provide a same-version complete APK'
 for kind,limit in [('web',32*1024*1024),('apk',128*1024*1024)]:
     asset=signed[kind];content=fetch(asset['url'],limit)
     assert len(content)==asset['size'] and hashlib.sha256(content).hexdigest()==asset['sha256'],'Uploaded artifact mismatch'

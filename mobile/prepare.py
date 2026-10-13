@@ -16,9 +16,11 @@ version=json.loads((ROOT/'package.json').read_text())['version']
 assert release['version']==version, 'Release notes version mismatch'
 (WEB/'release-notes.json').write_text(json.dumps({'version':version,'notes':release['notes']},ensure_ascii=False)+'\n')
 (WEB/'native-web.json').write_text(json.dumps({'version':version,'nativeApi':6}))
+shutil.copy2(ROOT/'src/mobile/app-shell.js',WEB/'assets/js/app-shell.js')
+shutil.copy2(ROOT/'src/mobile/app-shell.css',WEB/'assets/mobile/app-shell.css')
 for p in WEB.rglob('*.html'):
  prefix='../../' if p.parent==WEB/'assets/mobile' else ''
- p.write_text(p.read_text().replace('<head>',f'<head><script src="{prefix}assets/js/capacitor.js"></script>',1))
+ p.write_text(p.read_text().replace('<head>',f'<head><script src="{prefix}assets/js/capacitor.js"></script><script src="{prefix}assets/js/app-shell.js"></script><link rel="stylesheet" href="{prefix}assets/mobile/app-shell.css">',1))
 subprocess.run(['node',str(MOBILE/'compat-build.mjs')],cwd=ROOT,check=True)
 subprocess.run(['node',str(MOBILE/'compat-test.mjs')],cwd=ROOT,check=True)
 name=f'BuildingWebViewer-Update-v{version}.bwvupdate';dest=ROOT/'dist'/name;dest.parent.mkdir(exist_ok=True)

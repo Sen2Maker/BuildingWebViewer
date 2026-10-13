@@ -6,6 +6,14 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.4.5] - 2026-10-13
+
+- App 在网页脚本启动前启用独立项目导航；启动中的首页按钮和旧 `index.html` 路径均返回 App 项目首页，网页版流程保持独立。
+- 移除原生诊断中的“使用内置页面”按钮，避免清除热更新状态、退回旧 APK 的资源。保护启动生命周期事件，保留高斯/创作页面的脱敏诊断路径和最近脚本警告。
+- 诊断日志改为后台合并写入；高斯排序结果采用可回收传输缓冲区，减少大数组分配，保留完整数据与排序规则。
+- 每个版本都构建同版本完整 APK 和签名热更新包，不再复用旧 APK。原生层修复需要覆盖安装本版 APK，项目数据保留；热更新仍用于兼容网页改动。
+- Separate native App navigation and the browser hub; remove downgrade recovery, guard lifecycle events, improve local diagnostics and recycle Gaussian sort transfers. Every release includes a same-version full APK plus a signed web update. Install this APK for native fixes.
+
 ## [1.4.4] - 2026-10-11
 
 - 高斯各画质档位保留全部数据；手机默认使用全量流畅画质，旧项目的数量限制不再影响显示。

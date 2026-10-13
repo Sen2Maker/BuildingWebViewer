@@ -90,8 +90,8 @@ public class BWVProjectsPlugin extends Plugin {
     IO.execute(()->{try{JSONObject p=store.importUris(null,files);notifyListeners("projectsChanged",JSObject.fromJSONObject(p),true);}catch(Exception error){notifyListeners("projectsChanged",new JSObject().put("error",error.getMessage()),true);}});
   }
   @Override protected void handleOnNewIntent(Intent intent){if(isShare(intent)){getActivity().setIntent(new Intent());acceptShare(intent);}}
-  @Override protected void handleOnPause(){ArchiveImporter.background=true;bridge.triggerWindowJSEvent("bwvPause");}
-  @Override protected void handleOnResume(){ArchiveImporter.background=false;bridge.triggerWindowJSEvent("bwvResume");}
+  @Override protected void handleOnPause(){ArchiveImporter.background=true;bridge.getWebView().evaluateJavascript(NativeRoutes.lifecycle("bwvPause"),null);}
+  @Override protected void handleOnResume(){ArchiveImporter.background=false;bridge.getWebView().evaluateJavascript(NativeRoutes.lifecycle("bwvResume"),null);}
   @PluginMethod public void readChunk(PluginCall call){run(call,()->{
     String id=call.getString("id"),key=call.getString("key");JSONArray files=store.get(id).getJSONArray("files");boolean allowed=false;for(int i=0;i<files.length();i++)if(files.getJSONObject(i).getString("key").equals(key)){allowed=true;break;}if(!allowed)throw new IOException("File is not in project");
     long offset=call.getData().optLong("offset",0L);int length=call.getInt("length",1048576);if(offset<0||length<0||length>1048576)throw new IOException("Invalid read range");

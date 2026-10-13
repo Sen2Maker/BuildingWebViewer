@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>高斯泼溅查看器 · 三维数据工具箱</title><!-- site-meta:start -->
-<meta name="application-build" content="094134b5722d6878">
+<meta name="application-build" content="8f6d2ba4f7f28077">
 <meta name="description" content="在浏览器中查看 3D Gaussian Splatting 的二进制 PLY：正交泼溅、球谐颜色、尺度与训练机位。文件只在本机处理。Local 3D Gaussian Splatting viewer for binary PLY, with spherical harmonics, scale and training-camera directions.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.4.4">
+<meta name="application-version" content="1.4.5">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/gaussian.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="高斯泼溅查看器 / Gaussian Splatting Viewer · BuildingWebViewer">
@@ -133,7 +133,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <div class="viewport" id="viewport"><canvas id="scene" aria-label="高斯泼溅查看器三维预览"></canvas><div class="scene-note"><strong id="view-note">高斯原始坐标 · 本地编辑</strong><span id="geometry-note">未选择数据时保持空白</span></div><div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/gaussian.svg?v=a8fcc1749975" alt="" width="96" height="81"><h3>打开数据，从这里开始</h3><p>添加高斯 PLY 或结果文件夹，再勾选左侧文件。</p></div><div id="loading" class="loading" role="status" hidden><i></i><span>正在读取文件…</span></div><div id="error" class="error-banner" role="alert" hidden><span></span><button id="dismiss-error" aria-label="关闭提示">×</button></div><div class="viewport-bottom"><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div></div>
 <div id="data-notes" class="data-notes" aria-live="polite"></div>
 <footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">文件不会上传</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.4.4" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.4.4</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.4.5" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.4.5</a></nav>
 
 <!-- site-footer:end --></footer>
 </main>
@@ -149,4 +149,4 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <p class="inspector-footer">显示即时生效 · Esc 收起</p>
 </aside>
 </div>
-<script data-viewer-src="assets/js/gaussian.bundle.js?v=be36a2c246a2"></script></body></html>
+<script data-viewer-src="assets/js/gaussian.bundle.js?v=9cbbb28fadd7"></script></body></html>

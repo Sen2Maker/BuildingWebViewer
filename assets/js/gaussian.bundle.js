@@ -1302,7 +1302,7 @@ function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
   let pending=null;
   return function returnHome(){
     if(pending)return pending;
-    pending=Promise.resolve().then(flush).then(()=>navigate(`assets/mobile/index.html?lang=${language()==='en'?'en':'zh'}`)).finally(()=>{pending=null;});
+    pending=Promise.resolve().then(flush).then(()=>navigate(`/assets/mobile/index.html?lang=${language()==='en'?'en':'zh'}`)).finally(()=>{pending=null;});
     return pending;
   };
 }
@@ -1361,7 +1361,7 @@ function createMobileSaver({read,write,status=()=>{}}){
 async function mountMobileProject({receive,getState,restoreState,onBackground=()=>{},onForeground=()=>{},root=document}){
   const api=mobileProjects();if(!api)return null;
   const id=new URL(root.location.href).searchParams.get('project');
-  if(!id){root.location.replace('assets/mobile/index.html');return null;}
+  if(!id){root.location.replace('/assets/mobile/index.html');return null;}
   const status=root.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');root.querySelector('header').append(status);
   let ready=false;
   const saver=createMobileSaver({read:()=>({...getState(),schemaVersion:1}),write:state=>api.saveState({id,tool:root.body.dataset.tool,state}),status:(kind,error)=>{status.textContent=t(kind==='saving'?'保存中…':kind==='saved'?'已保存':'保存失败');status.title=error?.message||'';}});
@@ -1369,7 +1369,8 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
   const flush=autosave.flush, schedule=()=>{if(ready)autosave.schedule();};
   const goHome=createMobileHomeNavigation({flush,navigate:url=>root.location.replace(url),language:()=>root.documentElement.lang});
   const home=root.querySelector('.back-home');
-  if(home){home.href='assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
+  if(home){home.href='/assets/mobile/index.html';home.onclick=event=>{event.preventDefault();goHome().catch(()=>{});};}
+  globalThis.bwvNavigateProjectHome=()=>goHome().catch(()=>{});
   globalThis.bwvReturnToProjectHome=()=>{
     // Existing viewer Escape handlers close open settings/menus before leaving the project.
     const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});
@@ -1478,7 +1479,7 @@ function mountRenderDiagnostics(viewer,container){const probe=new RenderDiagnost
 async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
   const api=mobileProjects();if(!api)return null;
   const id=new URL(location.href).searchParams.get('project');
-  if(!id){location.replace('assets/mobile/index.html');return {redirecting:true};}
+  if(!id){location.replace('/assets/mobile/index.html');return {redirecting:true};}
   const status=document.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');document.querySelector('header').append(status);
   const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':kind==='dirty'?'Pending autosave':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':kind==='dirty'?'待自动保存':'保存失败');onStatus(kind,error);};
   const project=await api.getProject({id});
@@ -1504,7 +1505,8 @@ async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLea
   const autosave=createAutosave({save:flush,onDirty:()=>report('dirty')});
   const schedule=autosave.schedule, saveNow=autosave.flush;
   const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await saveNow();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
-  const link=document.querySelector('.back-home');if(link){link.href='assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
+  const link=document.querySelector('.back-home');if(link){link.href='/assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
+  globalThis.bwvNavigateProjectHome=()=>home().catch(()=>{});
   globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});else saveNow().catch(()=>{});};
   const background=()=>{autosave.pause().catch(()=>{});onBackground();};
   const foreground=()=>{autosave.resume();onForeground();};
@@ -3642,16 +3644,17 @@ function gsFrameQuality({pixelRatio=1,devicePixelRatio=1,moving=false,interactio
 // Source: src/gaussian/sort-worker.js
 // Bundled worker code: no CDN or network dependency. A generation rejects stale results.
 const GS_SORT_WORKER = `
-let centers=null, generation=0,keys,src,dst;const counts=new Uint32Array(256);
+let centers=null, generation=0,keys,src,dst,recycled=null;const counts=new Uint32Array(256);
 const f=new Float32Array(1),u=new Uint32Array(f.buffer);
 onmessage=e=>{
  const m=e.data;
- if(m.type==='data'){centers=new Float32Array(m.centers);generation=m.generation;const n=centers.length/3;keys=new Uint32Array(n);src=new Uint32Array(n);dst=new Uint32Array(n);return;}
+ if(m.type==='recycle'){if(m.generation===generation&&centers&&m.order.byteLength===centers.length/3*4)recycled=m.order;return;}
+ if(m.type==='data'){centers=new Float32Array(m.centers);generation=m.generation;const n=centers.length/3;keys=new Uint32Array(n);src=new Uint32Array(n);dst=new Uint32Array(n);recycled=null;return;}
  if(!centers||m.generation!==generation)return;
  const started=performance.now(), n=centers.length/3;
  for(let i=0;i<n;i++){f[0]=centers[i*3]*m.forward[0]+centers[i*3+1]*m.forward[1]+centers[i*3+2]*m.forward[2];const b=u[0];keys[i]=(b&0x80000000?~b:b|0x80000000)>>>0;src[i]=i;}
  for(let s=0;s<32;s+=8){counts.fill(0);for(let i=0;i<n;i++)counts[(keys[src[i]]>>>s)&255]++;let sum=0;for(let b=0;b<256;b++){const c=counts[b];counts[b]=sum;sum+=c;}for(let i=0;i<n;i++){const id=src[i];dst[counts[(keys[id]>>>s)&255]++]=id;}const t=src;src=dst;dst=t;}
- const order=src.slice();postMessage({generation,forward:m.forward,sortMs:performance.now()-started,order:order.buffer},[order.buffer]);
+ const order=recycled?new Uint32Array(recycled):new Uint32Array(n);recycled=null;order.set(src);postMessage({generation,forward:m.forward,sortMs:performance.now()-started,order:order.buffer},[order.buffer]);
 };`;
 
 
@@ -4274,12 +4277,18 @@ class GaussianViewer {
   }
 
   receiveSort(message) {
-    if(message.generation!==this.generation)return;
-    this.sortBusy=false;
-    this.diagnosticProbe?.sort(message.sortMs,performance.now()-this.diagnosticSortStart);
-    if(!this.packed || this.contextLost)return;
-    this.uploadOrder(new Uint32Array(message.order));
-    this.sortForward=message.forward;this.sortTarget=[...this.target];this.sortDirty=false;this.sortedReady=true;this.requestRender();
+    try {
+      if(message.generation!==this.generation)return;
+      this.sortBusy=false;
+      this.diagnosticProbe?.sort(message.sortMs,performance.now()-this.diagnosticSortStart);
+      if(!this.packed || this.contextLost)return;
+      // uploadOrder copies into persistent texture staging memory; return the transferred buffer.
+      this.uploadOrder(new Uint32Array(message.order));
+      this.sortForward=message.forward;this.sortTarget=[...this.target];this.sortDirty=false;this.sortedReady=true;this.requestRender();
+    } finally {
+      if(this.sortWorker && message.order instanceof ArrayBuffer)
+        this.sortWorker.postMessage({type:'recycle',generation:message.generation,order:message.order},[message.order]);
+    }
   }
   uploadOrder(order) {
     const started=performance.now(),gl=this.gl,{width,height}=this.textureSize;

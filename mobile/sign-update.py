@@ -5,7 +5,7 @@ from pathlib import Path
 from update_signing import ROOT,sign,verify,openssl
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--key',type=Path,required=True)
-choice=p.add_mutually_exclusive_group(required=True);choice.add_argument('--apk',type=Path);choice.add_argument('--reuse-apk-from',type=Path)
+p.add_argument('--apk',type=Path,required=True)
 p.add_argument('--apksigner',type=Path);p.add_argument('--aapt',type=Path)
 a=p.parse_args()
 key=a.key.resolve()
@@ -30,10 +30,6 @@ if a.apk:
     major,minor,patch=map(int,version.split('.'));code=major*1000000+minor*10000+patch*100+1
     assert f"name='{base['packageName']}'" in package and f"versionCode='{code}'" in package and f"versionName='{version}-preview.1'" in package
     base['apk']={'url':f"https://github.com/Sen2Maker/BuildingWebViewer/releases/download/v{version}/{a.apk.name}",'size':a.apk.stat().st_size,'sha256':hashlib.sha256(a.apk.read_bytes()).hexdigest(),'version':version,'nativeApi':base['nativeApi'],'versionCode':code,'certificateSha256':cert}
-else:
-    previous=verify(json.loads(a.reuse_apk_from.read_text()),fresh=False)
-    assert previous['nativeApi']==base['nativeApi'], 'Native interface changed; build a new APK'
-    base['apk']=previous['apk']
 key_id=json.loads((ROOT/'mobile/update-release.json').read_text())['keyId']
 envelope=sign(base,key,key_id)
 (ROOT/'dist/mobile-update.json').write_text(json.dumps(envelope,ensure_ascii=False,indent=2)+'\n')
