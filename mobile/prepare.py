@@ -15,7 +15,7 @@ release=json.loads((MOBILE/'update-release.json').read_text())
 version=json.loads((ROOT/'package.json').read_text())['version']
 assert release['version']==version, 'Release notes version mismatch'
 (WEB/'release-notes.json').write_text(json.dumps({'version':version,'notes':release['notes']},ensure_ascii=False)+'\n')
-(WEB/'native-web.json').write_text(json.dumps({'version':version,'nativeApi':7}))
+(WEB/'native-web.json').write_text(json.dumps({'version':version,'nativeApi':8}))
 shutil.copy2(ROOT/'src/mobile/app-shell.js',WEB/'assets/js/app-shell.js')
 shutil.copy2(ROOT/'src/mobile/app-shell.css',WEB/'assets/mobile/app-shell.css')
 for p in WEB.rglob('*.html'):
@@ -29,7 +29,7 @@ with zipfile.ZipFile(dest,'w',zipfile.ZIP_STORED) as z:
  for p in sorted(WEB.rglob('*')):
   if not p.is_file():continue
   info=zipfile.ZipInfo(str(p.relative_to(WEB)),(2020,1,1,0,0,0));info.compress_type=zipfile.ZIP_STORED;info.external_attr=0o100644<<16;z.writestr(info,p.read_bytes())
-manifest={'schema':1,'channel':'preview','packageName':'io.github.sen2maker.buildingwebviewer.preview','version':version,'nativeApi':7,
+manifest={'schema':1,'channel':'preview','packageName':'io.github.sen2maker.buildingwebviewer.preview','version':version,'nativeApi':8,
  'sequence':release['sequence'],'issuedAt':release['issuedAt'],'expiresAt':release['expiresAt'],'notes':release['notes'],
  'web':{'url':f'https://github.com/Sen2Maker/BuildingWebViewer/releases/download/v{version}/{name}','size':dest.stat().st_size,'sha256':hashlib.sha256(dest.read_bytes()).hexdigest()}}
 (ROOT/'dist/mobile-update.unsigned.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')

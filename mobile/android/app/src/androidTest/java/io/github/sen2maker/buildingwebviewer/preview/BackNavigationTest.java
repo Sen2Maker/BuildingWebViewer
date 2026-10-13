@@ -30,7 +30,7 @@ public class BackNavigationTest {
     String id=store.create("Back regression").getString("id");
     try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
       waitFor(scenario,"!!(document.getElementById('projects')&&document.getElementById('projects').children.length)");
-      for(String tool:new String[]{"pointcloud","wireframe","lod","gaussian","generate"}){
+      for(String tool:new String[]{"pointcloud","wireframe","lod","generate"}){
         scenario.onActivity(a->a.getBridge().getWebView().loadUrl("https://localhost/"+tool+".html?project="+id+"&lang=en"));
         waitFor(scenario,"typeof window.bwvReturnToProjectHome==='function' && !!document.querySelector('.mobile-save-status') && document.querySelector('.mobile-save-status').textContent==='Saved'");
         assertTrue(store.get(id).getJSONObject("states").has(tool));

@@ -6,6 +6,14 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.6.0] - 2026-10-13
+
+- App 项目高斯工具直接进入原生全量查看器；移除手动原生开关、兼容画面和高斯编辑入口，沿用浅色圆角与紧凑工具栏风格。网页保留原查看器，手机网页增加 App 推荐提示。
+- 新增原生漫游、按住移动、相机滑块与数值微调；视角保存在项目中，书签支持 JSON 导入导出。保留截图、透视／正交、多文件与可折叠文件分组。
+- 缓存属性字段，复用协方差工作区与批量球谐缓冲；相机范围改为精确选择，减少解析开销。弱引用复用已解析数据；分阶段进度和首次渲染预热避免把启动开销留到首次触摸。
+- 原生诊断新增排序应用数、旋转范围、画质、解析／上传／预热信息；渲染回调间隔不等于实际呈现 FPS。保留全部高斯；更新原生接口需要覆盖安装 APK。
+- Open Gaussian projects directly in the native viewer. Add fly movement, camera sliders/numbers, persistent project views and JSON export/import. Optimize full attribute packing and startup warmup; clarify staged progress and native diagnostics. No sampling. Full APK required.
+
 ## [1.5.0] - 2026-10-13
 
 - Android 新增独立的原生高斯只读查看器：直接读取本机项目，使用 GLES 3 与独立 GL 线程渲染全部高斯，原生触摸旋转、平移和缩放。

@@ -1,4 +1,4 @@
-import { mountNativeGaussian } from './native-view.js';
+import { openNativeGaussianPage } from './native-view.js';
 import { mountRenderDiagnostics } from '../shared/render-diagnostics.js';
 import { openWorkspaceSession } from '../shared/workspace-session.js';
 import { isMobileApp, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs } from '../shared/mobile-project.js';
@@ -18,6 +18,8 @@ import { gsViewingProfile } from './preview.js';
 
 async function gsBoot() {
   initializeLocale();
+  if(await openNativeGaussianPage())return;
+  if(!isMobileApp()&&matchMedia('(pointer: coarse)').matches){const note=document.createElement('p');note.className='presentation-help';note.textContent=document.documentElement.lang==='en'?'For smoother Gaussian viewing on mobile, use the Android App.':'手机上查看三维高斯，推荐使用 Android App。';document.querySelector('.viewport').after(note);}
   const gs$ = id => document.getElementById(id);
   const en=document.documentElement.lang==='en', label=(zh,english)=>en?english:zh;
   const mobileView=isMobileApp()||matchMedia('(pointer: coarse)').matches;
@@ -42,7 +44,7 @@ async function gsBoot() {
   const initialQuality=gsViewingProfile('auto',mobileView);resolution.value=initialQuality.dpr;interaction.checked=initialQuality.interactionScale<1;motionDegree.value=initialQuality.interactionDegree;
   const gsProject = new ViewerProject();
   const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
-  let nativeSession=null,nativeGaussian=null,preservedWebCamera=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
+  let nativeSession=null,preservedWebCamera=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
   let gsEditor = null, gsViewer = null, gsSerial = 0, gsMode = 'multiple';
   const gsAccept = name => /\.(ply|json|zip)$/i.test(name);
   const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -86,7 +88,7 @@ async function gsBoot() {
     gs$('select-all-splats').disabled = gsMode !== 'multiple' || !matched.length;
     gs$('invert-splat-selection').disabled = gsMode !== 'multiple' || !matched.length;
     gs$('gs-mode').value = gsMode;
-    gsTree?.render();nativeGaussian?.refresh();
+    gsTree?.render();
     gsRefreshCameras();
   }
 
@@ -113,16 +115,6 @@ async function gsBoot() {
   async function gsApply({preserveView = false} = {}) {
     const serial = ++gsSerial;
     const selected = [...gsSelected];
-    if(nativeGaussian?.enabled){
-      gsLoading('');gsError('');gsViewer?.clearSplats();gsEditor?.setLoading(false);
-      gs$('empty-state').hidden=false;gs$('screenshot').disabled=true;
-      gs$('current-title').textContent=label('App 原生高斯查看','App native Gaussian viewer');
-      gs$('scene-stats').textContent=label('已选择 ','Selected ')+selected.length+label(' 个文件 · 点击“打开原生全量画面”',' files · open the native full-resolution view');
-      gs$('empty-state').querySelector('h3').textContent=label('原生只读 · 全量渲染','Native read-only · all splats');
-      gs$('empty-state').querySelector('p').textContent=label('在上方打开独立原生画面，浏览和截屏。','Open the native view above to browse and capture.');
-      document.querySelectorAll('.viewer-toolbar,.gs-edit-toolbar,.viewport,.viewer-inspector').forEach(node=>node.classList.add('native-view-hidden'));gsList();return;
-    }
-    document.querySelectorAll('.native-view-hidden').forEach(node=>node.classList.remove('native-view-hidden'));
     if (!selected.length) {
       gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
       gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
@@ -274,7 +266,6 @@ async function gsBoot() {
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }
   window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>gsEntryFlags(e)?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
-  if(nativeApp&&gsViewer){nativeGaussian=await mountNativeGaussian({container:document.querySelector('.main-heading').parentElement,getEntries:()=>[...gsSelected],onModeChange:()=>gsApply({preserveView:true})});}
   if(nativeApp&&gsViewer)try{
     nativeSession=await openWorkspaceSession({tool:'gaussian',restore:async({state,records,snapshot})=>{
       await gsReceive(records);knownIds=[...new Set([...(state?.tree?.knownIds||[]),...gsEntries.map(e=>e.id)])];

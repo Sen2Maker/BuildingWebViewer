@@ -1420,14 +1420,14 @@ function nativeGaussianRequest(entries,lang='zh'){
  if(!id||entries.some(e=>e.file?.projectId!==id||!e.file?.nativeKey))throw Error('Native viewer requires local project files');
  return {id,keys:entries.map(e=>e.file.nativeKey),lang};
 }
-async function mountNativeGaussian({container,getEntries,onModeChange}){
- if(!isMobileApp())return null;const api=mobileProjects();let info;try{info=await api.runtimeInfo();}catch{return null;}if(!info.nativeGaussian)return null;
- const en=document.documentElement.lang==='en',word=(zh,e)=>en?e:zh;
- const box=document.createElement('div'),label=document.createElement('label'),mode=document.createElement('input'),open=document.createElement('button'),note=document.createElement('p');
- box.className='native-gaussian-entry';mode.type='checkbox';mode.id='gs-native-readonly';mode.checked=localStorage.getItem('bwv-native-gaussian')!=='compatibility';mode.setAttribute('aria-label',word('App 原生只读查看','App native read-only viewer'));label.append(mode,document.createTextNode(word('App 原生只读查看','App native read-only viewer')));
- open.type='button';open.id='gs-open-native';open.textContent=word('打开原生全量画面','Open native full-resolution view');note.className='presentation-help';note.textContent=word('勾选文件后打开。原生端负责全量渲染、相机和截屏，文件留在本机；原生画面显示原始数据，不应用旧的编辑隐藏记录；关闭此选项使用 App 内的兼容查看。','Select files and open. Native rendering, camera and capture retain all splats locally. Native view shows source data without previous edit masks; disable for the in-App compatibility viewer.');
- mode.onchange=()=>{localStorage.setItem('bwv-native-gaussian',mode.checked?'native':'compatibility');onModeChange();};open.onclick=async()=>{open.disabled=true;try{const request=nativeGaussianRequest(getEntries(),en?'en':'zh');const reply=await api.openNativeGaussian(request);if(reply?.compatibility){mode.checked=false;localStorage.setItem('bwv-native-gaussian','compatibility');onModeChange();}}catch(e){note.textContent=e.message;}finally{open.disabled=false;}};
- box.append(label,open,note);container.prepend(box);return {get enabled(){return mode.checked;},setEnabled(v){mode.checked=v;},refresh(){open.disabled=!getEntries().length;}};
+async function openNativeGaussianPage(){
+ if(!isMobileApp())return false;
+ const api=mobileProjects(),info=await api.runtimeInfo();
+ if(!info.nativeGaussianWorkspace)return false;
+ const id=new URL(location.href).searchParams.get('project');
+ if(!id){location.replace('assets/mobile/index.html');return true;}
+ await api.openNativeGaussian({id,keys:[],lang:document.documentElement.lang==='en'?'en':'zh'});
+ location.replace('assets/mobile/index.html?lang='+document.documentElement.lang);return true;
 }
 
 
@@ -4873,6 +4873,8 @@ function gsViewingProfile(mode, mobile=false, software=false) {
 
 async function gsBoot() {
   initializeLocale();
+  if(await openNativeGaussianPage())return;
+  if(!isMobileApp()&&matchMedia('(pointer: coarse)').matches){const note=document.createElement('p');note.className='presentation-help';note.textContent=document.documentElement.lang==='en'?'For smoother Gaussian viewing on mobile, use the Android App.':'手机上查看三维高斯，推荐使用 Android App。';document.querySelector('.viewport').after(note);}
   const gs$ = id => document.getElementById(id);
   const en=document.documentElement.lang==='en', label=(zh,english)=>en?english:zh;
   const mobileView=isMobileApp()||matchMedia('(pointer: coarse)').matches;
@@ -4897,7 +4899,7 @@ async function gsBoot() {
   const initialQuality=gsViewingProfile('auto',mobileView);resolution.value=initialQuality.dpr;interaction.checked=initialQuality.interactionScale<1;motionDegree.value=initialQuality.interactionDegree;
   const gsProject = new ViewerProject();
   const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
-  let nativeSession=null,nativeGaussian=null,preservedWebCamera=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
+  let nativeSession=null,preservedWebCamera=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
   let gsEditor = null, gsViewer = null, gsSerial = 0, gsMode = 'multiple';
   const gsAccept = name => /\.(ply|json|zip)$/i.test(name);
   const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -4941,7 +4943,7 @@ async function gsBoot() {
     gs$('select-all-splats').disabled = gsMode !== 'multiple' || !matched.length;
     gs$('invert-splat-selection').disabled = gsMode !== 'multiple' || !matched.length;
     gs$('gs-mode').value = gsMode;
-    gsTree?.render();nativeGaussian?.refresh();
+    gsTree?.render();
     gsRefreshCameras();
   }
 
@@ -4968,16 +4970,6 @@ async function gsBoot() {
   async function gsApply({preserveView = false} = {}) {
     const serial = ++gsSerial;
     const selected = [...gsSelected];
-    if(nativeGaussian?.enabled){
-      gsLoading('');gsError('');gsViewer?.clearSplats();gsEditor?.setLoading(false);
-      gs$('empty-state').hidden=false;gs$('screenshot').disabled=true;
-      gs$('current-title').textContent=label('App 原生高斯查看','App native Gaussian viewer');
-      gs$('scene-stats').textContent=label('已选择 ','Selected ')+selected.length+label(' 个文件 · 点击“打开原生全量画面”',' files · open the native full-resolution view');
-      gs$('empty-state').querySelector('h3').textContent=label('原生只读 · 全量渲染','Native read-only · all splats');
-      gs$('empty-state').querySelector('p').textContent=label('在上方打开独立原生画面，浏览和截屏。','Open the native view above to browse and capture.');
-      document.querySelectorAll('.viewer-toolbar,.gs-edit-toolbar,.viewport,.viewer-inspector').forEach(node=>node.classList.add('native-view-hidden'));gsList();return;
-    }
-    document.querySelectorAll('.native-view-hidden').forEach(node=>node.classList.remove('native-view-hidden'));
     if (!selected.length) {
       gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
       gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
@@ -5129,7 +5121,6 @@ async function gsBoot() {
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }
   window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>gsEntryFlags(e)?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });
-  if(nativeApp&&gsViewer){nativeGaussian=await mountNativeGaussian({container:document.querySelector('.main-heading').parentElement,getEntries:()=>[...gsSelected],onModeChange:()=>gsApply({preserveView:true})});}
   if(nativeApp&&gsViewer)try{
     nativeSession=await openWorkspaceSession({tool:'gaussian',restore:async({state,records,snapshot})=>{
       await gsReceive(records);knownIds=[...new Set([...(state?.tree?.knownIds||[]),...gsEntries.map(e=>e.id)])];

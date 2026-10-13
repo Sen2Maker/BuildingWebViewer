@@ -8,7 +8,7 @@ const mobileHomeAPI=mobileProjects(),mobileHomeList=document.getElementById('pro
 let mobileShowTrash=false;
 function mobileHomeSay(text){mobileHomeStatus.textContent=text;}
 function mobileHomeButton(text,action){const b=document.createElement('button');b.textContent=t(text);b.onclick=()=>Promise.resolve().then(action).catch(error=>mobileHomeSay(error.message));return b;}
-function mobileHomeOpen(project,tool){location.href=`../../${tool}.html?project=${encodeURIComponent(project.id)}&lang=${document.documentElement.lang==='en'?'en':'zh'}`;}
+async function mobileHomeOpen(project,tool){if(tool==='gaussian'){const info=await mobileHomeAPI.runtimeInfo();if(info.nativeGaussianWorkspace){await mobileHomeAPI.openNativeGaussian({id:project.id,keys:[],lang:document.documentElement.lang==='en'?'en':'zh'});await refreshMobileProjects();return;}}location.href=`../../${tool}.html?project=${encodeURIComponent(project.id)}&lang=${document.documentElement.lang==='en'?'en':'zh'}`;}
 async function refreshMobileProjects(){
   if(!mobileHomeAPI){mobileHomeSay(t('此页面需要 Android App。网页版请使用工具首页。'));return;}
   const {projects}=await mobileHomeAPI.listProjects();mobileHomeList.replaceChildren();
