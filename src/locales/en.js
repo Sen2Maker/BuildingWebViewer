@@ -1,5 +1,17 @@
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 export const EN_MESSAGES = {
+  "线框显示模式": "Wireframe display mode",
+  "单个 ID": "Single ID",
+  "多个 ID 叠加": "Multiple IDs",
+  "← 上一个 ID": "← Previous ID",
+  "下一个 ID →": "Next ID →",
+  "勾选多个 ID，按原始坐标叠加；显示设置应用到所有已选 ID。": "Check multiple IDs to overlay original coordinates. Display choices apply to all selected IDs.",
+  "单个 ID：← / → 或 [ / ] 切换；按自然编号顺序，遵循搜索筛选。": "Single ID: use ← / → or [ / ] to switch in natural ID order within search results.",
+  "勾选后显示该 ID 的线框与点云": "Check to show this ID’s wireframe and cloud",
+  "单个 ID 或多个 ID 叠加；全选、反选只操作搜索匹配项。Ctrl / Shift 多选用于移动或移除项目条目。": "View one ID or overlay several. All/Invert affect search matches; Ctrl/Shift select items for moving or removal.",
+  "{0} 个 ID 叠加": "{0} IDs overlaid",
+  "{0} 个 ID · {1} 条线 · {2} 点": "{0} IDs · {1} edges · {2} points",
+
   "三维画笔": "3D drawing",
   "网格模型": "Mesh models",
   "线框": "Wireframes",

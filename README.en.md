@@ -27,7 +27,7 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Stop with `Ctrl+C`; use `--
 | Tool | Input | Key features |
 | --- | --- | --- |
 | **Mesh Viewer** | Triangulated OBJ meshes | Multi-model layouts, solid / wireframe, relative-height and face-orientation colors |
-| **Wireframe Viewer** | OBJ + optional point clouds | Object folders, up to three comparison panes and synchronized cameras |
+| **Wireframe Viewer** | OBJ + optional point clouds | Single/multiple IDs, All/Invert, previous/next shortcuts and up to three comparison panes |
 | **Point Cloud Viewer** | TXT · XYZ · CSV · PTS · PLY · PCD | Multiple clouds, RGB / HSV / scalar colors, attribute processing and merged export |
 | **Gaussian Splatting Viewer** | PLY with 3DGS attributes | Web perspective / orthographic views, SH colors and optional `cameras.json`; native Android full-splat rendering, fly navigation, views and capture |
 | **Point Cloud Studio** | Create from scratch or import clouds | Drawing and sampling, rectangle / lasso, cropping, painting, project save and PLY export |

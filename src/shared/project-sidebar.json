@@ -8,8 +8,9 @@
   "wireframe.html": {
     "accept": ".obj,.xyz,.txt,.csv,.pts,.ply,.pcd,.zip",
     "list_id": "data-list",
-    "selection_actions": "",
-    "options_file": "src/cloud/wireframe-project-options.html"
+    "selection_actions": "<button id=\"select-all-wires\" disabled>全选</button><button id=\"invert-wire-selection\" disabled>反选</button>",
+    "options_file": "src/cloud/wireframe-project-options.html",
+    "mode_file": "src/cloud/wireframe-mode.html"
   },
   "pointcloud.html": {
     "accept": ".xyz,.txt,.csv,.pts,.ply,.pcd,.zip",

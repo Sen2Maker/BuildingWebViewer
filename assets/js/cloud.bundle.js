@@ -2,6 +2,66 @@
 (() => {
 'use strict';
 
+// Source: src/cloud/wire-selection.js
+/** Match variants by filename across IDs; a missing variant falls back to a usable file. */
+function wirePreference(files, value) {
+  const index = value === '' ? -1 : Number(value), file = files[index];
+  return file ? {name: file.name, index} : {none: true};
+}
+function resolveWireFile(files, preference, fallback = 0, used = new Set()) {
+  if (preference?.none) return null;
+  const same = preference?.name == null ? -1 : files.findIndex(file => file.name.toLowerCase() === preference.name.toLowerCase());
+  const candidates = [same, preference?.index, fallback, ...files.map((_, index) => index)];
+  for (const index of candidates) if (Number.isInteger(index) && index >= 0 && files[index] && !used.has(files[index])) return files[index];
+  return null;
+}
+function wireEntryFiles(entry, preferences, count = 1) {
+  const used = new Set();
+  const wires = Array.from({length: count}, (_, index) => {
+    const file = resolveWireFile(entry.wires, preferences.wires[index], index, used);
+    if (file) used.add(file); return file;
+  });
+  const preferredCloud = entry.clouds.findIndex(file => file.name.toLowerCase() === 'pc.xyz');
+  return {wires, cloud: resolveWireFile(entry.clouds, preferences.cloud, Math.max(0, preferredCloud))};
+}
+/** Preserve source coordinates and edge topology; never deduplicate across independent files. */
+function combineWireframes(wires) {
+  const valid = wires.filter(Boolean);
+  if (!valid.length) return null;
+  if (valid.length === 1) return valid[0];
+  const vertices = [], edges = [], bounds = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
+  let hasBounds = false;
+  for (const wire of valid) {
+    const offset = vertices.length;
+    for (const vertex of wire.vertices) vertices.push(vertex);
+    for (const edge of wire.edges) edges.push(edge.map(index => index + offset));
+    if (wire.bounds) {
+      hasBounds = true;
+      for (let axis = 0; axis < 3; axis++) {
+        bounds[0][axis] = Math.min(bounds[0][axis], wire.bounds[0][axis]);
+        bounds[1][axis] = Math.max(bounds[1][axis], wire.bounds[1][axis]);
+      }
+    }
+  }
+  return {vertices, edges, bounds: hasBounds ? bounds : null, empty: !edges.length};
+}
+function adjacentWireEntry(entries, active, direction) {
+  if (!entries.length) return null;
+  const sorted = [...entries].sort((a,b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
+  const index = sorted.indexOf(active);
+  return sorted[index < 0 ? direction > 0 ? 0 : sorted.length - 1 : Math.max(0, Math.min(sorted.length - 1, index + direction))];
+}
+function wireNavigationDirection(event, {multiple = false, flying = false} = {}) {
+  if (multiple || flying || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat) return 0;
+  if (event.target?.closest?.('input,select,textarea,button,a,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="tab"],[role="dialog"]')) return 0;
+  return event.key === 'ArrowLeft' || event.key === '[' ? -1 : event.key === 'ArrowRight' || event.key === ']' ? 1 : 0;
+}
+function normalizeWirePreferences(value) {
+  const preference = item => item?.none === true ? {none:true} : item && typeof item.name === 'string' && item.name.length <= 1024 && Number.isSafeInteger(item.index) && item.index >= 0 ? {name:item.name,index:item.index} : null;
+  return {wires:Array.from({length:3},(_,index)=>preference(value?.wires?.[index])),cloud:preference(value?.cloud),compare:value?.compare===true,count:value?.count===3?3:2};
+}
+
+
 // Source: src/shared/autosave.js
 /** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
 function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
@@ -16,6 +76,18 @@ function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  "线框显示模式": "Wireframe display mode",
+  "单个 ID": "Single ID",
+  "多个 ID 叠加": "Multiple IDs",
+  "← 上一个 ID": "← Previous ID",
+  "下一个 ID →": "Next ID →",
+  "勾选多个 ID，按原始坐标叠加；显示设置应用到所有已选 ID。": "Check multiple IDs to overlay original coordinates. Display choices apply to all selected IDs.",
+  "单个 ID：← / → 或 [ / ] 切换；按自然编号顺序，遵循搜索筛选。": "Single ID: use ← / → or [ / ] to switch in natural ID order within search results.",
+  "勾选后显示该 ID 的线框与点云": "Check to show this ID’s wireframe and cloud",
+  "单个 ID 或多个 ID 叠加；全选、反选只操作搜索匹配项。Ctrl / Shift 多选用于移动或移除项目条目。": "View one ID or overlay several. All/Invert affect search matches; Ctrl/Shift select items for moving or removal.",
+  "{0} 个 ID 叠加": "{0} IDs overlaid",
+  "{0} 个 ID · {1} 条线 · {2} 点": "{0} IDs · {1} edges · {2} points",
+
   "三维画笔": "3D drawing",
   "网格模型": "Mesh models",
   "线框": "Wireframes",
@@ -5850,6 +5922,7 @@ async function genTakeHandoff() {
 
 
 
+
 initializeLocale();
 (() => {
   const $ = id => document.getElementById(id);
@@ -5869,6 +5942,10 @@ initializeLocale();
   let mobileSession=null,mobileKnownIds=[];
   let cameraControls = null, paletteControls = null, cloudColors = null;
   let cloudMode = 'multiple', lastCloudEntry = null;
+  let wireMode = 'single', wirePreferences = {wires: [null, null, null], cloud: null, compare: false, count: 2};
+  const selectedWireEntries = new Set();
+  let wireChoices={wires:[],clouds:[]};
+  if(isWire)try{wirePreferences=normalizeWirePreferences(JSON.parse(localStorage.getItem('BuildingWebViewer.wirePreferences')||'null'));}catch{}
   const pointProject = new ViewerProject(); let projectControls = null;
   let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
@@ -5935,7 +6012,12 @@ initializeLocale();
       projectControls?.render(); updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
       processingControls?.refresh([...selectedCloudEntries], Boolean(loadController)); return;
     }
-    $('filter-count').textContent = t("{0} 个对象 ID", [pretty(filtered.length)]);
+    $('filter-count').textContent = t('匹配 {0} 项 · 已勾选 {1}', [pretty(filtered.length), selectedWireEntries.size]);
+    $('wire-mode-select').value = wireMode;
+    for (const id of ['select-all-wires','invert-wire-selection']) $(id).disabled = wireMode !== 'multiple' || !filtered.length;
+    const multiple = wireMode === 'multiple';
+    $('wire-mode-note').textContent = multiple ? t('勾选多个 ID，按原始坐标叠加；显示设置应用到所有已选 ID。') : t('单个 ID：← / → 或 [ / ] 切换；按自然编号顺序，遵循搜索筛选。');
+    for (const id of ['previous-wire-id','next-wire-id']) $(id).disabled = multiple || !filtered.length || adjacentWireEntry(filtered,active,id === 'previous-wire-id' ? -1 : 1) === active;
     $('item-count').textContent = t('共 {0} 项', [pretty(entries.length)]);
     projectControls?.render();
   }
@@ -5950,8 +6032,8 @@ initializeLocale();
     const enabled = $('compare-mode').checked && !$('compare-mode').disabled;
     const count = enabled && Number($('compare-count').value) === 3 ? 3 : enabled ? 2 : 1;
     $('compare-controls').hidden = !enabled; $('wire-slot-3').hidden = count < 3;
-    $('wire-file-2').disabled = !enabled || !active?.wires.length;
-    $('wire-file-3').disabled = count < 3 || !active?.wires.length;
+    $('wire-file-2').disabled = !enabled || !wireChoices.wires.length;
+    $('wire-file-3').disabled = count < 3 || !wireChoices.wires.length;
     $('viewer-grid').dataset.panels = String(count); $('panel-heading-1').hidden = count === 1;
     $('viewer-panel-2').hidden = count < 2; $('viewer-panel-3').hidden = count < 3;
   }
@@ -5978,7 +6060,7 @@ initializeLocale();
   function clear() {
     processingControls?.cancel(); displayedItems = [];cloudColors?.refresh();
     loadController?.abort(); loadController = null;
-    selectedCloudEntries.clear(); lastCloudEntry = null; cached.setActive([]);
+    selectedCloudEntries.clear(); selectedWireEntries.clear(); lastCloudEntry = null; cached.setActive([]);
     revision++; active = null; overlay = null; loaded = { cloud: null, wire: null }; loadedWires = [];
     selectedFiles = { cloud: null, wires: [] }; messages = []; currentPointName = ''; syncEnabled = false;
     pauseSync(() => viewers.forEach(viewer => viewer.setData({})));
@@ -5994,50 +6076,86 @@ initializeLocale();
     $('search').value = ''; list();
     $('source-note').textContent = t('文件留在本机 · 分组仅保留在本次页面');
     error(!result.added && !result.duplicates ? t('未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个对象子目录。') : '');
-    // Refresh file choices on an active set without resetting its camera or selection.
-    if (active) {
-      const indices = ['wire-file','wire-file-2','wire-file-3'].map(id => $(id).value);
-      indices.forEach((value,index) => fillWireSelect($(['wire-file','wire-file-2','wire-file-3'][index]),active.wires,value === '' ? null : Number(value)));
-      const cloudValue = $('cloud-file').value;
-      $('cloud-file').replaceChildren(); option($('cloud-file'), '', t('不加载点云'));
-      active.clouds.forEach((file,index) => option($('cloud-file'),String(index),file.name));
-      $('cloud-file').value = cloudValue;
-      $('wire-file').disabled = !active.wires.length; $('cloud-file').disabled = !active.clouds.length;
-      $('compare-mode').disabled = active.wires.length < 2;
-      $('compare-count').querySelector('option[value="3"]').disabled = active.wires.length < 3;
-      setComparisonUI();
-    }
+    if(active)configureWireChoices(active);
     return result;
   }
+  function rememberWireChoices(changed = null) {
+    if (!isWire || !active) return;
+    wirePreferences.wires = ['wire-file','wire-file-2','wire-file-3'].map((id,index) => changed && changed !== id || !wireChoices.wires.length ? wirePreferences.wires[index] : wirePreference(wireChoices.wires, $(id).value));
+    if((!changed || changed==='cloud-file') && wireChoices.clouds.length && $('cloud-file').value!=='overlay')wirePreferences.cloud = wirePreference(wireChoices.clouds, $('cloud-file').value);
+    if((!changed || changed==='compare-mode') && !$('compare-mode').disabled)wirePreferences.compare = $('compare-mode').checked;
+    if(!changed || changed==='compare-count')wirePreferences.count = Number($('compare-count').value);
+    try{localStorage.setItem('BuildingWebViewer.wirePreferences',JSON.stringify(wirePreferences));}catch{}
+  }
+  function configureWireChoices(entry) {
+    const unique = key => [...new Map([entry,...[...selectedWireEntries].filter(item=>item!==entry)].flatMap(item=>item[key]).map(file=>[file.name.toLowerCase(),file])).values()];
+    wireChoices={wires:unique('wires'),clouds:unique('clouds')};
+    const files = wireEntryFiles(wireChoices, wirePreferences, 3);
+    ['wire-file','wire-file-2','wire-file-3'].forEach((id,index) => fillWireSelect($(id),wireChoices.wires,files.wires[index] ? wireChoices.wires.indexOf(files.wires[index]) : null));
+    const cloudSelect = $('cloud-file'); cloudSelect.replaceChildren(); option(cloudSelect, '', t('不加载点云'));
+    wireChoices.clouds.forEach((file,index) => option(cloudSelect,String(index),file.name));
+    cloudSelect.value = files.cloud ? String(wireChoices.clouds.indexOf(files.cloud)) : '';
+    $('wire-file').disabled = !wireChoices.wires.length; cloudSelect.disabled = !wireChoices.clouds.length; $('attach-cloud').disabled = false;
+    const capacity = Math.max(0,...[...selectedWireEntries].map(item => item.wires.length));
+    $('compare-mode').disabled = capacity < 2;
+    $('compare-mode').checked = wirePreferences.compare && capacity >= 2;
+    $('compare-count').value = String(wirePreferences.count === 3 && capacity >= 3 ? 3 : 2);
+    $('compare-count').querySelector('option[value="3"]').disabled = capacity < 3;
+    setComparisonUI();
+  }
   function removeWireEntries(selection) {
-    const removed = new Set(selection), removingActive = removed.has(active);
-    if (removingActive) clear();
-    for (const entry of removed) for (const file of [...entry.wires,...entry.clouds]) cached.forget(file);
-    entries = entries.filter(entry => !removed.has(entry)); list();
+    const removed = new Set(selection);
+    loadController?.abort(); revision++;
+    for (const entry of removed) {
+      selectedWireEntries.delete(entry);
+      for (const file of [...entry.wires,...entry.clouds]) cached.forget(file);
+    }
+    entries = entries.filter(entry => !removed.has(entry));
+    if (selectedWireEntries.size) applyWireSelection(); else clear();
   }
   function choose(entry) {
-    active = entry; overlay = null; error('');
-    if (isWire) {
-      fillWireSelect($('wire-file'), entry.wires, entry.wires.length ? 0 : null);
-      fillWireSelect($('wire-file-2'), entry.wires, entry.wires.length > 1 ? 1 : null);
-      fillWireSelect($('wire-file-3'), entry.wires, entry.wires.length > 2 ? 2 : null);
-      const cloudSelect = $('cloud-file'); cloudSelect.replaceChildren(); option(cloudSelect, '', t('不加载点云'));
-      entry.clouds.forEach((file, index) => option(cloudSelect, String(index), file.name));
-      const preferredCloud = entry.clouds.findIndex(file => file.name.toLowerCase() === 'pc.xyz');
-      cloudSelect.value = entry.clouds.length ? String(preferredCloud < 0 ? 0 : preferredCloud) : '';
-      $('wire-file').disabled = !entry.wires.length; cloudSelect.disabled = !entry.clouds.length; $('attach-cloud').disabled = false;
-      $('compare-mode').checked = false; $('compare-mode').disabled = entry.wires.length < 2; $('compare-count').value = '2';
-      $('compare-count').querySelector('option[value="3"]').disabled = entry.wires.length < 3; setComparisonUI();
-    }
-    list(); return load();
+    selectedWireEntries.clear(); selectedWireEntries.add(entry);
+    return applyWireSelection(entry, {preserveCamera: false});
   }
-  function selectFiles() {
-    if (!active) return { cloud: null, wires: [] };
-    if (!isWire) return { cloud: active.file, wires: [null] };
-    const ids = ['wire-file', 'wire-file-2', 'wire-file-3'].slice(0, activeViewerCount());
-    const wires = ids.map(id => $(id).value === '' ? null : active.wires[Number($(id).value)] || null);
-    const cloud = $('cloud-file').value === 'overlay' ? overlay : $('cloud-file').value === '' ? null : active.clouds[Number($('cloud-file').value)] || null;
-    return { cloud, wires };
+  function applyWireSelection(preferred = null, {preserveCamera = false} = {}) {
+    if (!selectedWireEntries.size) { clear(); return; }
+    active = selectedWireEntries.has(preferred) ? preferred : selectedWireEntries.has(active) ? active : [...selectedWireEntries].at(-1);
+    overlay = null; error(''); configureWireChoices(active); list();
+    return load({preserveCamera});
+  }
+  function toggleWire(entry) {
+    if (wireMode === 'single') {
+      if (selectedWireEntries.has(entry)) clear(); else choose(entry);
+      return;
+    }
+    if (selectedWireEntries.has(entry)) selectedWireEntries.delete(entry); else selectedWireEntries.add(entry);
+    applyWireSelection(entry);
+  }
+  function setWireMode(mode) {
+    if (!['single','multiple'].includes(mode) || mode === wireMode) return;
+    wireMode = mode;
+    if (mode === 'single' && selectedWireEntries.size > 1) choose(active || [...selectedWireEntries].at(-1));
+    else { list(); mobileSession?.schedule(); }
+  }
+  function batchWireSelection(invert = false) {
+    if (wireMode !== 'multiple') return;
+    for (const entry of matchingEntries()) {
+      if (invert && selectedWireEntries.has(entry)) selectedWireEntries.delete(entry); else selectedWireEntries.add(entry);
+    }
+    applyWireSelection();
+  }
+  function navigateWire(direction) {
+    if (wireMode !== 'single') return;
+    const next = adjacentWireEntry(matchingEntries(), active, direction);
+    if (next && next !== active) choose(next);
+  }
+  function selectFiles(entry = active) {
+    if (!entry) return { cloud: null, wires: [] };
+    if (!isWire) return { cloud: entry.file, wires: [null] };
+    const preferences={wires:['wire-file','wire-file-2','wire-file-3'].map(id=>wirePreference(wireChoices.wires,$(id).value)),cloud:$('cloud-file').value==='overlay'?{none:true}:wirePreference(wireChoices.clouds,$('cloud-file').value)};
+    const files=wireEntryFiles(entry,preferences,activeViewerCount());
+    if(entry===active && $('cloud-file').value==='overlay')files.cloud=overlay;
+    return files;
   }
   function read(file, kind, options = {}) {
     return cached.read(file, kind, {maxPoints: Number($('point-limit').value), ...options});
@@ -6230,72 +6348,71 @@ initializeLocale();
     viewer.camera = { ...snapshot.camera, pan: [...snapshot.camera.pan] };
     viewer.target = snapshot.worldTarget.map((value, axis) => value - viewer.origin[axis]); viewer.baseHeight = snapshot.baseHeight;
   }
-  function updatePanelDetails(files) {
-    if (!isWire) return;
-    const count = activeViewerCount();
-    for (let index = 0; index < 3; index++) {
-      const file = files.wires[index] || null, wire = loadedWires[index] || null;
-      $(`panel-label-${index + 1}`).textContent = file?.name || t('未加载线框');
-      $(`panel-stats-${index + 1}`).textContent = wire ? t("{0} 条线", [pretty(wire.edges.length)]) : '—';
-      $(`panel-empty-${index + 1}`).hidden = !(index < count && file && wire && wire.edges.length === 0);
-    }
-  }
   async function load({ preserveCamera = cameraControls?.preserveView ?? true } = {}) {
     if (!isWire) return loadCloudSelection({ preserveCamera });
-    if (!active) { clear(); return; }
+    if (!active || !selectedWireEntries.size) { clear(); return; }
     loadController?.abort();
     const controller = new AbortController(); loadController = controller;
-    const version = ++revision, entry = active, files = selectFiles();
+    const version = ++revision, selection = [...selectedWireEntries], count = activeViewerCount();
+    // Resolve filenames per ID instead of reusing another ID's dropdown index.
+    const plans = selection.map(entry => ({entry, files: selectFiles(entry)}));
+    cached.setActive(plans.flatMap(({files}) => [files.cloud,...files.wires]));
+    const before = {...cached.stats}, failures = [], cloudItems = [], wireGroups = Array.from({length:count},()=>[]);
+    const panelNames = Array.from({length:count},()=>[]);
     let viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
-    cached.setActive([files.cloud, ...files.wires]);
-    const before = {...cached.stats};
-    $('loading').querySelector('span').textContent = t('正在读取文件…');
+    $('loading').querySelector('span').textContent = t('正在读取所选文件…');
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
-    $('current-title').textContent = isWire ? t("对象 {0}", [entry.id]) : entry.id; $('scene-stats').textContent = t('正在读取所选文件…');
-    $('data-notes').textContent = ''; $('color-legend').hidden = true;
-    const onProgress = ({ phase, loaded, total }) => {
-      if (version !== revision) return;
-      const label = phase === 'count' ? t('统计点数') : t('解析点云');
-      const message = `${label} ${Math.floor(loaded / total * 100)}%`;
-      $('loading').querySelector('span').textContent = message;
-      $('scene-stats').textContent = `${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
-    };
-    const readOptions = { signal: controller.signal, onProgress };
-    const results = await Promise.allSettled([read(files.cloud, 'cloud', readOptions), ...files.wires.map(file => read(file, 'wire', readOptions))]);
-    if (version !== revision) return;
-    const failures = [];
-    const resultValue = (result, label) => {
-      if (result.status === 'fulfilled') return result.value;
-      failures.push(`${label}：${result.reason?.message || result.reason}`); return null;
-    };
-    loaded.cloud = resultValue(results[0], t('点云'));
-    loadedWires = results.slice(1).map((result, index) => resultValue(result, t("线框 {0}", [index + 1])));
-    loaded.wire = loadedWires[0] || null; selectedFiles = files; currentPointName = files.cloud?.name || '';
-    messages = [...(loaded.cloud?.notes || []), t("本次解析 {0} 个文件，复用 {1} 个缓存。", [cached.stats.reads - before.reads, cached.stats.hits - before.hits])];
+    $('current-title').textContent = selection.length === 1 ? t('对象 {0}',[active.id]) : t('{0} 个 ID 叠加',[selection.length]);
+    $('scene-stats').textContent = t('正在读取所选文件…');
     try {
+      for (const {entry,files} of plans) {
+        if (version !== revision) return;
+        const onProgress = ({loaded,total}) => {
+          if (version === revision) $('loading').querySelector('span').textContent = `${entry.id} · ${t('解析点云 {0}%',[Math.floor(loaded / Math.max(1,total)*100)])}`;
+        };
+        const results = await Promise.allSettled([read(files.cloud,'cloud',{signal:controller.signal,onProgress}),...files.wires.map(file=>read(file,'wire',{signal:controller.signal}))]);
+        if (version !== revision) return;
+        const value = (result,file) => {
+          if (result.status === 'fulfilled') return result.value;
+          failures.push(`${entry.id} / ${file?.name || ''}：${result.reason?.message || result.reason}`); return null;
+        };
+        const cloud = value(results[0],files.cloud);
+        if (cloud) cloudItems.push({key:files.cloud,name:`${entry.id} / ${files.cloud.name}`,cloud});
+        results.slice(1).forEach((result,index)=>{
+          const wire = value(result,files.wires[index]);
+          if (wire) {wireGroups[index].push(wire);panelNames[index].push(`${entry.id} / ${files.wires[index].name}`);}
+        });
+      }
+      if (version !== revision) return;
       viewSnapshot = preserveCamera ? captureView() : null;
+      loadedWires = wireGroups.map(combineWireframes); loaded.wire = loadedWires[0] || null;
+      loaded.cloud = cloudItems.length === 1 ? cloudItems[0].cloud : describePointClouds(cloudItems);
+      selectedFiles = plans.find(plan=>plan.entry===active)?.files || {cloud:null,wires:[]};
+      currentPointName = cloudItems.map(item=>item.name).join(' + ');
+      messages = [...(loaded.cloud?.notes || []),t('本次解析 {0} 个文件，复用 {1} 个缓存。',[cached.stats.reads-before.reads,cached.stats.hits-before.hits])];
       initViewers(); fields();
-      const count = activeViewerCount();
-      const sharedBounds = count > 1 ? unionBounds([loaded.cloud?.bounds, ...loadedWires.map(wire => wire?.bounds)]) : null;
-      const commonOrigin = sharedBounds ? sharedBounds[0].map((value, axis) => value + (sharedBounds[1][axis] - value) / 2) : null;
-      pauseSync(() => viewers.forEach((viewer, index) => {
-        if (index < count) viewer.setData({ cloud: loaded.cloud, wire: loadedWires[index] || null, bounds: sharedBounds, origin: commonOrigin });
+      const sharedBounds = unionBounds([...cloudItems.map(item=>item.cloud.bounds),...loadedWires.map(wire=>wire?.bounds)]);
+      const commonOrigin = sharedBounds ? sharedBounds[0].map((value,axis)=>value+(sharedBounds[1][axis]-value)/2) : null;
+      pauseSync(()=>viewers.forEach((viewer,index)=>{
+        if(index<count) viewer.setClouds(cloudItems,{wire:loadedWires[index],bounds:sharedBounds,origin:commonOrigin,preserveView:false});
         else viewer.setData({});
       }));
-      if (viewSnapshot) viewers.slice(0, count).forEach(viewer => restoreView(viewSnapshot, viewer));
-      syncEnabled = count > 1; update(); updatePanelDetails(files); cameraControls?.refresh();
-      const counts = [];
-      loadedWires.forEach((wire, index) => { if (files.wires[index] && wire) counts.push(t("{0}：{1} 条线", [files.wires[index].name, pretty(wire.edges.length)])); });
-      if (loaded.cloud) counts.push(t("{0} / {1} 点", [pretty(loaded.cloud.count), pretty(loaded.cloud.totalCount)]));
-      $('scene-stats').textContent = counts.length ? counts.join(' · ') : t('未加载可显示的数据');
-      $('geometry-note').textContent = count > 1
-        ? t("{0} 个线框共享原点、边界与相机{1}", [count, loaded.cloud ? ` · ${currentPointName}` : t(' · 未加载点云')])
-        : files.wires[0] && loadedWires[0] ? `${files.wires[0].name}${loaded.cloud ? ` + ${currentPointName}` : ''}` : loaded.cloud ? currentPointName : t('未加载数据');
-      const hasLoaded = Boolean(loaded.cloud || loadedWires.some(Boolean));
-      $('empty-state').hidden = hasLoaded; $('screenshot').disabled = !hasLoaded;
-      if (failures.length) error(failures.join('；'));
-    } catch (cause) { error(t("显示失败：{0}", [cause.message])); }
-    finally { if (version === revision) { $('loading').hidden = true; loadController = null; processingControls?.refresh([...selectedCloudEntries], false);mobileSession?.schedule(); } }
+      if (viewSnapshot) viewers.slice(0,count).forEach(viewer=>restoreView(viewSnapshot,viewer));
+      syncEnabled = count>1; update(); cameraControls?.refresh();
+      for(let index=0;index<3;index++) {
+        const wire=loadedWires[index];
+        $(`panel-label-${index+1}`).textContent=panelNames[index]?.join(' + ') || t('未加载线框');
+        $(`panel-stats-${index+1}`).textContent=wire?t('{0} 条线',[pretty(wire.edges.length)]):'—';
+        $(`panel-empty-${index+1}`).hidden=!(index<count && wire && !wire.edges.length);
+      }
+      const edges=loadedWires.reduce((sum,wire)=>sum+(wire?.edges.length||0),0);
+      $('scene-stats').textContent=t('{0} 个 ID · {1} 条线 · {2} 点',[selection.length,pretty(edges),pretty(loaded.cloud?.count||0)]);
+      $('geometry-note').textContent=panelNames[0].join(' + ') || currentPointName || t('未加载数据');
+      const hasLoaded=Boolean(cloudItems.length || loadedWires.some(wire=>wire?.edges.length));
+      $('empty-state').hidden=hasLoaded; $('screenshot').disabled=!hasLoaded;
+      if(failures.length) error(failures.join('；'));
+    } catch(cause) {if(version===revision)error(t('显示失败：{0}',[cause.message]));}
+    finally {if(version===revision){$('loading').hidden=true;loadController=null;mobileSession?.schedule();}}
   }
   function columnFieldLabel(key) {
     if(isWire)return fieldLabel(key);
@@ -6369,16 +6486,21 @@ initializeLocale();
 
   if (isWire) projectControls = mountProjectTree({
     project: pointProject, container: $('data-list'), root: $('project-root'), controls: $('project-controls'),
-    getEntries: () => entries, getSelected: () => new Set(active ? [active] : []), getMode: () => 'single',
-    getQuery: () => $('search').value, onToggle: entry => active === entry ? clear() : choose(entry),
+    getEntries: () => entries, getSelected: () => selectedWireEntries, getMode: () => wireMode,
+    getQuery: () => $('search').value, onToggle: toggleWire,
     onRemove: removeWireEntries, onChange: list,
     detail: entry => `${entry.wires.length} OBJ · ${entry.clouds.length} PC`,
-    selectionHint: '每次预览一个对象组；可多选管理',
+    selectionHint: '勾选后显示该 ID 的线框与点云',
     onVisibility: (members, checked) => {
-      if (checked && members.length === 1) choose(members[0]);
-      else if (!checked && members.includes(active)) clear();
+      if (checked && wireMode === 'single') {if(members.length===1)choose(members[0]);return;}
+      for(const entry of members) checked?selectedWireEntries.add(entry):selectedWireEntries.delete(entry);
+      applyWireSelection();
     },
-    onGroupSelection: () => {},
+    onGroupSelection: (members,checked) => {
+      if(wireMode!=='multiple')return;
+      for(const entry of members) checked?selectedWireEntries.add(entry):selectedWireEntries.delete(entry);
+      applyWireSelection();
+    },
   });
 
   const importRecords=archiveImportQueue({accepts:name=>pointExtension.test(name)||(isWire&&/\.obj$/i.test(name)),
@@ -6410,12 +6532,15 @@ initializeLocale();
     $('select-all-clouds').onclick = () => batchCloudSelection();
     $('invert-cloud-selection').onclick = () => batchCloudSelection(true);
   }
-  $('wire-file').onchange = event => { preventDuplicateSelection(event.target); load(); };
-  $('cloud-file').onchange = () => load(); $('point-limit').onchange = () => { if (active) load(); };
+  $('wire-file').onchange = event => { preventDuplicateSelection(event.target); if(isWire)rememberWireChoices(event.target.id); load(); };
+  $('cloud-file').onchange = () => {if(isWire)rememberWireChoices('cloud-file');load();}; $('point-limit').onchange = () => { if (active) load(); };
   if (isWire) {
-    for (const id of ['wire-file-2', 'wire-file-3']) $(id).onchange = event => { preventDuplicateSelection(event.target); load(); };
-    $('compare-mode').onchange = () => { setComparisonUI(); load({ preserveCamera: true }); };
-    $('compare-count').onchange = () => { setComparisonUI(); load({ preserveCamera: true }); };
+    $('wire-mode-select').onchange = event => setWireMode(event.target.value);
+    $('select-all-wires').onclick=()=>batchWireSelection(); $('invert-wire-selection').onclick=()=>batchWireSelection(true);
+    $('previous-wire-id').onclick=()=>navigateWire(-1); $('next-wire-id').onclick=()=>navigateWire(1);
+    for (const id of ['wire-file-2', 'wire-file-3']) $(id).onchange = event => { preventDuplicateSelection(event.target); rememberWireChoices(event.target.id);load(); };
+    $('compare-mode').onchange = () => { rememberWireChoices('compare-mode');setComparisonUI(); load({ preserveCamera: true }); };
+    $('compare-count').onchange = () => { rememberWireChoices('compare-count');setComparisonUI(); load({ preserveCamera: true }); };
   }
   for (const id of ['color-mode', 'show-points', 'show-wire', 'show-grid', 'point-color', 'wire-color', 'rgb-r', 'rgb-g', 'rgb-b']) $(id).onchange = update;
   for (const id of ['point-size', 'point-opacity']) $(id).oninput = update;
@@ -6428,6 +6553,8 @@ initializeLocale();
   };
 
   document.addEventListener('keydown', event => {
+    const direction=isWire?wireNavigationDirection(event,{multiple:wireMode==='multiple',flying:viewers.some(viewer=>viewer.fly?.active)}):0;
+    if(direction){event.preventDefault();navigateWire(direction);return;}
     if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(event.target.tagName) && event.key.toLowerCase() === 'f') {
       event.preventDefault(); viewers[0]?.fit();
     }
@@ -6436,7 +6563,7 @@ initializeLocale();
     initViewers();
     paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: update});
     cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewers.slice(0, activeViewerCount()),
-      space: 'raw-world', getScene: () => ({ids: isWire ? [active?.id].filter(Boolean) : [...selectedCloudEntries].map(entry => entry.id)}), pauseSync});
+      space: 'raw-world', getScene: () => ({ids: isWire ? [...selectedWireEntries].map(entry=>entry.id) : [...selectedCloudEntries].map(entry => entry.id)}), pauseSync});
     if (!isWire) processingControls = mountPointProcessing({container: $('processing-controls'),
       getSelection: () => {
         if (loadController) throw Error(t('请等待点云加载完成后再处理'));
@@ -6510,13 +6637,24 @@ initializeLocale();
       }).catch(cause => error(cause.message || t('没有找到刚生成的点云，请从点云生成页重新打开。')));
     }
     mountMobileProject({receive:importRecords,getState:()=>({
-      tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...selectedCloudEntries].map(e=>e.id),active:active?.id,cloudMode,
+      tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...(isWire?selectedWireEntries:selectedCloudEntries)].map(e=>e.id),active:active?.id,cloudMode,wireMode,wirePreferences,
       inputs:captureMobileInputs(),wire:isWire?Object.fromEntries(['wire-file','wire-file-2','wire-file-3','cloud-file','compare-mode','compare-count'].map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value])):null,camera:(loaded.cloud||loaded.wire)?cameraControls?.capture():null,
     }),restoreState:async state=>{
       mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...entries.map(e=>e.id)])];
       if(state){entries=restoreProjectTree(pointProject,entries,state.tree);cloudMode=state.cloudMode==='single'?'single':'multiple';
         const limit=state.inputs?.find(x=>x.id==='point-limit');if(limit)$('point-limit').value=limit.value;
-        if(isWire){const entry=entries.find(e=>e.id===state.active);if(entry){await choose(entry);for(const [id,value] of Object.entries(state.wire||{})){if($(id).type==='checkbox')$(id).checked=Boolean(value);else $(id).value=String(value);}setComparisonUI();await load();}}else{
+        if(isWire){
+          wireMode=state.wireMode==='multiple'?'multiple':'single';
+          if(state.wirePreferences?.wires?.length===3)wirePreferences=normalizeWirePreferences(state.wirePreferences);
+          selectedWireEntries.clear();
+          const saved=wireMode==='multiple'?state.selected||[state.active]:[state.active];
+          for(const id of saved){const entry=entries.find(e=>e.id===id);if(entry)selectedWireEntries.add(entry);}
+          const entry=entries.find(e=>e.id===state.active); active=entry||[...selectedWireEntries].at(-1)||null;
+          if(active){configureWireChoices(active);
+            if(!state.wirePreferences){for(const [id,value] of Object.entries(state.wire||{})){if(!$(id))continue;if($(id).type==='checkbox')$(id).checked=Boolean(value);else $(id).value=String(value);}rememberWireChoices();}
+            await applyWireSelection(active);
+          }
+        }else{
           selectedCloudEntries.clear();for(const id of state.selected||[]){const entry=entries.find(e=>e.id===id);if(entry)selectedCloudEntries.add(entry);}if(selectedCloudEntries.size)await loadCloudSelection();
         }
         restoreMobileInputs(state.inputs);update();if(state.camera&&(loaded.cloud||loaded.wire))cameraControls.restore(state.camera,{checkScene:false});

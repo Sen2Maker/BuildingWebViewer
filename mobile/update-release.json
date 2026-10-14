@@ -1,11 +1,11 @@
 {
-  "version": "1.6.5",
+  "version": "1.7.0",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 16,
-  "issuedAt": 1791952150,
-  "expiresAt": 1807504150,
+  "sequence": 17,
+  "issuedAt": 1791962093,
+  "expiresAt": 1807514093,
   "notes": {
-    "zh": "统一网格、线框与点云术语，纠正高度、面朝向及网页/App 能力说明；更新中英文文档和独立界面截图。渲染、导航及文件格式保持兼容。",
-    "en": "Clarify mesh/wireframe terminology, relative height, face orientation and browser/app capabilities. Refresh bilingual guides and separate language screenshots; preserve rendering, navigation and file compatibility."
+    "zh": "线框查看新增单个/多个 ID、全选反选与上一项/下一项快捷键；按文件名沿用线框版本，切换 ID 自动适应场景，修复画面空白。包含 1.6.5 文档与术语修订。",
+    "en": "Add single/multiple wireframe IDs, select all/invert and previous/next shortcuts. Remember variants by filename and fit newly selected IDs to avoid empty views. Includes 1.6.5 terminology and guide updates."
   }
 }

@@ -6,6 +6,15 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.7.0] - 2026-10-14
+
+- 线框查看新增单个 ID / 多个 ID 模式；多选按原始坐标叠加，支持全选、反选、文件夹勾选和移除，批量选择遵循搜索结果并保留筛选外勾选。
+- 切换 ID 自动适应新对象范围，修复保留旧观察中心导致画面空白；快速切换取消旧任务，复用文件解析缓存。
+- 线框版本和点云选择按文件名沿用，缺少同名文件时回退可用文件；主动选择“不加载”仍保留。显示偏好存于本地浏览器，可继续逐 ID 并排比较。
+- 单 ID 增加上一个 / 下一个按钮与 ← / →、[ / ] 快捷键，按自然编号顺序，遵循搜索筛选；输入控件和漫游操作不抢键。
+- Add single/multiple wireframe ID modes with overlays, scoped All/Invert and folder selection. Fit new IDs, retain filename-based variant preferences, reuse parsing caches and support previous/next shortcuts without stealing editing or fly controls.
+- 同时包含 1.6.5 的术语、文档、独立双语截图及本地服务器修订；原生接口保持兼容，每版提供完整 APK 和签名热更新。
+
 ## [1.6.5] - 2026-10-14
 
 - 统一“网格模型查看器 / Mesh Viewer”和通用线框对象术语；LoD 保留为细节层次概念，旧链接、书签坐标空间与文件格式保持兼容。

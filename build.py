@@ -64,6 +64,7 @@ def project_sidebar(source, name):
     shell = (HERE / 'src/shared/project-sidebar.html').read_text(encoding='utf-8')
     for key in ['accept', 'list_id', 'selection_actions']:
         shell = shell.replace('{{' + key + '}}', config[key])
+    shell = shell.replace('  {{mode_controls}}', (HERE / config['mode_file']).read_text(encoding='utf-8') if config.get('mode_file') else '')
     shell = shell.replace('{{options}}', (HERE / config['options_file']).read_text(encoding='utf-8'))
     pattern = r'<!-- project-sidebar:start -->[\s\S]*?<!-- project-sidebar:end -->'
     if len(re.findall(pattern, source)) != 1: raise ValueError('Missing shared project sidebar: ' + name)
