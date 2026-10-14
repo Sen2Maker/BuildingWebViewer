@@ -1,11 +1,11 @@
 {
-  "version": "1.7.0",
+  "version": "1.7.1",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 17,
-  "issuedAt": 1791962093,
-  "expiresAt": 1807514093,
+  "sequence": 18,
+  "issuedAt": 1791965041,
+  "expiresAt": 1807517041,
   "notes": {
-    "zh": "线框查看新增单个/多个 ID、全选反选与上一项/下一项快捷键；按文件名沿用线框版本，切换 ID 自动适应场景，修复画面空白。包含 1.6.5 文档与术语修订。",
-    "en": "Add single/multiple wireframe IDs, select all/invert and previous/next shortcuts. Remember variants by filename and fit newly selected IDs to avoid empty views. Includes 1.6.5 terminology and guide updates."
+    "zh": "线框查看支持单个/多个 ID、全选反选与快捷切换；按文件名记住线框版本，切换 ID 自动适应场景。完善双语说明与界面示例。",
+    "en": "Single/multiple wireframe IDs, scoped All/Invert, previous/next navigation and remembered filename variants. Fit new IDs automatically and refresh bilingual guides."
   }
 }
