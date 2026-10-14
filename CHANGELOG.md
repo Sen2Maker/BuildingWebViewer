@@ -6,6 +6,14 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.6.3] - 2026-10-14
+
+- 原生漫游采用当前相机坐标：前后沿视线，升降沿画面上方向，左右沿画面右方向，不再把世界 Z 固定作为升降。旧书签坐标保留。
+- 用四个按住按钮代替视角摇杆，移动、升降和视角输入独立，松开／取消停止对应动作。
+- 恢复默认“当前视野中心（自动）”旋转中心：退出漫游和开始旋转时，从画面中心附近的完整高斯估计深度；无命中时保留现有距离。重新设定中心时保持相机位置和镜头，避免画面跳动。
+- 恢复缩放自适应旋转／平移与时间平滑，可选择固定或模型中心；设置随项目保存。保留全部高斯，原生修复需覆盖安装完整 APK。
+- Use camera-relative free flight and explicit look buttons. Restore automatic view-center pivots, adaptive gesture scale and elapsed-time smoothing. Anchor depth is an estimate, not an exact surface raycast; no source splats are removed.
+
 ## [1.6.2] - 2026-10-14
 
 - 修复原生相机数字输入框被主题内边距裁切，改为自适应高度、紧凑对齐布局和完整宽度滑块；完成按钮提交当前输入。

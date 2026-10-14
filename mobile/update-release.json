@@ -1,11 +1,11 @@
 {
-  "version": "1.6.2",
+  "version": "1.6.3",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 13,
-  "issuedAt": 1791910115,
-  "expiresAt": 1807462115,
+  "sequence": 14,
+  "issuedAt": 1791941693,
+  "expiresAt": 1807493693,
   "notes": {
-    "zh": "修复原生相机输入数字裁切、完成按钮提交与漫游缩放；模拟器验证摇杆对应的实际画面方向。需要覆盖安装完整 APK，项目与书签保留。",
-    "en": "Fix clipped native camera numeric inputs, commit edits on Done, and optical zoom in fly mode. Verify actual image directions from move/look pads. Install the full APK; projects and views remain."
+    "zh": "修正漫游移动坐标：前后沿视线，升降沿画面上方向，不再假定数据 Z 朝上。视角改用四个按住按钮。恢复默认当前视野旋转中心、缩放自适应和时间平滑；退出漫游不跳动。需要覆盖安装完整 APK，项目与书签保留。",
+    "en": "Use camera-relative fly translation, separate move/lift from look buttons, and restore automatic view-center orbit anchors with adaptive smooth gestures. Install the full APK; projects and views remain."
   }
 }
