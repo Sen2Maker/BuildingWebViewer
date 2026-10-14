@@ -105,7 +105,7 @@ initializeLocale();
       projectControls?.render(); updateCloudSelection(); updateCloudModeUI(filtered); columnsControls?.refresh();
       processingControls?.refresh([...selectedCloudEntries], Boolean(loadController)); return;
     }
-    $('filter-count').textContent = t("{0} 个建筑 ID", [pretty(filtered.length)]);
+    $('filter-count').textContent = t("{0} 个对象 ID", [pretty(filtered.length)]);
     $('item-count').textContent = t('共 {0} 项', [pretty(entries.length)]);
     projectControls?.render();
   }
@@ -163,7 +163,7 @@ initializeLocale();
     const result = appendWireFiles(entries, pointProject, files, dropPaths);
     $('search').value = ''; list();
     $('source-note').textContent = t('文件留在本机 · 分组仅保留在本次页面');
-    error(!result.added && !result.duplicates ? t('未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个建筑子目录。') : '');
+    error(!result.added && !result.duplicates ? t('未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个对象子目录。') : '');
     // Refresh file choices on an active set without resetting its camera or selection.
     if (active) {
       const indices = ['wire-file','wire-file-2','wire-file-3'].map(id => $(id).value);
@@ -421,7 +421,7 @@ initializeLocale();
     const before = {...cached.stats};
     $('loading').querySelector('span').textContent = t('正在读取文件…');
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
-    $('current-title').textContent = isWire ? t("建筑 {0}", [entry.id]) : entry.id; $('scene-stats').textContent = t('正在读取所选文件…');
+    $('current-title').textContent = isWire ? t("对象 {0}", [entry.id]) : entry.id; $('scene-stats').textContent = t('正在读取所选文件…');
     $('data-notes').textContent = ''; $('color-legend').hidden = true;
     const onProgress = ({ phase, loaded, total }) => {
       if (version !== revision) return;
@@ -543,7 +543,7 @@ initializeLocale();
     getQuery: () => $('search').value, onToggle: entry => active === entry ? clear() : choose(entry),
     onRemove: removeWireEntries, onChange: list,
     detail: entry => `${entry.wires.length} OBJ · ${entry.clouds.length} PC`,
-    selectionHint: '每次预览一个建筑组；可多选管理',
+    selectionHint: '每次预览一个对象组；可多选管理',
     onVisibility: (members, checked) => {
       if (checked && members.length === 1) choose(members[0]);
       else if (!checked && members.includes(active)) clear();

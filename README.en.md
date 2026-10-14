@@ -1,72 +1,57 @@
 <div align="center">
 
 <h1>BuildingWebViewer</h1>
-<p>A general 3D toolbox for LOD meshes, OBJ wireframes, point clouds and 3D Gaussian splats. Draw and refine point clouds, edit attributes, run geometric processing and export.</p>
-<p><a href="README.md">简体中文</a> · <strong>English</strong> · <a href="https://sen2maker.github.io/BuildingWebViewer/">Live demo ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">Download release</a></p>
+<p>A local 3D toolbox for meshes, wireframes, point clouds and Gaussian splats, with point-cloud attribute mapping, processing and export.</p>
+<p><a href="README.md">简体中文</a> · <strong>English</strong> · <a href="https://sen2maker.github.io/BuildingWebViewer/?lang=en">Try online ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">Downloads</a></p>
 
 </div>
 
-![Point cloud overlay and camera controls](docs/preview.png)
+![English interface: synthetic point clouds and camera settings](docs/preview.en.jpg)
 
-## Quick start
+## Get started
 
-**Online** → [Open the viewer](https://sen2maker.github.io/BuildingWebViewer/), choose a tool, add local files or a folder, then select the objects to display.
+**Browser** → [Open online](https://sen2maker.github.io/BuildingWebViewer/?lang=en), or download `BuildingWebViewer-Web-vX.Y.Z.zip` from Releases, extract it completely and open `index.html`. Chrome / Edge recommended; no runtime dependencies to install.
 
-**Offline** → Download the versioned ZIP from [Releases](https://github.com/Sen2Maker/BuildingWebViewer/releases/latest) and extract everything, then open `index.html`. No installation required; Chrome or Edge is recommended.
-
-Alternatively, start a local server from the project folder (Python 3 required):
+**Local server** (optional, Python 3): run in the extracted project directory:
 
 ```bash
 python3 server.py
 ```
 
-Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)**. Press `Ctrl+C` to stop; add `--port 8766` if the default port is busy.
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Stop with `Ctrl+C`; use `--port 8766` if the port is busy.
+
+**Android app** → Install the complete Preview APK from the same Release. Existing users can receive compatible web updates; native changes require installing the new APK over the existing app. [Installation and builds](docs/ANDROID.md)
 
 ## Tools
 
 | Tool | Input | Key features |
 | --- | --- | --- |
-| **LOD models** | Triangulated OBJ meshes | Multiple buildings, solid / wireframe display, height above each model’s lowest point |
-| **Building wireframes** | OBJ wireframes + optional point clouds | Folders grouped by object ID, up to three comparison panes, synchronized cameras |
-| **Point clouds** | TXT · XYZ · CSV · PTS · PLY · PCD | Multi-file overlays, attribute coloring, geometric features and merged export |
-| **Gaussian splats** | 3DGS binary PLY + cameras.json | Perspective / orthographic splats, spherical harmonics, scale and training-camera directions |
-| **Point cloud studio** | Draw from scratch or import existing clouds | Lines, faces and extrusions; box / lasso selection, crop, color, editable projects and PLY export |
+| **Mesh Viewer** | Triangulated OBJ meshes | Multi-model layouts, solid / wireframe, relative-height and face-orientation colors |
+| **Wireframe Viewer** | OBJ + optional point clouds | Object folders, up to three comparison panes and synchronized cameras |
+| **Point Cloud Viewer** | TXT · XYZ · CSV · PTS · PLY · PCD | Multiple clouds, RGB / HSV / scalar colors, attribute processing and merged export |
+| **Gaussian Splatting Viewer** | PLY with 3DGS attributes | Web perspective / orthographic views, SH colors and optional `cameras.json`; native Android full-splat rendering, fly navigation, views and capture |
+| **Point Cloud Studio** | Create from scratch or import clouds | Drawing and sampling, rectangle / lasso, cropping, painting, project save and PLY export |
 
-Organize wireframe data as `dataset / object-ID / wireframe.obj, points.txt`. Text point clouds support XYZ and additional attributes, such as `x y z intensity`. LAS / LAZ and compressed PCD are not supported.
+Text clouds load XYZ plus extra columns, such as `x y z intensity`. After import, assign RGB, HSV, normals, intensity or custom labels and reorder exported columns. Processing runs only for the selected operation. [Processing guide](docs/PROCESSING.md)
 
-**Display · Camera · Bookmarks**: use the side panel to change palettes and value ranges, adjust camera sliders or enter precise values, and save views. Bookmarks stay in the current browser and site, with JSON import and export.
-
-**Data and processing**: Inspect and reorder columns, assign RGB / HSV, normal, intensity or custom tags, compute selected features, and choose where to insert new columns before PLY / TXT export. [Processing guide](docs/PROCESSING.md)
+Wireframe folder example: `dataset / objectID / wireframe.obj, cloud.txt`. Ordinary XYZ points are not Gaussian splats: 3DGS also requires opacity, scale, rotation and color attributes. LAS / LAZ and compressed PCD are not supported.
 
 ## Essentials
 
-Switch 中文 / English in the homepage header; the preference follows you into each tool and its loading screen, avoiding a flash of the other language on slow connections. On phones, use file selection, one-finger orbit and two-finger zoom/pan. Folder picking and large datasets depend on browser support and device memory.
+- **Local processing**: files are not automatically uploaded. Distribution packages contain no user data; app project backups include imported files.
+- **Projects and views**: browser file selections and groups are session-only; reselect after refresh. Browser views persist per origin and support JSON import / export. The app stores projects and exports `.bwv.zip` backups. Native Gaussian views and web bookmarks use separate formats.
+- **Coordinates and colors**: Mesh Viewer arranges models in display coordinates. Relative height starts at each model’s lowest Z; face-orientation colors do not classify roofs or walls. Cloud overlays require a shared coordinate system; no CRS conversion is performed.
+- **Capacity**: point clouds load all points by default, with optional import caps and display ratios. Gaussian viewing retains all source splats and reports capacity failures. The native Gaussian workspace focuses on viewing, navigation and capture; web Gaussian editing is separate.
 
-- **Local data**: files are processed in your browser, never uploaded. No model datasets are bundled.
-- **Shared project tree**: the four viewers support appended imports. Drop files or folders, collapse groups, create folders, Ctrl/Shift-select or box-select items, and use the context menu for batch moves/removal. The sidebar can be resized or collapsed. Checked clouds are used for display, processing, and merging. Groups exist for this session only; disk files stay unchanged. The studio imports existing clouds and saves editable projects; its result can be opened in the point-cloud viewer.
-- **Explicit selection**: select objects after opening a folder. Reloading requires selecting your data again; saved bookmarks remain.
-- **Large files**: all points are displayed by default, with optional per-file limits and cache reuse. Capacity depends on available RAM and GPU memory.
-- **Coordinates**: point cloud overlays preserve original coordinates and require a common coordinate system. LOD models use a rearranged display layout.
+Switch language on the home page. Mobile browsers support touch; Android is recommended for Gaussian viewing. Exchange `.bwvproject` point-cloud editing projects manually between desktop browsers, mobile browsers and the app. [Cross-platform guide](docs/CROSS_PLATFORM.md)
 
-**Display and import**: sampling slider, per-cloud colors and advanced camera capture; viewers accept ordinary ZIP archives. Gaussian splats add spherical-harmonic degree, opacity, scale, background, a display cap and training-camera directions. Android Preview is available in Releases; see [installation and builds](docs/ANDROID.md).
+## Development
 
-## Develop and package
-
-Plain HTML / CSS / JavaScript + WebGL, with no npm dependencies. Source lives in `src/`, styles in `assets/css/`; do not edit generated `assets/js/` bundles. [Development conventions](docs/DEVELOPMENT.md)
-
-After editing the source, run:
+The website uses HTML / CSS / JavaScript + WebGL. Edit `src/` and `assets/css/`, not generated `assets/js/` files.
 
 ```bash
 python3 build.py --site --zip
-python3 scripts/check.py  # Development checks; requires Node 18+
+python3 scripts/check.py  # Node 18+
 ```
 
-This updates the browser bundles and creates `_site/` for static hosting and `dist/BuildingWebViewer-Web-vX.Y.Z.zip` for distribution (plus an unversioned local copy). Commit the generated bundles alongside source changes.
-
-See [design notes](docs/DESIGN_NOTES.md) (Chinese) for implementation details and references.
-
-**Versioning**: `v1.0.0` is the first stable baseline. Future changes are tested, recorded in the [changelog](CHANGELOG.md) and reported before uploading under a release instruction. Only stable Releases update the live website. [Release guide](docs/RELEASING.md)
-
-[Android preview, installation and builds](docs/ANDROID.md)
-
-**Continue on another device**: desktop web, mobile web and Android share `.bwvproject` point editor files; use PLY for point clouds or Gaussians. Copy/share files yourself; no data is uploaded. Full Android backups use `.bwv.zip`. See [cross-platform workflows](docs/CROSS_PLATFORM.md).
+Android builds additionally need Node 22+, a JDK and Android SDK. See [development](docs/DEVELOPMENT.md), [changelog](CHANGELOG.md) and [releases](docs/RELEASING.md).

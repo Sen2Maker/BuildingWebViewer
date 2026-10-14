@@ -39,14 +39,14 @@ export function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
     const range=scalar?(viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
     ctx.textAlign='left';ctx.font='10px sans-serif';ctx.fillStyle='#526d66';
     if(range && Number.isFinite(range.min) && Number.isFinite(range.max)){
-      const label=options.colors==='height'?t('离地高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
+      const label=options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
       const barWidth=Math.min(90,available*.26),barX=16,barY=h-24,gradient=ctx.createLinearGradient(barX,0,barX+barWidth,0);
       for(let i=0;i<=8;i++)gradient.addColorStop(i/8,`rgb(${samplePalette(i/8,options.palette,options.reverse).map(v=>Math.round(v*255)).join(',')})`);
       ctx.fillStyle=gradient;ctx.fillRect(barX,barY,barWidth,8);ctx.fillStyle='#526d66';
       ctx.fillText(`${label} · ${Number(range.min.toPrecision(5))} — ${Number(range.max.toPrecision(5))}`,barX+barWidth+8,h-17,Math.max(10,available-barWidth-8));
     } else if(options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
-      ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('屋顶 / 坡面'),31,h-17);
-      ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('墙面'),147,h-17);
+      ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('非竖直面'),31,h-17);
+      ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('近竖直面'),147,h-17);
     }
   }
   ctx.restore();

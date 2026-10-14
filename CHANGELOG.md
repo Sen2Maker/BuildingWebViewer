@@ -6,6 +6,13 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.6.5] - 2026-10-14
+
+- 统一“网格模型查看器 / Mesh Viewer”和通用线框对象术语；LoD 保留为细节层次概念，旧链接、书签坐标空间与文件格式保持兼容。
+- 修正相对高度、面朝向配色、全量高斯与 App / 网页保存及编辑边界说明；更新当前移动端文档，历史说明保留版本语境。
+- 修复本地服务器遗漏 GLSL MIME 类型导致启动失败；中英文 README 使用分别截取的真实界面图；修订历史公开 Release 正文与项目简介，保留标签及附件。
+- Clarify mesh/wireframe names, relative-height and face-orientation colors, and browser/native capabilities. Refresh bilingual guides and separate real UI screenshots. Revise historical release prose without replacing tags or assets.
+
 ## [1.6.4] - 2026-10-14
 
 - 恢复右侧视角摇杆：绕当前相机局部轴左右转头、上下抬头低头；独立左倾／右倾按钮只改变倾斜，不改变视线与位置。保留移动摇杆和升降控制。
@@ -266,7 +273,7 @@ Validation: regression suites and generated-asset/package checks passed; desktop
 
 ### 中文
 
-- 提供 LOD 模型、通用 OBJ 线框和点云三个查看器，支持在线及离线运行，数据在本机处理。
+- 提供 网格模型、通用 OBJ 线框和点云三个查看器，支持在线及离线运行，数据在本机处理。
 - 共用项目文件树：追加导入、目录分组、多选/框选、右键移动与移除。
 - 点云支持多文件叠加、RGB/HSV 与自定义属性映射、按需几何特征计算、列顺序调整及合并导出。
 - 提供色带、相机微调、浏览器书签和 JSON 导入导出；线框支持最多三个同步对比面板。
@@ -276,7 +283,7 @@ Validation: regression suites and generated-asset/package checks passed; desktop
 
 ### English
 
-- Three online/offline viewers for LOD meshes, general OBJ wireframes and point clouds; all data processing stays local.
+- Three online/offline viewers for meshes, general OBJ wireframes and point clouds; all data processing stays local.
 - Shared project tree with appended imports, folder groups, multiselect, box selection and context actions.
 - Point-cloud overlays, RGB/HSV and custom attribute mapping, selected geometric computations, column ordering and merged export.
 - Palettes, camera controls, persistent browser bookmarks and JSON import/export; up to three synchronized wireframe comparison panes.

@@ -31,7 +31,7 @@ check('All comparison panels update atomically while sync is paused', () => {
   assert.equal(calls, 2); assert.notEqual(a.camera.pan, b.camera.pan);
   assert.deepEqual(a.target.map((v, i) => v + a.origin[i]), b.target.map((v, i) => v + b.origin[i]));
 });
-check('LOD layout snapshots include target, IDs and scale and reject mismatches', () => {
+check('Mesh layout snapshots include target, IDs and scale and reject mismatches', () => {
   const original = viewer(), snapshot = captureCameraSnapshot(original, {space: 'lod-arrangement', scene});
   assert.deepEqual(snapshot.camera.target, original.target);
   assert.throws(() => validateCameraSnapshot(snapshot, {space: 'raw-world'}), /坐标空间/);

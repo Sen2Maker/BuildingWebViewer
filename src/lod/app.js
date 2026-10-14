@@ -48,7 +48,7 @@ function renderLabels(labels) {
       el = document.createElement('button');
       el.className = 'scene-label';
       el.textContent = '#' + id;
-      el.setAttribute('aria-label', t('单独查看楼栋 ') + id);
+      el.setAttribute('aria-label', t('单独查看模型 ') + id);
       el.onclick = () => selectIds([id]);
       $('model-labels').append(el);
       labelElements.set(id, el);
@@ -57,7 +57,7 @@ function renderLabels(labels) {
     el.style.top = `${label.y}px`;
     el.hidden = !options.labels || !label.visible;
     const model = cache.get(id);
-    el.title = model ? t("楼栋 {0} · {1} · 点击单独查看", [id, sizeText(model)]) : t("楼栋 {0}", [id]);
+    el.title = model ? t("模型 {0} · {1} · 点击单独查看", [id, sizeText(model)]) : t("模型 {0}", [id]);
   }
 }
 
@@ -72,21 +72,21 @@ function renderList() {
   modelTree?.render();
 }
 function renderSelection(syncInput = true) {
-  $('selection-count').textContent = t('已勾选 {0} 栋', [selected.size]);
+  $('selection-count').textContent = t('已勾选 {0} 个', [selected.size]);
   $('previous-group').disabled = !selected.size; $('next-group').disabled = !selected.size;
   const fragment = document.createDocumentFragment();
   for (const id of orderedIds()) {
     const chip = document.createElement('span'); chip.className = 'model-chip';
     const focus = document.createElement('button'); focus.textContent = `# ${id}`;
-    focus.title = cache.has(id) ? t("{0} · 点击单独查看", [sizeText(cache.get(id))]) : t('单独查看楼栋 ') + id;
+    focus.title = cache.has(id) ? t("{0} · 点击单独查看", [sizeText(cache.get(id))]) : t('单独查看模型 ') + id;
     focus.onclick = () => selectIds([id]);
     const remove = document.createElement('button'); remove.className = 'remove-chip'; remove.textContent = '×';
-    remove.setAttribute('aria-label', t("移除楼栋 {0}", [id]));
+    remove.setAttribute('aria-label', t("移除模型 {0}", [id]));
     remove.onclick = () => selectIds([...selected].filter(value => value !== id));
     chip.append(focus, remove); fragment.append(chip);
   }
   if (!selected.size) {
-    const hint = document.createElement('span'); hint.className = 'selected-empty'; hint.textContent = t('尚未选择楼栋'); fragment.append(hint);
+    const hint = document.createElement('span'); hint.className = 'selected-empty'; hint.textContent = t('尚未选择模型'); fragment.append(hint);
   }
   $('selected-models').replaceChildren(fragment);
   if (syncInput) $('batch-ids').value = orderedIds().join(', ');
@@ -94,7 +94,7 @@ function renderSelection(syncInput = true) {
 function selectIds(ids) {
   const unique = [...new Set(ids.map(String))];
   const invalid = unique.filter(id => !catalogById.has(id));
-  if (invalid.length) { showError(t("找不到楼栋编号：{0}", [invalid.slice(0, 8).join('、')])); return false; }
+  if (invalid.length) { showError(t("找不到模型编号：{0}", [invalid.slice(0, 8).join('、')])); return false; }
   selected = new Set(unique); clearError(); renderSelection(); renderList(); loadSelection(); return true;
 }
 function applyBatch(append) {
@@ -111,13 +111,13 @@ async function loadSelection() {
     cameraControls?.refresh(); updateHeightLegend();
     renderLabels([]);
     $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
-    $('scene-stats').textContent = catalog.length ? t('未选择楼栋') : t('请先在项目栏添加文件或文件夹');
+    $('scene-stats').textContent = catalog.length ? t('未选择模型') : t('请先在项目栏添加文件或文件夹');
     return;
   }
   $('loading').hidden = !ids.length;
   $('empty-state').hidden = !!ids.length;
   $('screenshot').disabled = true;
-  $('scene-stats').textContent = ids.length ? t("正在读取 {0} 栋模型…", [ids.length]) : t('未选择楼栋');
+  $('scene-stats').textContent = ids.length ? t("正在读取 {0} 个模型…", [ids.length]) : t('未选择模型');
   const results = new Map(), failures = []; let next = 0, completed = 0;
   const worker = async () => {
     while (next < ids.length && !signal.aborted) {
@@ -152,7 +152,7 @@ async function loadSelection() {
     cameraControls?.refresh(); updateHeightLegend();
     const triangles = currentModels.reduce((sum, m) => sum + m.faces.length, 0);
     const vertices = currentModels.reduce((sum, m) => sum + m.vertices.length, 0);
-    $('scene-stats').textContent = currentModels.length ? t("已显示 {0} / {1} 栋 · {2} 三角面 · {3} 顶点", [currentModels.length, ids.length, number(triangles), number(vertices)]) : t('未显示模型');
+    $('scene-stats').textContent = currentModels.length ? t("已显示 {0} / {1} 个 · {2} 三角面 · {3} 顶点", [currentModels.length, ids.length, number(triangles), number(vertices)]) : t('未显示模型');
     $('screenshot').disabled = !currentModels.length || !viewer;
     $('empty-state').hidden = !!currentModels.length;
     if (failures.length) showError(t('部分模型读取失败。') + failures.join('；'), true);
@@ -180,7 +180,7 @@ function updateOptions() {
   paletteControls?.setScalarEnabled(options.colors === 'height');
   cameraControls?.refresh(); updateHeightLegend();
   $('layout-title').textContent = options.scale === 'real' ? t('等比例陈列') : t('统一展示大小');
-  $('layout-note').textContent = options.scale === 'real' ? t('独立模型重新排列 · 非实际地理位置') : t('各栋独立等比缩放 · 不可比较实际大小');
+  $('layout-note').textContent = options.scale === 'real' ? t('独立模型重新排列 · 非实际地理位置') : t('各模型独立等比缩放 · 不可比较实际大小');
   $('legend').hidden = options.colors !== 'surface' || options.mode === 'wire';
   renderLabels(latestLabels);
 }
@@ -234,8 +234,8 @@ function folderReady(fileList, paths = null) {
   localFiles = new Map(catalog.map(model => [model.id,model.file]));
   $('search').value = '';
   $('source-path').textContent = t('文件留在本机 · 分组仅保留在本次页面');
-  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
-  $('total-count').textContent = t("{0} 栋模型", [number(catalog.length)]);
+  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选模型", [number(catalog.length)]);
+  $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
   if (!result.added && !result.duplicates) showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。'));
   else clearError();
   renderList(); return result;
@@ -250,8 +250,8 @@ function removeModelEntries(members) {
   ++generation; controller?.abort();
   for (const model of members) { cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
   catalog = catalog.filter(model => !removed.has(model));
-  $('total-count').textContent = t("{0} 栋模型", [number(catalog.length)]);
-  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选楼栋", [number(catalog.length)]);
+  $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
+  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选模型", [number(catalog.length)]);
   selectIds([...selected]);
 }
 const importLodRecords=archiveImportQueue({accepts:name=>/\.obj$/i.test(name),

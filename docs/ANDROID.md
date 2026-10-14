@@ -1,16 +1,16 @@
 # Android Preview
 
-**v1.6.1：高斯直接原生查看** — 安装完整 APK，点项目的“高斯泼溅”即可进入原生工作台，不再切换旧查看器。单个 PLY 自动载入；多个文件在“项目”里勾选。漫游操作：左摇杆上下为前后、左右为平移；中间升降键控制高度；右摇杆控制转向与抬头／低头。支持相机滑块／数字、项目书签与原生 JSON 导入导出、PNG 截图及诊断，保留全部高斯。原生端显示原始数据，不提供高斯编辑。旧网页书签／训练机位文件与原生书签格式独立；网页保持现有功能。容量不足明确报错，首次预热时间与解析阶段在诊断中记录。
+从 [最新 Release](https://github.com/Sen2Maker/BuildingWebViewer/releases/latest) 下载完整 Preview APK。网页与 App 共用网格、线框、点云和点云创作工具；App 的三维高斯使用独立 OpenGL ES 3 原生渲染器。
 
-**Native Gaussian workspace** — Install the full v1.6.4 APK, then open Gaussian from a project. One PLY opens automatically; select multiple files in Project. Native fly navigation, camera sliders/numbers, persistent views, native JSON import/export, PNG capture and diagnostics retain all splats. Gaussian editing and web bookmark/training-camera formats are separate; browser functionality remains available.
+原生高斯直接从项目打开，保留全部源高斯，以可视化、漫游和 PNG 截图为主。移动摇杆控制前后左右，升降沿相机画面上方向；视角摇杆左右转头、上下抬头低头，独立按钮控制左倾 / 右倾。相机数字 / 滑块、灵敏度、项目书签及原生 JSON 可保存恢复。默认旋转中心自动取当前视野中心附近的估计深度；这不是精确表面拾取。网页书签、训练机位与原生书签格式独立。
 
-App 复用五个三维工具，文件和项目保存在手机内。网页不需要安装 Node 或 Android SDK；下面的依赖仅用于构建 APK。
+Install the complete APK from the latest Release. Android adds durable projects and a native full-splat Gaussian workspace with fly navigation, camera controls, persistent views and PNG capture. Native Gaussian editing is not provided. Native and web camera formats are separate; device performance remains hardware-dependent.
 
 ## 安装与使用
 
-1. 安装 `BuildingWebViewer-Android-v1.4.0-preview.1.apk`。预览版为独立应用，Android 7.0+，兼容构建目标为 Android System WebView 60+。JavaScript 语法转换与缺失接口回归已加入构建；实际 GPU/WebGL 和厂商内核仍需真机验证。
+1. 安装所选 Release 的 `BuildingWebViewer-Android-vX.Y.Z-preview.1.apk`。预览版为独立应用，Android 7.0+，兼容构建目标为 Android System WebView 60+。JavaScript 语法转换与缺失接口回归已加入构建；实际 GPU/WebGL 和厂商内核仍需真机验证。
 2. 从 QQ 或文件管理器“分享/用其他应用打开”文件或压缩包，选择 **BuildingWebViewer Preview**。也可在 App 内新建项目或导入文件。
-3. 选择项目，再进入 LOD、线框、点云、高斯或点云创作与修订。解压后的目录保留；线框和对应点云请放在同一目录。
+3. 选择项目，再进入网格、线框、点云、高斯或点云创作与修订。解压后的目录保留；线框和对应点云请放在同一目录。
 4. 修改项目树、勾选、属性标签、显示颜色和相机会自动保存。计算结果写入项目；手机关闭应用后可从首页重新打开。
 5. 卸载前用“导出项目备份”保存 `.bwv.zip`，以后通过首页“导入文件/压缩包”恢复。回收站可恢复；清空后不能撤销。
 
@@ -44,16 +44,16 @@ Android 安装仍需用户确认。Android 8+ 首次需用户允许本 App 安�
 
 公告保存在包内，成功进入新版项目首页后展示一次；手动入口可再次查看。只有下载完成不算升级成功，回退不会展示失败版本的成功公告。更新后的网页版本可能高于系统显示的 APK 版本，这是两层版本的正常区别。
 
-v1.4.0 使用 nativeApi 6，需要本次覆盖安装新版 APK。新客户端只接受内置公钥验证通过的 ECDSA 签名清单，再检查单调序号、有效期、文件哈希、大小和兼容性。验证失败继续使用本地版本，绝不降级为无签名更新。已经安装的可信网页过期后仍可离线运行。详见 [更新安全与发布](UPDATE_SECURITY.md)。
+当前原生接口为 nativeApi 12；旧原生内核需安装匹配 APK。新客户端只接受内置公钥验证通过的 ECDSA 签名清单，再检查单调序号、有效期、文件哈希、大小和兼容性。验证失败继续使用本地版本，绝不降级为无签名更新。已经安装的可信网页过期后仍可离线运行。详见 [更新安全与发布](UPDATE_SECURITY.md)。
 
 
 ## 启动问题定位
 
 首页可打开“启动诊断”；页面加载失败时也会出现原生“诊断 / Diagnose”按钮。报告包含 APK/本地网页版本、Android/WebView、实际入口、资源检查、最近两次启动事件与错误码，可复制或导出文本。仅保留有限日志，不自动上传；分享前可自行检查内容。
 
-“重试本地首页”重新打开本机页面；“使用内置页面”恢复 APK 随附网页，保留项目文件。渲染进程退出时需关闭再打开 App。加载失败不等于内核版本过低：v1.2.0/1.2.1 的首页路径缺少 `/`，属于 App 配置错误，v1.2.2 已修复。WebView 60 是兼容目标，不代表所有设备/GPU 已实测。
+“重试本地首页”重新打开本机 App 项目页；诊断不提供跳往普通网页首页的切换入口。渲染进程退出时需关闭再打开 App。加载失败不等于内核版本过低：v1.2.0/1.2.1 的首页路径缺少 `/`，属于 App 配置错误，v1.2.2 已修复。WebView 60 是兼容目标，不代表所有设备/GPU 已实测。
 
-Startup diagnostics run natively, even when JavaScript fails. Reports stay local and can be copied/exported. Retry the local home or restore bundled pages without deleting projects. The older start-path defect was an app configuration error, not proof of an outdated WebView.
+Startup diagnostics run natively, even when JavaScript fails. Reports stay local and can be copied/exported. Retry the local app home without deleting projects. The older start-path defect was an app configuration error, not proof of an outdated WebView.
 
 ## 开发构建
 
@@ -86,18 +86,7 @@ The Android preview bundles all five tools for offline use. The compatibility bu
 
 Build with Node 22+, Python 3, JDK 21 and Android SDK 36 using the commands above. Compatible patch web bundles update automatically; feature releases ask first, and native changes require a new APK. Debug signing and a separate preview application ID are intentional. Validate QQ sharing, background/process recovery, large files and the published update channel on physical devices before a stable release.
 
-## v1.4 编辑工作台与跨端文件
 
-高斯与点云创作工具通过 nativeApi 6 保存二进制编辑快照；快照和状态在一次原子项目提交中更新。同名旧快照不重复列入项目，未引用数据可通过首页清理回收。App 备份包含快照，返回首页前等待保存完成。
+## 点云编辑项目 / Editing projects
 
-电脑网页 / 手机网页保存的 `.bwvproject` 可分享至 App，选项目后进入“点云创作与修订”；App 的“保存项目”通过系统分享输出相同格式，浏览器用“打开项目”继续编辑。多个项目文件导入 App 时合并为独立对象。点云 / 高斯 PLY 可交给对应工具；高斯训练相机 JSON 可与 PLY 一起导入。网页浏览器缓存不跨设备同步，`.bwv.zip` 是 App 整项目备份，`.bwvproject` 是跨端点云编辑文件，两者用途不同。
-
-本次需要覆盖安装 v1.4.0 APK（nativeApi 6）；签名更新流程会提示安装，不向旧 nativeApi 5 注入不兼容资源。WebView 60 是编译目标，高斯渲染仍需设备可用的 WebGL。
-
-通用工具快照接口以安全的工具标识保存状态，未来新增兼容工具不需要修改原生工具白名单。网页改版、算法和交互调整优先走签名热更新；仅底层能力变化要求 APK。
-
-## v1.4.1 保存与手机查看
-
-有操作后以五分钟为周期保存；返回首页、系统返回、进入后台和显式导入前立即保存，不在每次调整相机后写盘。无变化时不写入；恢复已保存编辑快照时不重写二进制数据。系统强杀之前若没有完成后台保存，最近五分钟的未保存操作可能丢失。
-
-手机默认从整个高斯源文件分段均匀读取轻量预览，补偿抽样后的投影覆盖，使用底色和较低像素倍率；操作中进一步降低分辨率。模型轮廓保留优先于精细颜色，抽样无法保证保留所有小结构。低配中心点预览仅手动启用，不是默认替代渲染。编辑和完整颜色按需读取完整数据；原始源文件、完整编辑标记、撤销历史保留。完全没有可用 WebGL 2 的设备仍无法渲染高斯。nativeApi 6 不变，发布时走已有签名网页更新通道。
+`.bwvproject` 用于跨端继续点云编辑，`.bwv.zip` 用于 App 整项目备份。网页高斯编辑状态与 App 原生只读高斯工作台不同，导入源 PLY 不会套用网页编辑遮罩。训练相机 JSON 属于网页功能。原生接口兼容时优先提供签名热更新；每次仍附同版本完整 APK，方便首次安装。

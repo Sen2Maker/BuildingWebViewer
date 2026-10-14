@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BuildingWebViewer · 三维数据工具箱</title><!-- site-meta:start -->
-<meta name="application-build" content="a401810dc1d91f41">
-<meta name="description" content="在浏览器中查看 LOD 建筑模型、OBJ 线框、点云与三维高斯泼溅，也可绘制和修订点云。数据仅在本机处理。Browser-based LOD mesh, wireframe, point cloud and Gaussian splatting viewers, plus point-cloud creation and editing. Files stay on your device.">
+<meta name="application-build" content="8f357a618dc80d96">
+<meta name="description" content="在浏览器中查看 网格模型、OBJ 线框、点云与三维高斯泼溅，也可绘制和修订点云。数据仅在本机处理。Browser-based mesh, wireframe, point cloud and Gaussian splatting viewers, plus point-cloud creation and editing. Files stay on your device.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.6.4">
+<meta name="application-version" content="1.6.5">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="BuildingWebViewer · 三维数据工具箱 / 3D Data Workspace">
-<meta property="og:description" content="在浏览器中查看 LOD 建筑模型、OBJ 线框、点云与三维高斯泼溅，也可绘制和修订点云。数据仅在本机处理。Browser-based LOD mesh, wireframe, point cloud and Gaussian splatting viewers, plus point-cloud creation and editing. Files stay on your device.">
+<meta property="og:description" content="在浏览器中查看 网格模型、OBJ 线框、点云与三维高斯泼溅，也可绘制和修订点云。数据仅在本机处理。Browser-based mesh, wireframe, point cloud and Gaussian splatting viewers, plus point-cloud creation and editing. Files stay on your device.">
 <meta property="og:url" content="https://sen2maker.github.io/BuildingWebViewer/">
 <!-- site-meta:end --><!-- boot-head:start -->
 <style>/* Critical startup styles are inline: they cannot be delayed by another request. */
@@ -38,7 +38,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
   root.lang = language === 'en' ? 'en' : 'zh-CN';
   if (language === 'en') {
-    const titles = {'lod.html':'LOD Model Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
+    const titles = {'lod.html':'Mesh Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
     document.title = (titles[location.pathname?.split('/').pop()] || 'BuildingWebViewer') + ' · 3D Data Workspace';
   }
   root.classList.add('boot-pending');
@@ -110,17 +110,17 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <!-- boot-body:end -->
 <header><a class="wordmark" href="index.html"><img class="brand" src="favicon.svg?v=6fa2af78d567" width="34" height="34" alt=""> 三维数据工具箱</a><div class="header-actions"><span class="local"><i></i> 完全本地运行</span><button id="language-toggle" class="language-switch" type="button" role="switch" aria-checked="false" aria-label="Switch to English"><span lang="zh-CN">中文</span><span lang="en">EN</span></button></div></header>
 <main>
-  <div class="intro"><div><div class="eyebrow">3D DATA WORKSPACE</div><h1>为每一种三维数据，<br>找到合适的视角。</h1></div><p>在浏览器中查看 LOD 模型、线框、点云与高斯泼溅，也可绘制和修订点云。<br class="mobile-break"> 支持属性编辑、几何计算与导出，数据始终留在本机。</p></div>
+  <div class="intro"><div><div class="eyebrow">3D DATA WORKSPACE</div><h1>为每一种三维数据，<br>找到合适的视角。</h1></div><p>在浏览器中查看网格模型、线框、点云与高斯泼溅，也可绘制和修订点云。<br class="mobile-break"> 支持属性编辑、几何计算与导出，数据始终留在本机。</p></div>
   <div class="tools" aria-label="查看工具">
     <a class="tool lod" href="lod.html">
       <div class="card-top"><span class="number">01 / MESH</span><span class="arrow" aria-hidden="true">↗</span></div>
       <img class="art" src="assets/icons/lod.svg?v=19c1c4d21c4b" alt="" width="200" height="168">
-      <div class="card-copy"><h2>LOD 模型查看器</h2><p>逐栋选择建筑模型，检查屋面、墙体与整体形态。</p><div class="tags"><span>OBJ 面模型</span><span>多栋比较</span></div></div>
+      <div class="card-copy"><h2>网格模型查看器</h2><p>选择 OBJ 网格，检查表面、轮廓与整体形态。</p><div class="tags"><span>OBJ 网格</span><span>多模型比较</span></div></div>
     </a>
     <a class="tool wire" href="wireframe.html">
       <div class="card-top"><span class="number">02 / WIREFRAME</span><span class="arrow" aria-hidden="true">↗</span></div>
       <img class="art" src="assets/icons/wireframe.svg?v=cb01e4afa4bd" alt="" width="200" height="168">
-      <div class="card-copy"><h2>建筑线框查看器</h2><p>按建筑分组浏览多个 OBJ，可叠加点云并排检查。</p><div class="tags"><span>多线框对比</span><span>线框 + 点云</span></div></div>
+      <div class="card-copy"><h2>线框查看器</h2><p>按对象目录分组浏览 OBJ，可叠加点云并排比较。</p><div class="tags"><span>多线框对比</span><span>线框 + 点云</span></div></div>
     </a>
     <a class="tool cloud" href="pointcloud.html">
       <div class="card-top"><span class="number">03 / POINT CLOUD</span><span class="arrow" aria-hidden="true">↗</span></div>
@@ -146,7 +146,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <div class="how"><span class="how-title">开始使用</span><span><b>1</b> 选择查看工具</span><span class="step-arrow">→</span><span><b>2</b> 手动打开数据文件夹</span><span class="step-arrow">→</span><span><b>3</b> 选择需要预览的数据</span></div>
 </main>
 <footer><span>不上传文件 · 不预设目录 · 无需安装依赖</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.6.4" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.6.4</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.6.5" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.6.5</a></nav>
 
 <!-- site-footer:end --></footer>
-<script data-viewer-src="assets/js/hub.bundle.js?v=68f7dc9e902d"></script></body></html>
+<script data-viewer-src="assets/js/hub.bundle.js?v=7335f707148f"></script></body></html>

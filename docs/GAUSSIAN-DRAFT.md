@@ -1,3 +1,5 @@
+> 历史设计草案 / Historical design draft. 本页保留早期方案，不代表当前功能；请以 [渲染说明](RENDERING.md) 和 [Android 指南](ANDROID.md) 为准。
+
 # Gaussian viewer and editor
 
 v1.4.0 高斯工具设计与边界。基于本项目界面实现基础高斯查看与修订，不代表 SuperSplat 全功能替代。

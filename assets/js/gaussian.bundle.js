@@ -16,8 +16,9 @@ function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
-  "LOD 模型": "LOD models",
-  "建筑线框": "Wireframes",
+  "三维画笔": "3D drawing",
+  "网格模型": "Mesh models",
+  "线框": "Wireframes",
   "待自动保存": "Pending autosave",
   "文件保存在本机": "Files stay on this device",
   "帮助与维护": "Help & maintenance",
@@ -201,7 +202,7 @@ const EN_MESSAGES = {
 
   "编号范围 {0} 包含未导入的模型，请检查编号。": "Range {0} includes models that have not been imported. Check the IDs.",
   "点击编号可单独查看": "Click an ID to view it alone",
-  "支持 OBJ 模型，不限制预览栋数。按编号批选与随机预览在“模型选择选项”中。": "OBJ models, without a fixed model-count limit. Use Model selection options for IDs and random selection.",
+  "支持 OBJ 模型，不限制预览模型数量。按编号批选与随机预览在“模型选择选项”中。": "OBJ models, without a fixed model-count limit. Use Model selection options for IDs and random selection.",
   "请先在项目栏添加文件或文件夹": "Add files or a folder in the project panel",
   "项目": "Project",
   "首页": "Home",
@@ -212,11 +213,11 @@ const EN_MESSAGES = {
   "共 {0} 项": "Items: {0}",
   "显示选择": "Display selection",
   "匹配 {0} 项 · 已勾选 {1}": "{0} matches \u00b7 {1} checked",
-  "已勾选 0 栋": "0 models checked",
-  "已勾选 {0} 栋": "{0} models checked",
+  "已勾选 0 个": "0 models checked",
+  "已勾选 {0} 个": "{0} models checked",
   "模型选择选项": "Model selection options",
   "新建文件夹和移动仅影响本次页面，不修改磁盘文件。": "Folders and moves apply only to this session; disk files remain unchanged.",
-  "每次预览一个建筑组；Ctrl / Shift 多选用于移动或移除项目条目。": "Preview one building group at a time. Ctrl / Shift selection manages items for moving or removal.",
+  "每次预览一个对象组；Ctrl / Shift 多选用于移动或移除项目条目。": "Preview one object group at a time. Ctrl / Shift selection manages items for moving or removal.",
 
   "请选择有效的计算项目": "Choose valid features to compute",
   "至少需要 3 个点": "At least 3 points are required",
@@ -227,50 +228,50 @@ const EN_MESSAGES = {
 
   "单指旋转 · 双指缩放与平移": "One finger to orbit · Two fingers to zoom / pan",
   "（原坐标单位）": "(original coordinate units)",
-  "单独查看楼栋 ": "View building ",
-  "楼栋 {0} · {1} · 点击单独查看": "Building {0} · {1} · Click to isolate",
-  "楼栋 {0}": "Building {0}",
-  "{0} 栋可选": "{0} buildings available",
+  "单独查看模型 ": "View model ",
+  "模型 {0} · {1} · 点击单独查看": "Model {0} · {1} · Click to isolate",
+  "模型 {0}": "Model {0}",
+  "{0} 个可选": "{0} models available",
   "{0} / {1} 页": "Page {0} / {1}",
-  "选择楼栋 {0}": "Select building {0}",
+  "选择模型 {0}": "Select model {0}",
   "{0} 面 · {1} KB": "{0} faces · {1} KB",
   "闭合": "Closed",
   "已有提交清单记录为闭合；未在网页中重新检查": "Marked as closed in the submission manifest; not rechecked here",
-  "此栋为提交清单标注的原结果回退版本": "Original fallback version noted in the submission manifest",
+  "此模型为提交清单标注的原结果回退版本": "Original fallback version noted in the submission manifest",
   "查看 {0}.obj": "View {0}.obj",
   "没有匹配的编号": "No matching IDs",
   "{0} · 点击单独查看": "{0} · Click to isolate",
-  "移除楼栋 {0}": "Remove building {0}",
-  "尚未选择楼栋": "No buildings selected",
-  "找不到楼栋编号：{0}": "Building IDs not found: {0}",
-  "一次最多预览 {0} 栋，当前选择了 {1} 栋。请缩小编号范围。": "Preview up to {0} buildings; {1} selected. Narrow your selection.",
+  "移除模型 {0}": "Remove model {0}",
+  "尚未选择模型": "No models selected",
+  "找不到模型编号：{0}": "Building IDs not found: {0}",
+  "一次最多预览 {0} 个，当前选择了 {1} 个。请缩小编号范围。": "Preview up to {0} models; {1} selected. Narrow your selection.",
   "无法识别“{0}”。请使用编号或范围，例如 1, 3, 100-105。": "Cannot parse “{0}”. Use IDs or ranges, e.g. 1, 3, 100-105.",
   "编号范围不正确：{0}": "Invalid ID range: {0}",
-  "一次最多预览 {0} 栋，请缩小编号范围。": "Preview up to {0} buildings. Narrow the ID range.",
-  "一次最多预览 {0} 栋。": "Preview up to {0} buildings at once.",
-  "未选择楼栋": "No buildings selected",
+  "一次最多预览 {0} 个，请缩小编号范围。": "Preview up to {0} models. Narrow the ID range.",
+  "一次最多预览 {0} 个。": "Preview up to {0} models at once.",
+  "未选择模型": "No models selected",
   "请先点击左侧“选择模型文件夹”": "Choose a model folder from the sidebar",
-  "正在读取 {0} 栋模型…": "Reading {0} buildings…",
+  "正在读取 {0} 个模型…": "Reading {0} models…",
   "本地文件已不可用，请重新选择文件夹": "Local files are no longer available. Select the folder again.",
   "正在读取模型 {0} / {1}": "Reading model {0} / {1}",
-  "已显示 {0} / {1} 栋 · {2} 三角面 · {3} 顶点": "Showing {0} / {1} buildings · {2} triangles · {3} vertices",
+  "已显示 {0} / {1} 个 · {2} 三角面 · {3} 顶点": "Showing {0} / {1} models · {2} triangles · {3} vertices",
   "未显示模型": "No models displayed",
   "部分模型读取失败。": "Some models could not be read.",
   "模型渲染失败：{0}": "Model rendering failed: {0}",
   "等比例陈列": "True-scale arrangement",
   "统一展示大小": "Uniform display size",
   "独立模型重新排列 · 非实际地理位置": "Models arranged for display · Not geographic positions",
-  "各栋独立等比缩放 · 不可比较实际大小": "Each building scaled independently · Sizes are not comparable",
+  "各模型独立等比缩放 · 不可比较实际大小": "Each building scaled independently · Sizes are not comparable",
   "无法生成截图，请降低窗口尺寸后重试。": "Cannot create a screenshot. Reduce the window size and try again.",
-  "0 栋模型": "0 buildings",
+  "0 个模型": "0 models",
   "尚未选择可用的 OBJ 目录": "No valid OBJ folder selected",
   "请选择包含 OBJ 文件的目录": "Select a folder containing OBJ files",
   "这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。": "No OBJ files in this folder. Select a folder containing .obj models.",
   "文件夹包含同名模型 {0}，请直接选择只含一套结果的子文件夹。": "Duplicate model name: {0}. Select a subfolder with a single result set.",
   "本地文件夹": "Local folder",
   "（浏览器选择的本地文件夹）": "(local folder selected in the browser)",
-  "{0} 个 OBJ · 仅按需读取所选楼栋": "{0} OBJ files · Only selected buildings are read",
-  "{0} 栋模型": "{0} buildings",
+  "{0} 个 OBJ · 仅按需读取所选模型": "{0} OBJ files · Only selected models are read",
+  "{0} 个模型": "{0} models",
   "尚未选择文件夹": "No folder selected",
   "尚未选择文件夹。关闭或刷新网页后，请手动重新选择。": "No folder selected. Select it again after closing or refreshing the page.",
   "选择含 OBJ 的目录 · 文件仅在本机读取": "Choose an OBJ folder · Files stay on your device",
@@ -279,10 +280,10 @@ const EN_MESSAGES = {
   "{0}必须是有限数值": "{0} must be a finite number",
   "{0}需要 {1} 个数值": "{0} requires {1} values",
   "相机坐标空间无效": "Invalid camera coordinate space",
-  "相机场景需要有效的文件或楼栋 ID 列表": "The camera scene requires a valid list of file or building IDs",
-  "LOD 相机需要记录实际比例或统一大小模式": "LOD cameras must specify true scale or normalized size",
+  "相机场景需要有效的文件或模型 ID 列表": "The camera scene requires a valid list of file or model IDs",
+  "网格相机需要记录实际比例或统一大小模式": "Mesh cameras must specify true scale or normalized size",
   "不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）": "Unsupported camera JSON (expected BuildingWebViewer.camera v1/v2)",
-  "相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用": "Camera spaces do not match: point/wire views cannot be used for LOD arrangements",
+  "相机坐标空间不匹配：点云/线框视角与网格排列视角不能直接互用": "Camera spaces do not match: point/wire views cannot be used for mesh arrangements",
   "相机投影与文件版本不兼容": "Camera projection is incompatible with the file version",
   "相机参数缺失": "Missing camera parameters",
   "方位角": "Azimuth",
@@ -293,7 +294,7 @@ const EN_MESSAGES = {
   "仰角需在 {0}° 至 90° 之间": "Elevation must be between {0}° and 90°",
   "缩放倍率需在 {0} 至 {1} 之间": "Zoom must be between {0} and {1}",
   "基准视野高度必须为有效正数": "Base view height must be a finite positive number",
-  "LOD 布局不匹配：此书签需要楼栋 {0}，比例模式为{1}。请先恢复该布局再加载。": "LOD layout mismatch: this bookmark needs buildings {0} in {1} mode. Restore that layout first.",
+  "网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。": "Mesh layout mismatch: this bookmark needs models {0} in {1} mode. Restore that layout first.",
   "（空）": "(empty)",
   "实际比例": "True scale",
   "平移": "Pan",
@@ -328,7 +329,7 @@ const EN_MESSAGES = {
   "增大": "Increase",
   "{0}滑块": "{0} slider",
   "平移按屏幕水平/垂直方向，单位与原坐标一致。目标点保留原始坐标精度。": "Pan follows screen axes in original coordinate units. Target coordinates retain their original precision.",
-  "目标点使用 LOD 排列坐标；书签适用于相同楼栋顺序和比例模式。": "Targets use LOD layout coordinates. Bookmarks require the same building order and scale mode.",
+  "目标点使用网格排列坐标；书签适用于相同模型顺序和比例模式。": "Targets use Mesh layout coordinates. Bookmarks require the same model order and scale mode.",
   "拖动滑块可连续调整；数字输入与鼠标操作实时同步。缩放滑块采用对数刻度。": "Drag sliders or type exact values. Values track mouse gestures; the zoom slider is logarithmic.",
   "已保存书签数量": "Saved bookmark count",
   "本机视角书签": "Local view bookmarks",
@@ -369,7 +370,7 @@ const EN_MESSAGES = {
   "已导入 {0} 个书签；选择后点击“加载所选”应用。": "Imported {0} bookmarks. Select one and click “Load selected”.",
   "第 {0} 列": "Column {0}",
   "{0} 个点云 · 已选 {1}": "{0} clouds · {1} selected",
-  "个建筑 ID": "building IDs",
+  "个对象 ID": "model IDs",
   "个文件 · 已选 {0}": "files · {0} selected",
   "{0} 个线框 · {1} 个点云": "{0} wireframes · {1} clouds",
   "{0} 点 · 计算结果": "{0} points · Computed result",
@@ -384,12 +385,12 @@ const EN_MESSAGES = {
   "正在检查所选文件夹": "Checking selected folder",
   "数据": "Data",
   "所选目录没有支持的数据": "No supported data in the selected folder",
-  "未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个建筑子目录。": "No OBJ wireframes or supported clouds found. Choose a dataset root or a building folder.",
+  "未找到 OBJ 线框或支持的点云文件。请选择数据集根目录或某个对象子目录。": "No OBJ wireframes or supported clouds found. Choose a dataset root or a object folder.",
   "未找到支持的点云。请选择 XYZ / TXT / CSV / PTS / PLY / PCD 文件。": "No supported clouds found. Choose XYZ / TXT / CSV / PTS / PLY / PCD files.",
   "所选文件夹": "Selected folder",
   "所选文件": "Selected files",
   "{0} · {1} {2} · 点击列表后读取": "{0} · {1} {2} · Select an item to load",
-  "个建筑": "buildings",
+  "个对象": "models",
   "个点云": "clouds",
   "不加载点云": "No point cloud",
   "文件留在本机 · 分组仅保留在本次页面": "Files stay local · Groups last for this session",
@@ -416,7 +417,7 @@ const EN_MESSAGES = {
   "未加载线框": "No wireframe loaded",
   "{0} 条线": "{0} edges",
   "正在读取文件…": "Reading files…",
-  "建筑 {0}": "Building {0}",
+  "对象 {0}": "Model {0}",
   "正在读取所选文件…": "Reading selected files…",
   "统计点数": "Counting points",
   "解析点云": "Parsing points",
@@ -715,12 +716,12 @@ const EN_MESSAGES = {
   "没有匹配的点云": "No matching clouds",
   "拖入文件或文件夹\n开始整理你的点云": "Drop files or folders\nStart organizing your clouds",
   "此浏览器无法启用 WebGL，请检查浏览器的硬件加速设置。": "WebGL is unavailable in this browser. Check hardware acceleration.",
-  "无法分配 WebGL 缓冲区，请减少同时查看的楼栋数量。": "Cannot allocate WebGL buffers. Display fewer buildings.",
-  "显存不足，请减少同时查看的楼栋数量。": "GPU memory exhausted. Display fewer buildings.",
+  "无法分配 WebGL 缓冲区，请减少同时查看的模型数量。": "Cannot allocate WebGL buffers. Display fewer models.",
+  "显存不足，请减少同时查看的模型数量。": "GPU memory exhausted. Display fewer models.",
   "setModels 需要模型数组。": "setModels requires an array of models.",
-  "楼栋 {0} 缺少有效网格。": "Building {0} has no valid mesh.",
-  "楼栋 {0} 包含无效坐标。": "Building {0} contains invalid coordinates.",
-  "楼栋 {0} 包含无效三角面。": "Building {0} contains invalid triangles.",
+  "模型 {0} 缺少有效网格。": "Model {0} has no valid mesh.",
+  "模型 {0} 包含无效坐标。": "Model {0} contains invalid coordinates.",
+  "模型 {0} 包含无效三角面。": "Model {0} contains invalid triangles.",
   "不支持的显示模式：{0}": "Unsupported display mode: {0}",
   "不支持的配色模式：{0}": "Unsupported color mode: {0}",
   "不支持的比例模式：{0}": "Unsupported scale mode: {0}",
@@ -731,7 +732,7 @@ const EN_MESSAGES = {
   "调整项目栏宽度": "Resize project panel",
   "线框模型查看器 · 三维数据工具箱": "Wireframe Viewer · 3D Data Workspace",
   "返回工具首页": "Back to tools",
-  "建筑线框查看器": "Wireframe Viewer",
+  "线框查看器": "Wireframe Viewer",
   "线框与点云 · 单窗或并排对照": "Wireframes and clouds · Single or comparison view",
   "本地读取": "Local files",
   "数据选择": "Data selection",
@@ -748,7 +749,7 @@ const EN_MESSAGES = {
   "上一页": "Previous page",
   "下一页": "Next page",
   "支持的目录与格式": "Folders and formats",
-  "数据集 / 建筑 ID / 多个 OBJ 与可选点云；也可选择单个建筑文件夹。": "Dataset / building ID / OBJ files and optional clouds; a single building folder also works.",
+  "数据集 / 对象 ID / 多个 OBJ 与可选点云；也可选择单个对象文件夹。": "Dataset / building ID / OBJ files and optional clouds; a single object folder also works.",
   "点云：XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。": "Clouds: XYZ / TXT / CSV / PTS, PLY (ASCII / binary), PCD (ASCII / uncompressed binary). LAS / LAZ and compressed PCD are not supported.",
   "保存截图 ↓": "Screenshot ↓",
   "视角": "View",
@@ -834,21 +835,21 @@ const EN_MESSAGES = {
   "点云原始坐标 · 按属性着色": "Original coordinates · Attribute coloring",
   "线框版本": "Wireframe version",
   "显示即时生效 · 数据修改需应用 · Esc 收起": "Display applies instantly · Apply data edits · Esc to close",
-  "LOD 模型查看器": "LOD Model Viewer",
+  "网格模型查看器": "Mesh Viewer",
   "本地 OBJ 模型 · 手动选择数据": "Local OBJ models · Choose your data",
   "本地预览": "Local preview",
-  "选择楼栋": "Select buildings",
+  "选择模型": "Select models",
   "选择模型文件夹…": "Choose model folder…",
   "选择 OBJ 文件…": "Choose OBJ files…",
   "输入要查看的编号": "Building IDs to view",
   "输入编号，多个编号用逗号分隔；留空可清空画面": "Enter comma-separated IDs; leave empty to clear the scene",
-  "查看这些楼栋": "View buildings",
+  "查看这些模型": "View models",
   "追加": "Add",
-  "全部楼栋": "All buildings",
-  "随机看 6 栋": "Random 6",
+  "全部模型": "All models",
+  "随机看 6 个": "Random 6",
   "搜索模型编号": "Search model IDs",
   "加载中": "Loading",
-  "楼栋列表": "Building list",
+  "模型列表": "Building list",
   "模型来源": "Model source",
   "仅在手动选择文件夹后读取 OBJ，不会自动连接任何数据目录。": "OBJ files are read only after you choose a folder. No data directory is opened automatically.",
   "模型预览": "Model preview",
@@ -857,15 +858,16 @@ const EN_MESSAGES = {
   "上一组": "Previous",
   "查看下一组编号": "View next ID group",
   "下一组": "Next",
-  "已选楼栋": "Selected buildings",
+  "已选模型": "Selected models",
   "快捷键 F": "Shortcut: F",
-  "所选楼栋的三维模型；拖动旋转、滚轮缩放、右键拖动平移": "3D building models; drag to orbit, scroll to zoom, right-drag to pan",
-  "选择几栋，仔细看看": "Choose buildings to explore",
-  "先选择模型文件夹，再勾选左侧楼栋。": "Choose a model folder, then check buildings on the left.",
+  "所选模型的三维模型；拖动旋转、滚轮缩放、右键拖动平移": "3D mesh models; drag to orbit, scroll to zoom, right-drag to pan",
+  "选择模型，仔细看看": "Choose models to explore",
+  "先选择模型文件夹，再勾选左侧模型。": "Choose a model folder, then check models on the left.",
   "正在读取模型…": "Reading models…",
   "重新加载": "Reload",
-  "离地高度": "Height above ground",
-  "屋顶 / 坡面": "Roof / slope",
+  "相对高度": "Height above model base",
+  "近竖直面": "Near-vertical faces",
+  "非竖直面": "Nonvertical faces",
   "墙面": "Wall",
   "拖动旋转": "Drag to orbit",
   "滚轮缩放": "Scroll to zoom",
@@ -876,9 +878,9 @@ const EN_MESSAGES = {
   "实体 + 三角网": "Solid + edges",
   "比例": "Scale",
   "配色": "Colors",
-  "屋顶 / 墙面": "Roof / wall",
+  "面朝向": "Surface orientation",
   "高度色带": "Height ramp",
-  "按楼栋": "By building",
+  "按模型": "By model",
   "轮廓边": "Outlines",
   "编号": "IDs",
   "BuildingWebViewer · 三维数据工具箱": "BuildingWebViewer · 3D Data Workspace",
@@ -890,10 +892,10 @@ const EN_MESSAGES = {
   "选择一个工具，打开自己的数据。": "Choose a tool. Open your own data.",
   "模型与点云始终留在你的设备上。": "Your models and clouds stay on your device.",
   "查看工具": "Explore tools",
-  "逐栋选择建筑模型，检查屋面、墙体与整体形态。": "Inspect roofs, walls and building geometry, one model at a time.",
-  "OBJ 面模型": "OBJ meshes",
-  "多栋比较": "Multiple buildings",
-  "按建筑分组浏览多个 OBJ，可叠加点云并排检查。": "Browse grouped OBJ wireframes with cloud overlays and comparison views.",
+  "选择 OBJ 网格，检查表面、轮廓与整体形态。": "Inspect OBJ surfaces, outlines and overall shape.",
+  "OBJ 网格": "OBJ meshes",
+  "多模型比较": "Multiple models",
+  "按对象目录分组浏览 OBJ，可叠加点云并排比较。": "Browse grouped OBJ wireframes with cloud overlays and comparison views.",
   "多线框对比": "Compare wireframes",
   "线框 + 点云": "Lines + points",
   "叠加多个点云，按文件、强度、RGB 或数值字段着色。": "Overlay clouds and color by file, intensity, RGB or scalar attributes.",
@@ -997,21 +999,21 @@ const EN_MESSAGES = {
   "仅选择当前搜索匹配的数据": "Select only data matching the current search",
   "勾选后显示数据": "Check to display data",
   "拖入文件或文件夹\n开始整理你的项目": "Drop files or folders\nStart organizing your project",
-  "每次预览一个建筑组；可多选管理": "Preview one building set at a time; select multiple items to manage",
-  "{0} 个建筑 ID": "{0} building sets",
+  "每次预览一个对象组；可多选管理": "Preview one building set at a time; select multiple items to manage",
+  "{0} 个对象 ID": "{0} building sets",
   "项目模型": "Project models",
-  "项目建筑": "Project buildings",
+  "项目对象": "Project models",
   "按编号批量选择": "Select by model IDs",
   "搜索项目模型": "Search project models",
-  "再勾选左侧的建筑条目。": "Then check a building in the project tree.",
-  "选择数据集文件夹，再勾选左侧的建筑条目。": "Open a dataset folder, then check a building in the project tree.",
-  "在浏览器中查看 LOD 模型、线框与点云。": "View LOD meshes, wireframes and point clouds in your browser.",
+  "再勾选左侧的对象条目。": "Then check an object in the project tree.",
+  "选择数据集文件夹，再勾选左侧的对象条目。": "Open a dataset folder, then check an object in the project tree.",
+  "在浏览器中查看网格模型、线框与点云。": "View meshes, wireframes and point clouds in your browser.",
   "支持属性编辑、几何计算与导出，数据始终留在本机。": "Edit attributes, compute geometry and export. Your data stays local.",
   "项目信息": "Project information",
   "个人主页 ↗": "Author ↗",
   "项目仓库 ↗": "Repository ↗",
   "版本更新记录": "Release notes",
-  "在浏览器中查看 LOD 模型、线框、点云与高斯泼溅。": "View LOD meshes, wireframes, point clouds and Gaussian splats in your browser.",
+  "在浏览器中查看网格模型、线框、点云与高斯泼溅。": "View meshes, wireframes, point clouds and Gaussian splats in your browser.",
   "高斯泼溅": "Gaussian splats",
   "查看训练得到的三维高斯，沿用项目、相机与截图。": "View trained 3D Gaussians with the same project, camera and screenshot tools.",
   "3DGS PLY": "3DGS PLY",
@@ -1056,7 +1058,7 @@ const EN_MESSAGES = {
   "高斯 PLY 没有有效坐标。": "The Gaussian PLY has no valid coordinates.",
   "不是训练相机 JSON（需要 position 数组）。": "Not a training-camera JSON file (a position array is required).",
   "无法启用 WebGL2，请使用 Chrome 或 Edge，并打开硬件加速。": "WebGL2 is unavailable. Use Chrome or Edge with hardware acceleration enabled.",
-  "显存不足，请降低显示数量。": "Not enough GPU memory. Lower the display count.",
+  "显存不足，请减少同时载入的模型或使用容量更大的设备。": "Not enough GPU memory. Load fewer models or use a device with more capacity.",
   "已记录 {0} 个训练相机。正交相机只对齐拍摄方向，不能复现滚转和透视。": "{0} training cameras recorded. The orthographic camera matches direction only, without roll or perspective.",
   "正在读取 {0}…": "Reading {0}…",
   "正在解析 {0}（{1}%）": "Parsing {0} ({1}%)",
@@ -1066,7 +1068,7 @@ const EN_MESSAGES = {
   "此文件没有球谐系数，已保持 0 阶。": "This file has no spherical-harmonic coefficients. Staying at degree 0.",
   "{0} 个高斯": "{0} Gaussians",
   "没有找到高斯 PLY。请选择 point_cloud.ply，或包含它的结果文件夹。": "No Gaussian PLY found. Choose point_cloud.ply or the result folder that contains it.",
-  "在浏览器中查看 LOD 模型、线框、点云与高斯泼溅，也可按参数生成点云。": "View LOD meshes, wireframes, point clouds and Gaussian splats in your browser, or generate a point cloud from parameters.",
+  "在浏览器中查看网格模型、线框、点云与高斯泼溅，也可按参数生成点云。": "View meshes, wireframes, point clouds and Gaussian splats in your browser, or generate a point cloud from parameters.",
   "点云生成": "Point generator",
   "按间距采样屋顶、方盒和地面，可加噪声，再导出为点云。": "Sample a roof, box or ground plane by spacing, add noise, and export a point cloud.",
   "参数形体": "Parametric shapes",
@@ -1218,7 +1220,7 @@ const EN_MESSAGES = {
   "从点开始，逐步成形": "Create, select, refine",
   "导入已有点云进行修订，或选择“绘制点云”从零创建。": "Import existing clouds to refine, or create new clouds with the drawing tools.",
   "显示设置只影响预览；修订和导出使用完整点云。": "Display settings affect preview only; editing and export use the full point cloud.",
-  "在浏览器中查看 LOD 模型、线框、点云与高斯泼溅，也可绘制和修订点云。": "View LOD meshes, wireframes, point clouds and Gaussian splats; draw and refine point clouds in your browser.",
+  "在浏览器中查看网格模型、线框、点云与高斯泼溅，也可绘制和修订点云。": "View meshes, wireframes, point clouds and Gaussian splats; draw and refine point clouds in your browser.",
   "绘制线、面与体生成点云，或导入已有数据，选择、裁剪与精修。": "Draw lines, faces and volumes, or import existing clouds to select, crop and refine.",
   "选区修订": "Selection editing",
   "点云创作与修订 · 三维数据工具箱": "Point Cloud Studio · 3D Data Workspace",
@@ -1675,10 +1677,10 @@ function cameraSpace(space) {
 }
 function cameraScene(scene, space) {
   if (scene == null && space === 'raw-world') return null;
-  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error(t('相机场景需要有效的文件或楼栋 ID 列表'));
+  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error(t('相机场景需要有效的文件或模型 ID 列表'));
   const result = {ids: [...scene.ids]};
   if (space === 'lod-arrangement') {
-    if (!['real', 'normalized'].includes(scene.scale)) throw Error(t('LOD 相机需要记录实际比例或统一大小模式'));
+    if (!['real', 'normalized'].includes(scene.scale)) throw Error(t('网格相机需要记录实际比例或统一大小模式'));
     result.scale = scene.scale;
   }
   return result;
@@ -1691,7 +1693,7 @@ function cameraSameScene(a, b) {
 function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
   cameraSpace(space);
   if (!cameraObject(value) || value.format !== CAMERA_FORMAT || ![1,2].includes(value.version)) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）'));
-  if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用'));
+  if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与网格排列视角不能直接互用'));
   if (!['orthographic','perspective'].includes(value.projection) || value.version===1 && value.projection!=='orthographic') throw Error(t('相机投影与文件版本不兼容'));
   const source = value.camera;
   if (!cameraObject(source)) throw Error(t('相机参数缺失'));
@@ -1705,7 +1707,7 @@ function validateCameraSnapshot(value, {space = value?.space, scene = null, chec
   let extended={};
   if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
   const savedScene = cameraScene(value.scene, space);
-  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("LOD 布局不匹配：此书签需要楼栋 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
+  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
   return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
     camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
       ...extended, pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
@@ -1771,7 +1773,7 @@ function serializeCameraBookmarks(bookmarks, space, preserveView = true) {
  * Returns {preserveView, capture, restore, refresh, destroy}.
  * Pass a separate bookmarkContainer to mount camera and bookmarks in two tabs.
  * restore(saved, {checkScene:false}) preserves a view after changing data;
- * bookmark loads retain strict LOD scene checking.
+ * bookmark loads retain strict mesh scene checking.
  */
 function mountCameraControls({container, bookmarkContainer = null, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
   cameraSpace(space);
@@ -1892,7 +1894,7 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
   }
   const help = el('p', space === 'raw-world'
     ? t('平移按屏幕水平/垂直方向，单位与原坐标一致。目标点保留原始坐标精度。')
-    : t('目标点使用 LOD 排列坐标；书签适用于相同楼栋顺序和比例模式。'), 'camera-controls-help');
+    : t('目标点使用网格排列坐标；书签适用于相同模型顺序和比例模式。'), 'camera-controls-help');
   advanced.append(help);
   body.append(el('p', t('拖动滑块可连续调整；数字输入与鼠标操作实时同步。缩放滑块采用对数刻度。'), 'camera-controls-help'), status);
   // In the combined legacy layout bookmarks follow the camera, not precede it.
@@ -3226,14 +3228,14 @@ function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
     const range=scalar?(viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
     ctx.textAlign='left';ctx.font='10px sans-serif';ctx.fillStyle='#526d66';
     if(range && Number.isFinite(range.min) && Number.isFinite(range.max)){
-      const label=options.colors==='height'?t('离地高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
+      const label=options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
       const barWidth=Math.min(90,available*.26),barX=16,barY=h-24,gradient=ctx.createLinearGradient(barX,0,barX+barWidth,0);
       for(let i=0;i<=8;i++)gradient.addColorStop(i/8,`rgb(${samplePalette(i/8,options.palette,options.reverse).map(v=>Math.round(v*255)).join(',')})`);
       ctx.fillStyle=gradient;ctx.fillRect(barX,barY,barWidth,8);ctx.fillStyle='#526d66';
       ctx.fillText(`${label} · ${Number(range.min.toPrecision(5))} — ${Number(range.max.toPrecision(5))}`,barX+barWidth+8,h-17,Math.max(10,available-barWidth-8));
     } else if(options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
-      ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('屋顶 / 坡面'),31,h-17);
-      ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('墙面'),147,h-17);
+      ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('非竖直面'),31,h-17);
+      ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('近竖直面'),147,h-17);
     }
   }
   ctx.restore();
@@ -4409,7 +4411,7 @@ class GaussianViewer {
       return data;
     };
     const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    if(height>maxTexture || (this.packed.rest && Math.ceil(count*12/width)>maxTexture)) throw Error('超出当前 GPU 纹理容量，请选择较少显示数量 / GPU texture capacity exceeded');
+    if(height>maxTexture || (this.packed.rest && Math.ceil(count*12/width)>maxTexture)) throw Error('超出当前 GPU 纹理容量，请减少同时载入的模型或使用容量更大的设备 / GPU texture capacity exceeded');
     const center = pixels(4, (data, index, at) => { data.set(this.packed.centers.subarray(index * 3, index * 3 + 3), at); data[at + 3] = this.packed.opacity[index]; });
     const scale=new Float32Array(width*height*4), quat=new Float32Array(width*height*4);
     for(let i=0;i<count;i++){
@@ -4443,7 +4445,7 @@ class GaussianViewer {
     this.syncFlags(false);
     this.uploaded = this.packed;
     const error = gl.getError();
-    if (error === gl.OUT_OF_MEMORY) throw Error(t('显存不足，请降低显示数量。'));
+    if (error === gl.OUT_OF_MEMORY) throw Error(t('显存不足，请减少同时载入的模型或使用容量更大的设备。'));
     if (error && error !== gl.NO_ERROR) throw Error(t('WebGL 缓冲区上传失败（{0}）。', [error]));
   }
 

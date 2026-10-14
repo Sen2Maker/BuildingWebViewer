@@ -1,6 +1,6 @@
 # 渲染与截图 / Rendering & capture
 
-三个查看器共用 `src/shared` 下的显示和导出模块：
+网页查看器按能力共用 `src/shared` 下的显示和导出模块：
 
 | 模块 | 职责 |
 | --- | --- |
@@ -20,11 +20,13 @@ Point spheres are lit sprites, not tessellated spheres: no sphere-surface depth 
 
 3D lines use `ANGLE_instanced_arrays` with shared endpoint buffers and a small reusable shape. Unsupported browsers retain thin lines and report unavailable styles. Width is screen-relative; SVG does not reproduce tube shading. Native line width remains browser-controlled. Face lighting uses existing per-face normals, preserving architectural sharp edges; this is not normal smoothing or a PBR/path tracer.
 
-The scale bar measures distances in the orthographic image plane using the data’s coordinate units. No meter assumption is made. Normalized LOD uses synthetic layout units; this is not a geographic measurement tool. The on-screen guide canvas is only 150×160 CSS pixels and is updated on rendering, with no animation loop.
+The scale bar measures distances in the orthographic image plane using the data’s coordinate units. No meter assumption is made. Normalized mesh layouts uses synthetic layout units; this is not a geographic measurement tool. The on-screen guide canvas is only 150×160 CSS pixels and is updated on rendering, with no animation loop.
 
-The Gaussian viewer reuses this orthographic camera, the project tree, touch gestures, guides and image export. It draws anisotropic 3D Gaussians as screen-space quads sorted far-to-near. Degree 0 uses the DC spherical harmonic; degrees 1–3 reread `f_rest` and evaluate it on the GPU. The projection stays orthographic so camera bookmarks remain `BuildingWebViewer.camera` v1. Training cameras only set the orbit direction toward each stored camera position; roll and perspective are not reproduced.
+The web Gaussian viewer renders anisotropic splats as depth-sorted quads with perspective or orthographic projection and SH degrees 0–3. It retains all loaded source splats; quality changes resolution and SH evaluation rather than randomly removing splats. Camera bookmark v2 supports perspective and roll, with older views migrated. Training-camera directions are optional. Android uses a separate OpenGL ES 3 renderer and native camera/view format, focusing on full-splat viewing, fly navigation and capture rather than web editing.
 
-The point-cloud generator reuses the same orthographic camera and the point renderer. It samples parametric surfaces into an ordinary cloud and can draw the shape edges as a wire overlay. Display ratio and point size affect the preview only. Export uses the spacing from the part, not the thinned preview. Camera bookmarks stay `BuildingWebViewer.camera` v1.
+Point Cloud Studio creates and refines ordinary clouds using the shared web point renderer and camera/navigation adapter. Display ratios affect previews; stored source points and export semantics are handled separately. It is not a general CAD solid modeller.
+
+Mesh height colors measure Z relative to each model's minimum Z, not terrain clearance. Surface colors use face orientation and do not infer building semantics. Mesh layout coordinates are synthetic; overlays in other viewers require compatible source coordinates without automatic CRS conversion.
 
 ## 参考 / References
 

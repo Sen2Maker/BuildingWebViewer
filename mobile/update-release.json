@@ -1,11 +1,11 @@
 {
-  "version": "1.6.4",
+  "version": "1.6.5",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 15,
-  "issuedAt": 1791945333,
-  "expiresAt": 1807497333,
+  "sequence": 16,
+  "issuedAt": 1791952150,
+  "expiresAt": 1807504150,
   "notes": {
-    "zh": "恢复视角摇杆，左右按相机自身方向转头、上下抬头低头；独立左倾/右倾按钮。提高默认触摸灵敏度、摇杆转速并缩短平滑延迟，参数随项目保存；书签兼容倾斜角。需覆盖安装完整 APK，项目与书签保留。",
-    "en": "Restore camera-local look joystick and separate lean buttons. Increase default touch response and look speed, reduce smoothing delay, and retain sensitivity/roll with projects and views. Install the full APK; projects remain."
+    "zh": "统一网格、线框与点云术语，纠正高度、面朝向及网页/App 能力说明；更新中英文文档和独立界面截图。渲染、导航及文件格式保持兼容。",
+    "en": "Clarify mesh/wireframe terminology, relative height, face orientation and browser/app capabilities. Refresh bilingual guides and separate language screenshots; preserve rendering, navigation and file compatibility."
   }
 }

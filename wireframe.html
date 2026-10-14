@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>线框模型查看器 · 三维数据工具箱</title><!-- site-meta:start -->
-<meta name="application-build" content="a401810dc1d91f41">
+<meta name="application-build" content="8f357a618dc80d96">
 <meta name="description" content="通用 OBJ 线框查看器：按目录分组、点云叠加、最多三个面板对比与相机同步。General OBJ wireframe viewer with folder groups, point cloud overlays, up to three comparison panes and synchronized cameras.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.6.4">
+<meta name="application-version" content="1.6.5">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/wireframe.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="线框查看器 / Wireframe Viewer · BuildingWebViewer">
@@ -37,7 +37,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
   root.lang = language === 'en' ? 'en' : 'zh-CN';
   if (language === 'en') {
-    const titles = {'lod.html':'LOD Model Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
+    const titles = {'lod.html':'Mesh Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
     document.title = (titles[location.pathname?.split('/').pop()] || 'BuildingWebViewer') + ' · 3D Data Workspace';
   }
   root.classList.add('boot-pending');
@@ -107,7 +107,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 </div>
 
 <!-- boot-body:end -->
-<header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页" title="返回工具首页"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>首页</span></a><img class="brand-icon tool-icon" src="assets/icons/wireframe.svg?v=cb01e4afa4bd" alt=""><div><h1>建筑线框查看器</h1><p>线框与点云 · 单窗或并排对照</p></div><div class="header-right"><span class="local-tag"><i></i> 本地读取</span></div></header>
+<header class="app-header"><a class="back-home" href="index.html" aria-label="返回工具首页" title="返回工具首页"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>首页</span></a><img class="brand-icon tool-icon" src="assets/icons/wireframe.svg?v=cb01e4afa4bd" alt=""><div><h1>线框查看器</h1><p>线框与点云 · 单窗或并排对照</p></div><div class="header-right"><span class="local-tag"><i></i> 本地读取</span></div></header>
 <div class="workspace">
 <!-- project-sidebar:start -->
 <aside class="sidebar project-sidebar point-drop-zone" id="point-drop-zone" aria-label="项目文件" aria-describedby="drop-hint">
@@ -122,7 +122,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <button id="project-root" class="project-root" title="拖到这里移出文件夹">▱ 项目根目录 <span>拖到此处移出分组</span></button>
   <div id="data-list" class="model-list project-tree" aria-label="项目文件列表"></div>
   <div id="project-controls"></div>
-  <details class="format-help"><summary>格式与管理说明</summary><p>数据集 / 建筑 ID / 多个 OBJ 与可选点云；也可选择单个建筑文件夹。</p><p>点云：XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">选择含各数据 ID 子目录的根文件夹，不预设路径。</p><p>每次预览一个建筑组；Ctrl / Shift 多选用于移动或移除项目条目。</p></details>
+  <details class="format-help"><summary>格式与管理说明</summary><p>数据集 / 对象 ID / 多个 OBJ 与可选点云；也可选择单个对象文件夹。</p><p>点云：XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">选择含各数据 ID 子目录的根文件夹，不预设路径。</p><p>每次预览一个对象组；Ctrl / Shift 多选用于移动或移除项目条目。</p></details>
 
 </aside>
 <!-- project-sidebar:end -->
@@ -131,12 +131,12 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <div class="toolbar viewer-toolbar"><div class="segmented" aria-label="视角"><button data-view="iso" class="active" aria-pressed="true">立体</button><button data-view="top" aria-pressed="false">俯视</button><button data-view="front" aria-pressed="false">正视</button></div><button id="fit-view">适应窗口</button><div class="inspector-shortcuts" aria-label="查看器设置入口"><button type="button" data-open-settings="display" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="19" r="2" fill="currentColor" stroke="none"/></svg><span>显示</span></button><button type="button" data-open-settings="camera" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l2-3h4l2 3h4v14H4V6z"/><circle cx="12" cy="12" r="4"/></svg><span>相机</span></button><button type="button" data-open-settings="bookmarks" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span>书签</span></button></div></div>
 
 <div id="viewer-grid" class="viewer-grid" data-panels="1">
-<section class="viewer-panel"><div id="panel-heading-1" class="comparison-heading" hidden><strong id="panel-label-1">线框 1</strong><span id="panel-stats-1">—</span></div><div class="viewport" id="viewport"><canvas id="scene" class="scene-canvas" aria-label="线框模型查看器三维预览"></canvas><div class="scene-note"><strong id="view-note">共享原始坐标 · 点云与线框叠加</strong><span id="geometry-note">未选择数据时保持空白</span></div><div id="panel-empty-1" class="wire-empty" hidden>空线框 · 0 条</div><div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/wireframe.svg?v=cb01e4afa4bd" alt="" width="96" height="81"><h3>打开数据，从这里开始</h3><p>选择数据集文件夹，再勾选左侧的建筑条目。</p></div><div id="loading" class="loading" role="status" hidden><i></i><span>正在读取文件…</span></div><div id="error" class="error-banner" role="alert" hidden><span></span><button id="dismiss-error" aria-label="关闭提示">×</button></div><div class="viewport-bottom"><div id="color-legend" class="scalar-legend" hidden><span id="color-name"></span><i></i><span id="color-min"></span><span>—</span><span id="color-max"></span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div></div></section>
+<section class="viewer-panel"><div id="panel-heading-1" class="comparison-heading" hidden><strong id="panel-label-1">线框 1</strong><span id="panel-stats-1">—</span></div><div class="viewport" id="viewport"><canvas id="scene" class="scene-canvas" aria-label="线框模型查看器三维预览"></canvas><div class="scene-note"><strong id="view-note">共享原始坐标 · 点云与线框叠加</strong><span id="geometry-note">未选择数据时保持空白</span></div><div id="panel-empty-1" class="wire-empty" hidden>空线框 · 0 条</div><div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/wireframe.svg?v=cb01e4afa4bd" alt="" width="96" height="81"><h3>打开数据，从这里开始</h3><p>选择数据集文件夹，再勾选左侧的对象条目。</p></div><div id="loading" class="loading" role="status" hidden><i></i><span>正在读取文件…</span></div><div id="error" class="error-banner" role="alert" hidden><span></span><button id="dismiss-error" aria-label="关闭提示">×</button></div><div class="viewport-bottom"><div id="color-legend" class="scalar-legend" hidden><span id="color-name"></span><i></i><span id="color-min"></span><span>—</span><span id="color-max"></span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div></div></section>
 <section id="viewer-panel-2" class="viewer-panel" hidden><div class="comparison-heading"><strong id="panel-label-2">线框 2</strong><span id="panel-stats-2">—</span></div><div class="viewport comparison-viewport"><canvas id="scene-2" class="scene-canvas" aria-label="第二个线框三维预览"></canvas><div id="panel-empty-2" class="wire-empty" hidden>空线框 · 0 条</div></div></section>
 <section id="viewer-panel-3" class="viewer-panel" hidden><div class="comparison-heading"><strong id="panel-label-3">线框 3</strong><span id="panel-stats-3">—</span></div><div class="viewport comparison-viewport"><canvas id="scene-3" class="scene-canvas" aria-label="第三个线框三维预览"></canvas><div id="panel-empty-3" class="wire-empty" hidden>空线框 · 0 条</div></div></section>
 </div>
 <div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">文件不会上传</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.6.4" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.6.4</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.6.5" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.6.5</a></nav>
 
 <!-- site-footer:end --></footer></main>
 <aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
@@ -149,4 +149,4 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
     <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside></div>
-<script data-viewer-src="assets/js/cloud.bundle.js?v=36efdd0018d7"></script></body></html>
+<script data-viewer-src="assets/js/cloud.bundle.js?v=2984e7e5d344"></script></body></html>

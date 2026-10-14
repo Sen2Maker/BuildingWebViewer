@@ -9,8 +9,8 @@ for(const [source,target] of Object.entries(EN_MESSAGES)) {
   assert.deepEqual((source.match(/\{\d+\}/g)||[]).sort(),(target.match(/\{\d+\}/g)||[]).sort(),`Placeholder mismatch: ${source}`);
 }
 setLanguage('en');
-assert.equal(t('楼栋 {0}', ['中文文件名']), 'Building 中文文件名');
-assert.equal(t('楼栋 {0}', ['{1}']), 'Building {1}');
+assert.equal(t('模型 {0}', ['中文文件名']), 'Model 中文文件名');
+assert.equal(t('模型 {0}', ['{1}']), 'Model {1}');
 assert.equal(t('用户自定义标签'),'用户自定义标签');
 const link={href:'pointcloud.html',getAttribute(){return this.href;},setAttribute(k,v){this.href=v;}};
 const doc={nodeType:9,documentElement:{},baseURI:'https://example.org/BuildingWebViewer/index.html',childNodes:[],querySelectorAll(){return [link];}};

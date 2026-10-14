@@ -44,7 +44,7 @@ export function pickCloudNavigationDepth(viewer,spec,x,y) {
   if(wire)for(const [a,b]of wire.edges){const p=gsProjectPosition(wire.vertices[a].map((v,i)=>v-viewer.origin[i]),spec),q=gsProjectPosition(wire.vertices[b].map((v,i)=>v-viewer.origin[i]),spec);if(!p||!q)continue;const dx=q.x-p.x,dy=q.y-p.y,t=Math.max(0,Math.min(1,((x-p.x)*dx+(y-p.y)*dy)/(dx*dx+dy*dy||1)));consider({x:p.x+t*dx,y:p.y+t*dy,depth:spec.perspective?1/((1-t)/p.depth+t/q.depth):p.depth*(1-t)+q.depth*t});}
   return depth;
 }
-/** Ray/triangle intersection uses displayed mesh coordinates, including LOD layout transforms. */
+/** Ray/triangle intersection uses displayed mesh coordinates, including Mesh layout transforms. */
 export function pickMeshNavigationDepth(viewer,spec,x,y) {
   const [r,u,b]=spec.basis, sx=(x-spec.width/2),sy=-(y-spec.height/2);
   const origin=spec.eye.map((v,i)=>v+(spec.perspective?0:(r[i]*sx+u[i]*sy)*spec.worldHeight/spec.height));

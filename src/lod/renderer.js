@@ -197,12 +197,12 @@ export class MeshViewer {
 
   makeBuffer(values) {
     const gl = this.gl, buffer = gl.createBuffer();
-    if (!buffer) throw new Error(t('无法分配 WebGL 缓冲区，请减少同时查看的楼栋数量。'));
+    if (!buffer) throw new Error(t('无法分配 WebGL 缓冲区，请减少同时查看的模型数量。'));
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
     if (gl.getError() === gl.OUT_OF_MEMORY) {
       gl.deleteBuffer(buffer);
-      throw new Error(t('显存不足，请减少同时查看的楼栋数量。'));
+      throw new Error(t('显存不足，请减少同时查看的模型数量。'));
     }
     return { buffer, count: values.length / 10, byteLength: values.length * 4 };
   }
@@ -211,10 +211,10 @@ export class MeshViewer {
     this.stopNavigation();
     if (!Array.isArray(models)) throw new TypeError(t('setModels 需要模型数组。'));
     const prepared = models.map(model => {
-      if (!model.vertices?.length || !Array.isArray(model.faces)) throw new Error(t("楼栋 {0} 缺少有效网格。", [model.id]));
+      if (!model.vertices?.length || !Array.isArray(model.faces)) throw new Error(t("模型 {0} 缺少有效网格。", [model.id]));
       const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
       for (const point of model.vertices) {
-        if (point.length < 3 || !point.slice(0, 3).every(Number.isFinite)) throw new Error(t("楼栋 {0} 包含无效坐标。", [model.id]));
+        if (point.length < 3 || !point.slice(0, 3).every(Number.isFinite)) throw new Error(t("模型 {0} 包含无效坐标。", [model.id]));
         for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], point[i]); max[i] = Math.max(max[i], point[i]); }
       }
       const extent = Math.max(...max.map((value, i) => value - min[i]));
@@ -259,7 +259,7 @@ export class MeshViewer {
       const edges = new Map();
       for (const face of model.faces) {
         if (face.length !== 3 || !face.every(index => Number.isInteger(index) && index >= 0 && index < vertices.length)) {
-          throw new Error(t("楼栋 {0} 包含无效三角面。", [model.id]));
+          throw new Error(t("模型 {0} 包含无效三角面。", [model.id]));
         }
         const [a, b, c] = face.map(index => vertices[index]);
         const ab = b.map((value, i) => value - a[i]), ac = c.map((value, i) => value - a[i]);

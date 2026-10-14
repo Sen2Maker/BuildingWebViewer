@@ -592,7 +592,7 @@ export class GaussianViewer {
       return data;
     };
     const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    if(height>maxTexture || (this.packed.rest && Math.ceil(count*12/width)>maxTexture)) throw Error('超出当前 GPU 纹理容量，请选择较少显示数量 / GPU texture capacity exceeded');
+    if(height>maxTexture || (this.packed.rest && Math.ceil(count*12/width)>maxTexture)) throw Error('超出当前 GPU 纹理容量，请减少同时载入的模型或使用容量更大的设备 / GPU texture capacity exceeded');
     const center = pixels(4, (data, index, at) => { data.set(this.packed.centers.subarray(index * 3, index * 3 + 3), at); data[at + 3] = this.packed.opacity[index]; });
     const scale=new Float32Array(width*height*4), quat=new Float32Array(width*height*4);
     for(let i=0;i<count;i++){
@@ -626,7 +626,7 @@ export class GaussianViewer {
     this.syncFlags(false);
     this.uploaded = this.packed;
     const error = gl.getError();
-    if (error === gl.OUT_OF_MEMORY) throw Error(t('显存不足，请降低显示数量。'));
+    if (error === gl.OUT_OF_MEMORY) throw Error(t('显存不足，请减少同时载入的模型或使用容量更大的设备。'));
     if (error && error !== gl.NO_ERROR) throw Error(t('WebGL 缓冲区上传失败（{0}）。', [error]));
   }
 

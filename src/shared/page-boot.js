@@ -7,7 +7,7 @@
   const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
   root.lang = language === 'en' ? 'en' : 'zh-CN';
   if (language === 'en') {
-    const titles = {'lod.html':'LOD Model Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
+    const titles = {'lod.html':'Mesh Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
     document.title = (titles[location.pathname?.split('/').pop()] || 'BuildingWebViewer') + ' · 3D Data Workspace';
   }
   root.classList.add('boot-pending');

@@ -22,10 +22,10 @@ function cameraSpace(space) {
 }
 function cameraScene(scene, space) {
   if (scene == null && space === 'raw-world') return null;
-  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error(t('相机场景需要有效的文件或楼栋 ID 列表'));
+  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error(t('相机场景需要有效的文件或模型 ID 列表'));
   const result = {ids: [...scene.ids]};
   if (space === 'lod-arrangement') {
-    if (!['real', 'normalized'].includes(scene.scale)) throw Error(t('LOD 相机需要记录实际比例或统一大小模式'));
+    if (!['real', 'normalized'].includes(scene.scale)) throw Error(t('网格相机需要记录实际比例或统一大小模式'));
     result.scale = scene.scale;
   }
   return result;
@@ -38,7 +38,7 @@ function cameraSameScene(a, b) {
 export function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
   cameraSpace(space);
   if (!cameraObject(value) || value.format !== CAMERA_FORMAT || ![1,2].includes(value.version)) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）'));
-  if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与 LOD 排列视角不能直接互用'));
+  if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与网格排列视角不能直接互用'));
   if (!['orthographic','perspective'].includes(value.projection) || value.version===1 && value.projection!=='orthographic') throw Error(t('相机投影与文件版本不兼容'));
   const source = value.camera;
   if (!cameraObject(source)) throw Error(t('相机参数缺失'));
@@ -52,7 +52,7 @@ export function validateCameraSnapshot(value, {space = value?.space, scene = nul
   let extended={};
   if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
   const savedScene = cameraScene(value.scene, space);
-  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("LOD 布局不匹配：此书签需要楼栋 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
+  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
   return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
     camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
       ...extended, pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
@@ -118,7 +118,7 @@ export function serializeCameraBookmarks(bookmarks, space, preserveView = true) 
  * Returns {preserveView, capture, restore, refresh, destroy}.
  * Pass a separate bookmarkContainer to mount camera and bookmarks in two tabs.
  * restore(saved, {checkScene:false}) preserves a view after changing data;
- * bookmark loads retain strict LOD scene checking.
+ * bookmark loads retain strict mesh scene checking.
  */
 export function mountCameraControls({container, bookmarkContainer = null, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
   cameraSpace(space);
@@ -239,7 +239,7 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
   }
   const help = el('p', space === 'raw-world'
     ? t('平移按屏幕水平/垂直方向，单位与原坐标一致。目标点保留原始坐标精度。')
-    : t('目标点使用 LOD 排列坐标；书签适用于相同楼栋顺序和比例模式。'), 'camera-controls-help');
+    : t('目标点使用网格排列坐标；书签适用于相同模型顺序和比例模式。'), 'camera-controls-help');
   advanced.append(help);
   body.append(el('p', t('拖动滑块可连续调整；数字输入与鼠标操作实时同步。缩放滑块采用对数刻度。'), 'camera-controls-help'), status);
   // In the combined legacy layout bookmarks follow the camera, not precede it.

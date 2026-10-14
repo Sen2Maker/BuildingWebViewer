@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LOD 模型查看器</title><!-- site-meta:start -->
-<meta name="application-build" content="a401810dc1d91f41">
-<meta name="description" content="本地 OBJ 建筑模型查看器：多栋陈列、实体与线框、色带、相机书签和项目文件管理。Local OBJ mesh viewer with multiple buildings, solid and wireframe display, palettes, camera bookmarks and project folders.">
+  <title>网格模型查看器</title><!-- site-meta:start -->
+<meta name="application-build" content="8f357a618dc80d96">
+<meta name="description" content="本地 OBJ 网格查看器：多模型排列、实体与线框、相对高度和面朝向着色、相机书签。Local OBJ mesh viewer with multi-model layouts, solid/wireframe display, relative-height and face-orientation colors, and camera bookmarks.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.6.4">
+<meta name="application-version" content="1.6.5">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/lod.html">
 <meta property="og:type" content="website">
-<meta property="og:title" content="LOD 模型查看器 / LOD Model Viewer · BuildingWebViewer">
-<meta property="og:description" content="本地 OBJ 建筑模型查看器：多栋陈列、实体与线框、色带、相机书签和项目文件管理。Local OBJ mesh viewer with multiple buildings, solid and wireframe display, palettes, camera bookmarks and project folders.">
+<meta property="og:title" content="网格模型查看器 / Mesh Viewer · BuildingWebViewer">
+<meta property="og:description" content="本地 OBJ 网格查看器：多模型排列、实体与线框、相对高度和面朝向着色、相机书签。Local OBJ mesh viewer with multi-model layouts, solid/wireframe display, relative-height and face-orientation colors, and camera bookmarks.">
 <meta property="og:url" content="https://sen2maker.github.io/BuildingWebViewer/lod.html">
 <!-- site-meta:end --><!-- boot-head:start -->
 <style>/* Critical startup styles are inline: they cannot be delayed by another request. */
@@ -41,7 +41,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
   root.lang = language === 'en' ? 'en' : 'zh-CN';
   if (language === 'en') {
-    const titles = {'lod.html':'LOD Model Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
+    const titles = {'lod.html':'Mesh Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio'};
     document.title = (titles[location.pathname?.split('/').pop()] || 'BuildingWebViewer') + ' · 3D Data Workspace';
   }
   root.classList.add('boot-pending');
@@ -117,7 +117,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <header class="app-header">
     <a class="back-home" href="index.html" aria-label="返回工具首页" title="返回工具首页"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>首页</span></a>
     <img class="brand-icon tool-icon" src="assets/icons/lod.svg?v=19c1c4d21c4b" alt="">
-    <div><h1>LOD 模型查看器</h1><p>本地 OBJ 模型 · 手动选择数据</p></div>
+    <div><h1>网格模型查看器</h1><p>本地 OBJ 模型 · 手动选择数据</p></div>
     <div class="header-right"><span class="local-tag"><i></i> 本地预览</span><span id="total-count">尚未选择文件夹</span></div>
   </header>
   <div class="workspace">
@@ -134,34 +134,34 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <button id="project-root" class="project-root" title="拖到这里移出文件夹">▱ 项目根目录 <span>拖到此处移出分组</span></button>
   <div id="model-list" class="model-list project-tree" aria-label="项目文件列表"></div>
   <div id="project-controls"></div>
-  <details class="project-batch"><summary>模型选择选项</summary><p class="project-selection-limit"><span id="selection-count">已勾选 0 栋</span></p><div class="batch-section">
+  <details class="project-batch"><summary>模型选择选项</summary><p class="project-selection-limit"><span id="selection-count">已勾选 0 个</span></p><div class="batch-section">
         <label for="batch-ids">输入要查看的编号</label>
         <textarea id="batch-ids" rows="2" placeholder="输入编号，多个编号用逗号分隔；留空可清空画面"></textarea>
-        <div class="button-row"><button class="primary" id="replace-selection">查看这些楼栋</button><button id="add-selection">追加</button><button id="random-selection">随机看 6 栋</button></div>
+        <div class="button-row"><button class="primary" id="replace-selection">查看这些模型</button><button id="add-selection">追加</button><button id="random-selection">随机看 6 个</button></div>
       </div>
       </details>
-<details class="format-help"><summary>格式与管理说明</summary><p>支持 OBJ 模型，不限制预览栋数。按编号批选与随机预览在“模型选择选项”中。</p><p id="folder-status">选择含 OBJ 的目录 · 文件仅在本机读取</p><p id="source-path"></p><p>新建文件夹和移动仅影响本次页面，不修改磁盘文件。</p></details>
+<details class="format-help"><summary>格式与管理说明</summary><p>支持 OBJ 模型，不限制预览模型数量。按编号批选与随机预览在“模型选择选项”中。</p><p id="folder-status">选择含 OBJ 的目录 · 文件仅在本机读取</p><p id="source-path"></p><p>新建文件夹和移动仅影响本次页面，不修改磁盘文件。</p></details>
 
 </aside>
 <!-- project-sidebar:end -->
     <main>
       <div class="main-heading"><div><h2>模型预览</h2><p id="scene-stats" aria-live="polite">正在准备查看器</p></div><div class="button-row"><button id="previous-group" title="查看上一组编号">上一组</button><button id="next-group" title="查看下一组编号">下一组</button><button id="screenshot">保存截图 ↓</button></div></div>
-      <div id="selected-models" class="selected-models" aria-label="已选楼栋"></div>
+      <div id="selected-models" class="selected-models" aria-label="已选模型"></div>
       <div class="toolbar viewer-toolbar">
         <div class="segmented" aria-label="视角"><button data-view="iso" class="active" aria-pressed="true">立体</button><button data-view="top" aria-pressed="false">俯视</button><button data-view="front" aria-pressed="false">正视</button></div>
         <button id="fit-view" title="快捷键 F">适应窗口</button>
         <div class="inspector-shortcuts" aria-label="查看器设置入口"><button type="button" data-open-settings="display" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="19" r="2" fill="currentColor" stroke="none"/></svg><span>显示</span></button><button type="button" data-open-settings="camera" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l2-3h4l2 3h4v14H4V6z"/><circle cx="12" cy="12" r="4"/></svg><span>相机</span></button><button type="button" data-open-settings="bookmarks" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span>书签</span></button></div></div>
       <div class="viewport" id="viewport">
-        <canvas id="scene" aria-label="所选楼栋的三维模型；拖动旋转、滚轮缩放、右键拖动平移"></canvas>
+        <canvas id="scene" aria-label="所选模型的三维模型；拖动旋转、滚轮缩放、右键拖动平移"></canvas>
         <div class="scene-note"><strong id="layout-title">等比例陈列</strong><span id="layout-note">独立模型重新排列 · 非实际地理位置</span></div>
         <div id="model-labels" class="model-labels"></div>
-        <div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/lod.svg?v=19c1c4d21c4b" alt="" width="96" height="81"><h3>选择几栋，仔细看看</h3><p>先选择模型文件夹，再勾选左侧楼栋。</p></div>
+        <div id="empty-state" class="empty-state"><img class="empty-tool-icon" src="assets/icons/lod.svg?v=19c1c4d21c4b" alt="" width="96" height="81"><h3>选择模型，仔细看看</h3><p>先选择模型文件夹，再勾选左侧模型。</p></div>
         <div id="loading" class="loading" role="status" hidden><i></i><span>正在读取模型…</span></div>
         <div id="error" class="error-banner" role="alert" hidden><span></span><button id="retry">重新加载</button><button id="dismiss-error" aria-label="关闭提示">×</button></div>
-        <div class="viewport-bottom"><div id="height-legend" class="scalar-legend" hidden><span>离地高度</span><i></i><span id="height-min"></span><span>—</span><span id="height-max"></span></div><div class="legend" id="legend"><span><i class="roof"></i>屋顶 / 坡面</span><span><i class="wall"></i>墙面</span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div>
+        <div class="viewport-bottom"><div id="height-legend" class="scalar-legend" hidden><span>相对高度</span><i></i><span id="height-min"></span><span>—</span><span id="height-max"></span></div><div class="legend" id="legend"><span><i class="roof"></i>非竖直面</span><span><i class="wall"></i>近竖直面</span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div>
       </div>
       <footer><span class="desktop-hint">拖动旋转 <b>·</b> 滚轮缩放 <b>·</b> 右键 / Shift 拖动平移 <b>·</b> F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">点击编号可单独查看</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.6.4" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.6.4</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.6.5" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.6.5</a></nav>
 
 <!-- site-footer:end --></footer>
     </main>
@@ -171,7 +171,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <div class="inspector-content">
     <section role="tabpanel" id="settings-panel-display" data-settings-panel="display" aria-labelledby="settings-tab-display"><section class="inspector-section"><h3>模型显示</h3><div class="inspector-options"><label>显示 <select id="display-mode"><option value="solid">实体</option><option value="solid-wire">实体 + 三角网</option><option value="wire">线框</option></select></label>
         <label>比例 <select id="scale-mode"><option value="real">实际比例</option><option value="normalized">统一展示大小</option></select></label>
-        <label>配色 <select id="color-mode"><option value="surface">屋顶 / 墙面</option><option value="height">高度色带</option><option value="building">按楼栋</option></select></label>
+        <label>配色 <select id="color-mode"><option value="surface">面朝向</option><option value="height">高度色带</option><option value="building">按模型</option></select></label>
         <label class="check-label"><input id="show-edges" type="checkbox" checked>轮廓边</label>
         <label class="check-label"><input id="show-labels" type="checkbox" checked>编号</label>
         <label class="check-label"><input id="show-grid" type="checkbox" checked>网格</label></div></section><section class="inspector-section"><h3>色带与数值范围</h3><div id="palette-controls"></div></section></section>
@@ -180,6 +180,6 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside>
   </div>
-  <script data-viewer-src="assets/js/lod.bundle.js?v=c8d9d7468973"></script>
+  <script data-viewer-src="assets/js/lod.bundle.js?v=852425f31cae"></script>
 </body>
 </html>

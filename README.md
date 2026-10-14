@@ -1,72 +1,57 @@
 <div align="center">
 
 <h1>BuildingWebViewer</h1>
-<p>通用三维数据工具箱：在浏览器中查看 LOD 模型、OBJ 线框、点云与三维高斯泼溅，也可绘制和修订点云，支持属性编辑、几何计算和导出。</p>
-<p><strong>简体中文</strong> · <a href="README.en.md">English</a> · <a href="https://sen2maker.github.io/BuildingWebViewer/">在线体验 ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">下载正式版</a></p>
+<p>本地三维数据工具箱：网格、线框、点云与三维高斯可视化，支持点云属性整理、计算和导出。</p>
+<p><strong>简体中文</strong> · <a href="README.en.md">English</a> · <a href="https://sen2maker.github.io/BuildingWebViewer/">在线体验 ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">下载</a></p>
 
 </div>
 
-![点云叠加与相机微调界面](docs/preview.png)
+![中文界面：合成点云与相机设置](docs/preview.zh.jpg)
 
-## 快速开始
+## 开始使用
 
-**在线使用** → [打开查看器](https://sen2maker.github.io/BuildingWebViewer/)，选择工具，添加本地文件或文件夹，再勾选要查看的对象。
+**网页** → [在线打开](https://sen2maker.github.io/BuildingWebViewer/)，或下载 Release 中的 `BuildingWebViewer-Web-vX.Y.Z.zip`，完整解压后双击 `index.html`。推荐 Chrome / Edge，无需安装依赖。
 
-**离线使用** → 从 [Releases](https://github.com/Sen2Maker/BuildingWebViewer/releases/latest) 下载版本 ZIP 并完整解压，双击 `index.html`。无需安装依赖，推荐使用 Chrome / Edge。
-
-也可以在项目目录启动本地服务（需要 Python 3）：
+**本地服务**（可选，需要 Python 3）：在解压目录运行：
 
 ```bash
 python3 server.py
 ```
 
-打开 **[http://127.0.0.1:8765](http://127.0.0.1:8765)**，按 `Ctrl+C` 停止服务。端口被占用时可加 `--port 8766`。
+打开 [http://127.0.0.1:8765](http://127.0.0.1:8765)，按 `Ctrl+C` 停止；端口占用时加 `--port 8766`。
+
+**Android App** → 下载同一 Release 的完整 Preview APK，允许系统安装。已有用户可接收兼容热更新；原生功能变化需覆盖安装新 APK。[安装与构建](docs/ANDROID.md)
 
 ## 工具
 
-| 工具 | 数据 | 关键功能 |
+| 工具 | 输入 | 关键功能 |
 | --- | --- | --- |
-| **LOD 模型** | OBJ 三角网格 | 多栋陈列、实体 / 线框、离地高度着色 |
-| **建筑线框** | OBJ 线框 + 可选点云 | 按 ID 子目录读取，最多三组并排对比、相机同步 |
-| **点云** | TXT · XYZ · CSV · PTS · PLY · PCD | 多文件叠加、属性着色、几何特征计算与合并导出 |
-| **高斯泼溅** | 3DGS 二进制 PLY + cameras.json | 透视 / 正交、球谐颜色、尺度与训练机位方向 |
-| **点云创作与修订** | 从空白绘制，或导入现有点云 | 线、面、拉伸体采样；框选 / 套索、裁剪、染色、项目保存与 PLY 导出 |
+| **网格模型查看器 / Mesh Viewer** | OBJ 三角网格 | 多模型排列、实体 / 线框、相对高度与面朝向着色 |
+| **线框查看器** | OBJ + 可选点云 | 按对象目录分组，最多三个面板比较、相机同步 |
+| **点云查看器** | TXT · XYZ · CSV · PTS · PLY · PCD | 多文件叠加、RGB / HSV 和标量着色、属性计算、合并导出 |
+| **三维高斯** | 含 3DGS 属性的 PLY | 网页透视 / 正交、球谐颜色与可选 `cameras.json`；App 原生全量渲染、漫游、相机书签和截图 |
+| **点云创作与修订** | 从空白创建或导入点云 | 绘制与采样、框选 / 套索、裁剪、染色、项目保存和 PLY 导出 |
 
-线框数据按 `数据集 / 对象ID / 线框.obj、点云.txt` 组织。点云文本支持 XYZ 及附加属性，例如 `x y z intensity`。暂不支持 LAS / LAZ 和压缩 PCD。
+文本点云默认读取 XYZ 和附加列，例如 `x y z intensity`；可在导入后指定 RGB、HSV、法向量、强度或自定义标签，并调整导出列顺序。计算按选项执行，不默认计算所有属性。[处理说明](docs/PROCESSING.md)
 
-**显示 · 相机 · 书签**：通过右侧设置栏切换色带、调整数值范围、拖动滑块或精确输入相机参数。视角书签保存在当前浏览器与网址中，支持 JSON 导入导出。
+线框目录示例：`数据集 / 对象ID / 线框.obj、点云.txt`。普通 XYZ 点云不等于三维高斯；3DGS 还需要不透明度、尺度、旋转及颜色等属性。暂不支持 LAS / LAZ、压缩 PCD。
 
-**数据与处理**：查看、重排列并指定 RGB / HSV、法向量、强度或自定义标签；按需计算几何属性，指定新增列位置，再按当前顺序导出 PLY / TXT。[处理说明](docs/PROCESSING.md)
+## 需要了解
 
-## 使用要点
+- **本地处理**：不自动上传文件；发布包不附带用户数据。App 项目备份会包含所导入的数据，请自行保管。
+- **项目与书签**：网页文件选择和目录分组属于当前会话，刷新后需重新选择；浏览器书签按网址保存，可导入 / 导出 JSON。App 持久保存项目，可导出 `.bwv.zip` 备份。原生高斯书签与网页书签格式独立。
+- **坐标与颜色**：网格工具使用排列展示坐标；相对高度从每个模型最低 Z 值起算，面朝向配色不识别屋顶或墙体。叠加点云需自行保证坐标系一致，工具不做坐标系转换。
+- **数据容量**：点云默认读取全部点，可自行设置导入上限与显示比例；三维高斯保留全部源高斯，设备容量不足会报错。App 高斯以查看、漫游和截图为主，不提供网页高斯编辑功能。
 
-首页右上角可切换中文 / English，语言会沿用到各工具及加载提示，避免慢网下先显示另一种语言。手机支持文件选择、单指旋转、双指缩放和平移；文件夹选择和大数据处理能力取决于浏览器及设备内存。
+首页切换中文 / English；手机浏览器可用触摸操作，三维高斯推荐使用 Android App。点云编辑项目 `.bwvproject` 可在电脑网页、手机网页和 App 间手动交换。[跨端说明](docs/CROSS_PLATFORM.md)
 
-- **数据留在本机**：文件在浏览器内处理，不上传；项目不附带模型数据。
-- **共用项目文件树**：四个查看器均支持追加导入。拖入文件 / 文件夹，自动保留目录层级；支持折叠、新建分组、Ctrl / Shift 多选、框选及右键批量管理。勾选热区和拖动手柄独立；左栏可调整宽度或收起。勾选的点云用于显示、计算和合并；分组只影响本次页面，不修改磁盘文件。创作与修订工作台支持导入点云和保存独立项目，结果可交给点云查看器。
-- **按需选择**：打开目录后再勾选对象；刷新页面需重新选择数据，已保存书签保留。
-- **大文件**：默认显示全部点，也可设置每文件上限；已缓存文件可复用，实际容量取决于内存和显卡。
-- **坐标关系**：多点云保留原始坐标，应使用同一坐标系；LOD 模型采用重新排列的展示布局。
+## 开发
 
-**新增显示与导入**：显示比例滑块、逐点云指定颜色、相机内高级截图；查看器支持直接打开普通 ZIP。高斯泼溅额外提供球谐阶数、不透明度、尺度、背景、显示数量和训练机位。Android 测试版随 Release 提供，见 [安装与构建](docs/ANDROID.md)。
-
-## 开发与打包
-
-原生 HTML / CSS / JavaScript + WebGL，无 npm 依赖。源码按职责放在 `src/`，样式位于 `assets/css/`；`assets/js/` 是生成文件，请勿手改。[开发约定](docs/DEVELOPMENT.md)
-
-修改源码后运行：
+网页使用 HTML / CSS / JavaScript + WebGL。修改 `src/` 与 `assets/css/`，不要直接编辑生成的 `assets/js/`。
 
 ```bash
 python3 build.py --site --zip
-python3 scripts/check.py  # 开发检查，需要 Node 18+
+python3 scripts/check.py  # Node 18+
 ```
 
-此命令更新浏览器脚本，并生成静态站点 `_site/` 和带版本号的程序包 `dist/BuildingWebViewer-Web-vX.Y.Z.zip`（同时保留无版本号本地副本）。提交修改时一并提交生成的脚本。
-
-实现细节与参考资料见 [设计说明](docs/DESIGN_NOTES.md)。
-
-**版本与发布**：以 `v1.0.0` 为正式基线。后续修改先验证、写[更新日志](CHANGELOG.md)并汇报，再按发布指令上传；正式 Release 才更新在线网站。[发布约定](docs/RELEASING.md)
-
-[Android 测试版、安装与构建](docs/ANDROID.md)
-
-**跨端继续编辑**：电脑网页、手机网页和 Android App 共用 `.bwvproject` 点云编辑文件；常规点云和高斯可通过 PLY 交换。文件手动复制或分享，数据不上传。App 完整备份仍使用 `.bwv.zip`。详见 [跨端说明](docs/CROSS_PLATFORM.md)。
+Android 构建另需 Node 22+、JDK 与 Android SDK。详见 [开发约定](docs/DEVELOPMENT.md)、[更新日志](CHANGELOG.md) 和 [发布流程](docs/RELEASING.md)。

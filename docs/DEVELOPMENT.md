@@ -40,8 +40,8 @@ python3 server.py --port 8765
 
 - `project-model.js` owns virtual folders and management selection, independent of rendering.
 - `project-tree.js` owns tree rows, Ctrl/Shift/rectangle selection, context menus and move/remove dialogs. Adapters provide entries, visibility, metadata and removal callbacks; it never reads a file or touches the renderer.
-- `project-import.js` preserves file identity and source paths across appended LOD/wireframe imports. Virtual moves never change import identities or cache keys. Point-cloud import retains its computed-result semantics.
-- Visibility and management selection are separate. LOD has no fixed model-count limit, point clouds honor single/multiple mode, wireframe previews one building set with up to three comparison panes. All support batch folder management.
+- `project-import.js` preserves file identity and source paths across appended mesh/wireframe imports. Virtual moves never change import identities or cache keys. Point-cloud import retains its computed-result semantics.
+- Visibility and management selection are separate. Mesh Viewer has no fixed model-count limit, point clouds honor single/multiple mode, wireframe previews one object set with up to three comparison panes. All support batch folder management.
 - `assets/css/project-tree.css` is the common file browser stylesheet. `viewer-layout.css` owns the viewer shell and inspector.
 
 ## Startup and icons
