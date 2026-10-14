@@ -1208,6 +1208,7 @@ export const EN_MESSAGES = {
   "导入点云，或从绘制开始": "Import point clouds or start drawing",
   "工作模式": "Workspace mode",
   "绘制点云": "Create clouds",
+  "调整视角": "Adjust view",
   "选择与修订": "Select & refine",
   "工具与属性": "Tools & properties",
   "工具": "Tools",

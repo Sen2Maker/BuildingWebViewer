@@ -6,6 +6,14 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.7.2] - 2026-10-14
+
+- 点云创作中“调整视角”允许暂停画笔并保留草稿；“继续绘制”恢复原工具与工作平面，修复存在草稿时无法切换浏览的问题。
+- Esc 改为暂停绘制；完成生成和丢弃草稿后返回视角操作，退出画笔时释放指针捕获，防止继续落点。
+- 绘制工具与草稿操作分组，参数按需打开；精简手机按钮排布，并同步画布与操作提示。
+- Pause drawing to adjust the view while retaining the draft, then resume with the same tool and work plane. Escape pauses; generation and discard return to navigation. Release pointer capture when stopping drawing and streamline desktop/mobile tools and contextual hints.
+- 验证 / Validation: interaction regression tests, full web checks and Android unit tests; native API 12 remains compatible.
+
 ## [1.7.1] - 2026-10-14
 
 - Release 标题统一为 BWV v版本号，精简公开说明。

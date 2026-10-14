@@ -1224,6 +1224,7 @@ const EN_MESSAGES = {
   "导入点云，或从绘制开始": "Import point clouds or start drawing",
   "工作模式": "Workspace mode",
   "绘制点云": "Create clouds",
+  "调整视角": "Adjust view",
   "选择与修订": "Select & refine",
   "工具与属性": "Tools & properties",
   "工具": "Tools",
@@ -4966,14 +4967,21 @@ function genHistory(limit=30,byteLimit=10000000){
 
 
 /** Work-plane drawing owns its overlay input; navigation owns the scene canvas. */
-function mountDrawingControls({viewer,container,toolbar,onCommit,onError,isBusy=()=>false}) {
+function mountDrawingControls({viewer,container,toolbar,onCommit,onError,onModeChange=()=>{},isBusy=()=>false}) {
   const en=document.documentElement.lang==='en',tr=(zh,enText)=>en?enText:zh;
   const make=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
-  let enabled=true,mode='navigate',points=[],hover=null,drag=null,strokeBefore=0,frame=drawFrame([0,0,1]),showGrid=true;
+  let enabled=false,mode='navigate',lastTool='brush',points=[],hover=null,drag=null,strokeBefore=0,frame=drawFrame([0,0,1]),showGrid=true;
   const stage=viewer.canvas.parentElement,overlay=make('canvas',null,'draw-overlay');overlay.setAttribute('aria-label',tr('三维绘制画布','3D drawing canvas'));overlay.tabIndex=0;stage.append(overlay);const ctx=overlay.getContext('2d');
-  const tools=make('div',null,'draw-toolbar'),buttons=new Map();
-  for(const[value,zh,eng]of [['navigate','浏览','Navigate'],['line','折线','Polyline'],['brush','自由画笔','Freehand'],['polygon','绘制面','Face'],['extrusion','拉伸体','Extrude']]){const b=make('button',tr(zh,eng));b.type='button';b.onclick=()=>switchMode(value);buttons.set(value,b);tools.append(b);}
-  const finish=make('button',tr('完成绘制','Finish drawing')),back=make('button',tr('退回一点','Undo vertex')),cancel=make('button',tr('取消绘制','Cancel drawing'));tools.append(finish,back,cancel);toolbar.after(tools);
+  const tools=make('section',null,'draw-toolbar'),buttons=new Map();
+  tools.setAttribute('aria-label',tr('绘制工具与草稿','Drawing tools and draft'));
+  const toolGroup=make('div',null,'draw-tool-group'),toolLabel=make('span',tr('绘制工具','Drawing tools'),'draw-group-label');toolGroup.append(toolLabel);
+  const toolButtons=make('div',null,'draw-tool-buttons');toolGroup.append(toolButtons);
+  const names=new Map();
+  for(const[value,zh,eng]of [['brush','自由画笔','Freehand'],['line','折线','Polyline'],['polygon','绘制面','Face'],['extrusion','拉伸体','Extrude']]){const label=tr(zh,eng),b=make('button',label);b.type='button';b.onclick=()=>switchMode(value);buttons.set(value,b);names.set(value,label);toolButtons.append(b);}
+  const draftGroup=make('div',null,'draw-draft-group'),draftInfo=make('div',null,'draw-draft-info'),draftTitle=make('strong'),draftHint=make('span');draftInfo.append(draftTitle,draftHint);
+  const actions=make('div',null,'draw-draft-actions'),pause=make('button'),finish=make('button',tr('完成生成','Generate cloud'),'primary'),back=make('button',tr('撤回一点','Undo vertex')),cancel=make('button',tr('丢弃草稿','Discard draft'),'danger-text');
+  for(const b of [pause,finish,back,cancel])b.type='button';
+  pause.onclick=()=>switchMode(mode==='navigate'?(draftMode||lastTool):'navigate');actions.append(pause,finish,back,cancel);draftGroup.append(draftInfo,actions);tools.append(toolGroup,draftGroup);toolbar.after(tools);
   const panel=make('details',null,'draw-panel');panel.open=true;panel.append(make('summary',tr('绘制平面与深度','Drawing plane & depth')));container.append(panel);const panelBody=make('div',null,'draw-panel-body');panel.append(panelBody);
   const row=(title,input)=>{const l=make('label',title);input.setAttribute('aria-label',title);l.append(input);panelBody.append(l);return input;};
   const plane=row(tr('工作平面','Work plane'),make('select'));for(const[value,label]of [['xy','XY · Z'],['xz','XZ · Y'],['yz','YZ · X'],['view',tr('当前视角平面','Current view plane')]]){const o=make('option',label);o.value=value;plane.append(o);}
@@ -4981,16 +4989,37 @@ function mountDrawingControls({viewer,container,toolbar,onCommit,onError,isBusy=
   const snap=row(tr('吸附间距（0 为关闭）','Snap spacing (0 = off)'),make('input'));snap.type='number';snap.min=0;snap.step='.1';snap.value='.25';
   const height=row(tr('新体拉伸高度','New extrusion height'),make('input'));height.type='number';height.min='.001';height.step='.1';height.value='3';
   const fill=row(tr('新体点分布','New volume sampling'),make('select'));for(const[value,zh,eng]of [['surface','仅表面','Surface only'],['volume','整个体积','Filled volume']]){const o=make('option',tr(zh,eng));o.value=value;fill.append(o);}
-  const actions=make('div',null,'draw-plane-actions'),align=make('button',tr('正对平面','Face plane')),capture=make('button',tr('取当前视角平面','Capture view plane'));actions.append(align,capture);panelBody.append(actions);
+  const planeActions=make('div',null,'draw-plane-actions'),align=make('button',tr('正对平面','Face plane')),capture=make('button',tr('取当前视角平面','Capture view plane'));planeActions.append(align,capture);panelBody.append(planeActions);
   const gridLabel=make('label',null,'gen-check'),grid=make('input');grid.type='checkbox';grid.checked=true;gridLabel.append(grid,document.createTextNode(tr('显示工作平面','Show work plane')));panelBody.append(gridLabel);grid.onchange=()=>{showGrid=grid.checked;paint();};
-  const hint=make('p',null,'gen-side-note');hint.textContent=tr('先选绘制工具。点击落点；自由画笔按住拖动。面和体的轮廓保持在一个平面。画空间折线时可中途改变平面或深度。切回浏览可调整相机，再继续绘制。','Select a tool, then click vertices or drag Freehand. Faces and volumes use one plane; polylines can change plane/depth between vertices. Switch to Navigate to move the camera, then resume.');panelBody.append(hint);
+  const hint=make('p',null,'gen-side-note');hint.textContent=tr('自由画笔按住拖动；折线、面和体点击落点。按 Esc 或“调整视角”暂停并保留草稿，再点“继续绘制”。面和体的轮廓须在同一平面。','Drag for Freehand; click vertices for other tools. Press Esc or Adjust view to pause without losing your draft, then Resume drawing. Faces and volumes use one plane.');panelBody.append(hint);
   const status=make('div',null,'draw-status');status.setAttribute('role','status');stage.append(status);
   let draftMode=null;
   function spec(){return gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight);}
   function project(p,s){return gsProjectPosition(p.map((v,i)=>v-viewer.origin[i]),s);}
-  function repaintStatus(message){status.textContent=message|| (points.length?tr(`未保存草稿 ${points.length} 点 · Enter 完成 · Backspace 退回 · Esc 取消`,`Unsaved draft: ${points.length} vertices · Enter finish · Backspace undo · Esc cancel`):mode==='navigate'?tr('选折线、画笔、面或体开始绘制','Choose Polyline, Freehand, Face or Extrude to draw'):tr('点击画布开始 · 工作平面决定落点深度','Click to start · The work plane sets drawing depth'));}
-  function sync(){height.parentElement.hidden=fill.parentElement.hidden=mode!=='extrusion';const empty=stage.querySelector('#empty-state');if(empty)empty.hidden=mode!=='navigate'||viewer.pointCount>0;for(const[key,b]of buttons){b.setAttribute('aria-pressed',String(mode===key));b.classList.toggle('active',mode===key);}overlay.style.pointerEvents=mode==='navigate'?'none':'auto';finish.disabled=!points.length;back.disabled=!points.length;cancel.disabled=!points.length;const locked=points.length&&['polygon','extrusion'].includes(draftMode);plane.disabled=offset.disabled=capture.disabled=!!locked;repaintStatus();paint();}
-  function switchMode(next){if(isBusy())return;if(points.length&&next!=='navigate'&&next!==draftMode){onError(tr('请先完成或取消当前草稿，再更换绘制类型。','Finish or cancel the current draft before changing drawing type.'));return;}viewer.stopNavigation?.();mode=next;if(next!=='navigate')panel.open=true;sync();}
+  function repaintStatus(message){
+    const paused=mode==='navigate';
+    draftTitle.textContent=paused?tr('绘制已暂停','Drawing paused'):tr(`正在绘制 · ${names.get(mode)}`,`Drawing · ${names.get(mode)}`);
+    draftHint.textContent=points.length?tr(`${points.length} 个草稿点 · ${paused?'草稿已保留，可调整视角':'完成后生成点云'}`,`${points.length} draft vertices · ${paused?'Draft retained — adjust the view':'Generate when ready'}`):tr('按住拖动画笔 · Esc 暂停','Drag to draw · Esc pauses');
+    if(mode!=='brush'&&!points.length&&!paused)draftHint.textContent=tr('点击画布落点 · Esc 暂停','Click to place vertices · Esc pauses');
+    status.textContent=message||(paused?tr(`已暂停 · ${points.length} 个草稿点保留 · 拖动调整视角`,`Paused · ${points.length} draft vertices retained · Drag to adjust view`):tr(`${names.get(mode)} · ${points.length} 点 · Esc 暂停 · Enter 生成`,`${names.get(mode)} · ${points.length} vertices · Esc pause · Enter generate`));
+  }
+  function sync(){
+    const paused=mode==='navigate';
+    tools.hidden=!enabled&&!points.length;toolGroup.hidden=!enabled;
+    pause.textContent=paused?tr('继续绘制','Resume drawing'):tr('暂停 · 调整视角','Pause · Adjust view');pause.setAttribute('aria-label',pause.textContent);
+    height.parentElement.hidden=fill.parentElement.hidden=(draftMode||mode)!=='extrusion';
+    const empty=stage.querySelector('#empty-state');if(empty)empty.hidden=!paused||points.length>0||viewer.pointCount>0;
+    for(const[key,b]of buttons){b.setAttribute('aria-pressed',String(mode===key));b.classList.toggle('active',mode===key);b.disabled=!!points.length&&key!==draftMode;}
+    overlay.style.pointerEvents=enabled&&!paused?'auto':'none';finish.disabled=back.disabled=cancel.disabled=!points.length;back.hidden=cancel.hidden=!points.length;
+    const locked=points.length&&['polygon','extrusion'].includes(draftMode);plane.disabled=offset.disabled=capture.disabled=!!locked;repaintStatus();paint();
+  }
+  function releaseGesture(){const id=drag;drag=null;if(id!==null&&overlay.hasPointerCapture(id))overlay.releasePointerCapture(id);}
+  function switchMode(next){
+    if(isBusy())return;
+    if(points.length&&next!=='navigate'&&next!==draftMode){onError(tr('请先完成或丢弃当前草稿，再更换绘制类型。','Generate or discard the current draft before changing drawing type.'));return;}
+    releaseGesture();viewer.stopNavigation?.();hover=null;mode=next;if(next!=='navigate'){lastTool=next;enabled=true;}
+    onModeChange(next);sync();
+  }
   function reset(){points=[];hover=null;draftMode=null;drag=null;sync();}
   function setPlane(fromView=false){if(points.length&&['polygon','extrusion'].includes(draftMode))return;
     if(fromView){const s=spec(),origin=s.target.map((v,i)=>v+viewer.origin[i]);frame=drawFrame(s.basis[2],origin,s.basis[0]);plane.value='view';offset.value=gsDot3(origin,frame.n).toFixed(6);}
@@ -5001,7 +5030,7 @@ function mountDrawingControls({viewer,container,toolbar,onCommit,onError,isBusy=
   plane.onchange=()=>{if(plane.value==='view')setPlane(true);else setPlane();};offset.oninput=()=>setPlane();capture.onclick=()=>setPlane(true);
   align.onclick=()=>{viewer.stopNavigation?.();gsSetOrbitBasis(viewer,[frame.u,frame.v,frame.n]);viewer.camera.pan=[0,0];viewer.target=frame.origin.map((v,i)=>v-viewer.origin[i]);viewer.requestRender();};
   function paint(){const w=viewer.canvas.clientWidth,h=viewer.canvas.clientHeight;if(!w||!h)return;const dpr=Math.min(2,window.devicePixelRatio||1);if(overlay.width!==Math.round(w*dpr)||overlay.height!==Math.round(h*dpr)){overlay.width=Math.round(w*dpr);overlay.height=Math.round(h*dpr);}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
-    overlay.hidden=!enabled||!!viewer.fly?.active;status.hidden=!enabled||!!viewer.fly?.active;if(overlay.hidden)return;const s=spec();
+    overlay.hidden=(!enabled&&!points.length)||!!viewer.fly?.active;status.hidden=overlay.hidden;if(overlay.hidden)return;const s=spec();
     const path=(a,b,color,width=1)=>{const p=project(a,s),q=project(b,s);if(!p||!q)return;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();};
     if(showGrid){const extent=Math.max(.01,(s.perspective?viewer.distance/viewer.camera.zoom*.7:s.worldHeight)*.6),step=Math.pow(10,Math.floor(Math.log10(extent/8))),size=step*10;
       for(let i=-10;i<=10;i++){const at=(a,b)=>frame.origin.map((v,k)=>v+a*frame.u[k]+b*frame.v[k]);path(at(-size,i*step),at(size,i*step),i?'#57967b35':'#528e7190');path(at(i*step,-size),at(i*step,size),i?'#57967b35':'#528e7190');}}
@@ -5019,11 +5048,16 @@ function mountDrawingControls({viewer,container,toolbar,onCommit,onError,isBusy=
   const end=e=>{if(drag!==e.pointerId)return;if(e.type==='pointercancel')points.splice(strokeBefore);drag=null;if(overlay.hasPointerCapture(e.pointerId))overlay.releasePointerCapture(e.pointerId);sync();};
   overlay.addEventListener('pointerup',end);overlay.addEventListener('pointercancel',end);overlay.addEventListener('lostpointercapture',end);overlay.addEventListener('contextmenu',e=>e.preventDefault());
   overlay.addEventListener('wheel',e=>{e.preventDefault();viewer.zoomBy(Math.exp(-Math.max(-100,Math.min(100,e.deltaY))*.001));},{passive:false});
-  function complete(){if(isBusy())return;try{const shape={type:['line','brush'].includes(draftMode)?'stroke':draftMode,points:points.map(p=>[...p]),normal:[...frame.n],height:Number(height.value),fill:fill.value};drawCheck(shape);onCommit(shape);mode='navigate';panel.open=false;reset();}catch(e){onError(e.message);}}
-  finish.onclick=complete;back.onclick=()=>{if(isBusy())return;points.pop();if(!points.length)draftMode=null;sync();};cancel.onclick=()=>{if(!isBusy())reset();};
-  const key=e=>{if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||viewer.fly?.active||!points.length)return;if(e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();complete();}else if(e.key==='Backspace'){e.preventDefault();back.click();}else if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();reset();}};document.addEventListener('keydown',key,true);
+  function complete(){if(isBusy())return;try{const shape={type:['line','brush'].includes(draftMode)?'stroke':draftMode,points:points.map(p=>[...p]),normal:[...frame.n],height:Number(height.value),fill:fill.value};drawCheck(shape);onCommit(shape);switchMode('navigate');panel.open=false;reset();}catch(e){onError(e.message);}}
+  finish.onclick=complete;back.onclick=()=>{if(isBusy())return;points.pop();if(!points.length)draftMode=null;sync();};cancel.onclick=()=>{if(isBusy())return;switchMode('navigate');reset();};
+  const key=e=>{
+    if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||e.target.isContentEditable||viewer.fly?.active||isBusy())return;
+    if(e.key==='Escape'&&mode!=='navigate'){e.preventDefault();e.stopImmediatePropagation();switchMode('navigate');}
+    else if(points.length&&e.key==='Enter'){e.preventDefault();e.stopImmediatePropagation();complete();}
+    else if(points.length&&e.key==='Backspace'){e.preventDefault();back.click();}
+  };document.addEventListener('keydown',key,true);
   height.oninput=paint;const old=viewer.onViewChange;viewer.onViewChange=(...args)=>{old?.(...args);paint();};const ro=new ResizeObserver(paint);ro.observe(stage);sync();
-  return {reset,paint,setEnabled(value){enabled=value;tools.hidden=!value;if(!value)switchMode('navigate');paint();},hasDraft:()=>points.length>0,getDraft:()=>({mode:draftMode,points:points.map(p=>[...p]),frame:JSON.parse(JSON.stringify(frame))}),destroy(){ro.disconnect();document.removeEventListener('keydown',key,true);overlay.remove();status.remove();}};
+  return {reset,paint,setEnabled(value){releaseGesture();enabled=value;hover=null;mode=value?(draftMode||lastTool):'navigate';sync();},hasDraft:()=>points.length>0,getDraft:()=>({mode:draftMode,points:points.map(p=>[...p]),frame:JSON.parse(JSON.stringify(frame))}),destroy(){ro.disconnect();document.removeEventListener('keydown',key,true);overlay.remove();status.remove();tools.remove();panel.remove();}};
 }
 
 
@@ -5223,9 +5257,13 @@ async function editorBoot(){
   }
   const actions=el('div',null,'editor-pair');const restore=el('button',tr('恢复删除点','Restore deleted points'));restore.disabled=!e.deleted?.some(Boolean);restore.onclick=()=>{if(!blocked()){model.restore(e.id);changed();}};const remove=el('button',tr('移除对象','Remove object'));remove.className='danger-text';remove.onclick=()=>{if(!blocked()&&!draftGuard()){model.remove(e.id);changed();}};actions.append(restore,remove);box.append(actions);
  }
- function setWorkflow(next){if(blocked())return;if(next!=='create'&&draftGuard())return;workflow=next;if(next!=='navigate')viewer.fly?.leave();$('empty-state').hidden=next==='create'||model.entities.some(e=>e.visible&&editLiveCount(e));document.querySelector('.gs-fly-entry').hidden=next!=='navigate';viewer.stopNavigation?.();drawing.setEnabled(next==='create');selection.setEnabled(next==='edit');$('editor-create-settings').hidden=next!=='create';$('editor-selection-settings').hidden=next!=='edit';editbar.hidden=next!=='edit';for(const b of document.querySelectorAll('[data-workflow]')){b.classList.toggle('active',b.dataset.workflow===next);b.setAttribute('aria-pressed',String(b.dataset.workflow===next));}if(next!=='navigate'){const trigger=document.querySelector('[data-open-settings="tools"]');if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();}selection.paint();}
+ function setWorkflow(next){if(blocked())return;if(next==='edit'&&draftGuard())return;error('');workflow=next;if(next!=='navigate')viewer.fly?.leave();$('empty-state').hidden=next==='create'||model.entities.some(e=>e.visible&&editLiveCount(e));document.querySelector('.gs-fly-entry').hidden=next!=='navigate';viewer.stopNavigation?.();drawing.setEnabled(next==='create');selection.setEnabled(next==='edit');$('editor-create-settings').hidden=next!=='create';$('editor-selection-settings').hidden=next!=='edit';editbar.hidden=next!=='edit';for(const b of document.querySelectorAll('[data-workflow]')){b.classList.toggle('active',b.dataset.workflow===next);b.setAttribute('aria-pressed',String(b.dataset.workflow===next));}if(next==='edit'){const trigger=document.querySelector('[data-open-settings="tools"]');if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();}$('geometry-note').textContent=next==='create'?tr('在工作平面绘制 · 可暂停调整视角','Draw on the work plane · Pause to adjust the view'):next==='edit'?tr('穿透选择 · 删除、裁剪或提取','Through-depth selection · Delete, crop or extract'):tr('拖动旋转 · 草稿可随时继续','Drag to orbit · Resume your draft at any time');
+ const drawingHint=tr('画布用于绘制 · Esc 或“调整视角”暂停 · Enter 生成','Canvas draws · Esc or Adjust view pauses · Enter generates');
+ document.querySelector('.desktop-hint').textContent=next==='create'?drawingHint:tr('拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口','Drag to orbit · Scroll to zoom · Right / Shift drag to pan · F to fit');
+ document.querySelector('.touch-hint').textContent=next==='create'?tr('单指绘制 · 点“暂停 · 调整视角”后可旋转、缩放与平移','Draw with one finger · Pause to orbit, zoom and pan'):tr('单指旋转 · 双指缩放与平移','One finger to orbit · Two fingers to zoom and pan');
+ selection.paint();}
  mountCameraControls({container:$('camera-controls'),bookmarkContainer:$('bookmark-controls'),getViewers:()=>[viewer],space:'raw-world'});mountViewerLayout({getViewers:()=>[viewer]});
- drawing=mountDrawingControls({viewer,container:$('drawing-controls'),toolbar:document.querySelector('.viewer-toolbar'),isBusy:blocked,onError:error,onCommit:shape=>{if(model.entities.length>=200)throw Error(tr('最多 200 个对象','At most 200 objects'));const color=genColor.value.match(/\w{2}/g).map(v=>parseInt(v,16)/255),recipe={id:model.next,name:'drawing',visible:true,color,place:{x:0,y:0,z:0},shape,sampling:{spacing:Number(spacing.value),pattern:'grid',noise:0,seed:1}};const cloud=genSample(recipe,{color});model.add(cloud,`${tr(shape.type==='stroke'?'绘制线':shape.type==='polygon'?'绘制面':'拉伸体',shape.type)} ${model.next}`,{recipe,color});seen=true;changed();}});
+ drawing=mountDrawingControls({viewer,container:$('drawing-controls'),toolbar:document.querySelector('.viewer-toolbar'),isBusy:blocked,onError:error,onModeChange:mode=>setWorkflow(mode==='navigate'?'navigate':'create'),onCommit:shape=>{if(model.entities.length>=200)throw Error(tr('最多 200 个对象','At most 200 objects'));const color=genColor.value.match(/\w{2}/g).map(v=>parseInt(v,16)/255),recipe={id:model.next,name:'drawing',visible:true,color,place:{x:0,y:0,z:0},shape,sampling:{spacing:Number(spacing.value),pattern:'grid',noise:0,seed:1}};const cloud=genSample(recipe,{color});model.add(cloud,`${tr(shape.type==='stroke'?'绘制线':shape.type==='polygon'?'绘制面':'拉伸体',shape.type)} ${model.next}`,{recipe,color});seen=true;changed();}});
  const editbar=el('div',null,'edit-toolbar');document.querySelector('.draw-toolbar').after(editbar);
  for(const[id,zh,eng,action]of [
  ['edit-all','全选','Select all',()=>model.selectAll(selection.all)],['edit-invert','反选','Invert',()=>model.selectAll(selection.all,true)],['edit-clear','清空选区','Clear',()=>model.clearSelection()],

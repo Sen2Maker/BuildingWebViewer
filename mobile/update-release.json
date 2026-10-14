@@ -1,11 +1,11 @@
 {
-  "version": "1.7.1",
+  "version": "1.7.2",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 18,
-  "issuedAt": 1791965041,
-  "expiresAt": 1807517041,
+  "sequence": 19,
+  "issuedAt": 1791970350,
+  "expiresAt": 1807522350,
   "notes": {
-    "zh": "线框查看支持单个/多个 ID、全选反选与快捷切换；按文件名记住线框版本，切换 ID 自动适应场景。完善双语说明与界面示例。",
-    "en": "Single/multiple wireframe IDs, scoped All/Invert, previous/next navigation and remembered filename variants. Fit new IDs automatically and refresh bilingual guides."
+    "zh": "点云创作画笔支持暂停调整视角、保留草稿并继续绘制；Esc 暂停，工具与草稿操作分组，优化手机与桌面排布。",
+    "en": "Pause drawing to adjust the view without losing the draft, then resume. Escape pauses. Grouped drawing tools and draft actions with compact desktop and mobile layouts."
   }
 }
