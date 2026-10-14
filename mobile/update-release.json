@@ -1,11 +1,11 @@
 {
-  "version": "1.6.3",
+  "version": "1.6.4",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 14,
-  "issuedAt": 1791941693,
-  "expiresAt": 1807493693,
+  "sequence": 15,
+  "issuedAt": 1791945333,
+  "expiresAt": 1807497333,
   "notes": {
-    "zh": "修正漫游移动坐标：前后沿视线，升降沿画面上方向，不再假定数据 Z 朝上。视角改用四个按住按钮。恢复默认当前视野旋转中心、缩放自适应和时间平滑；退出漫游不跳动。需要覆盖安装完整 APK，项目与书签保留。",
-    "en": "Use camera-relative fly translation, separate move/lift from look buttons, and restore automatic view-center orbit anchors with adaptive smooth gestures. Install the full APK; projects and views remain."
+    "zh": "恢复视角摇杆，左右按相机自身方向转头、上下抬头低头；独立左倾/右倾按钮。提高默认触摸灵敏度、摇杆转速并缩短平滑延迟，参数随项目保存；书签兼容倾斜角。需覆盖安装完整 APK，项目与书签保留。",
+    "en": "Restore camera-local look joystick and separate lean buttons. Increase default touch response and look speed, reduce smoothing delay, and retain sensitivity/roll with projects and views. Install the full APK; projects remain."
   }
 }

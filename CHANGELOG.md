@@ -6,6 +6,13 @@
 
 后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
 
+## [1.6.4] - 2026-10-14
+
+- 恢复右侧视角摇杆：绕当前相机局部轴左右转头、上下抬头低头；独立左倾／右倾按钮只改变倾斜，不改变视线与位置。保留移动摇杆和升降控制。
+- 修复接近俯视时世界角度转动表现为倾斜的问题；普通旋转和漫游拖动均采用相机局部轴。相机书签增加可选倾斜角，旧文件默认零倾斜。
+- 默认触摸灵敏度从 0.3 提至 1.0，视角摇杆满幅转速从 65 提至 110°/s，平滑时间从 100 降至 45ms。灵敏度与摇杆转速独立保存；旧默认值自动升级，已有自定义值保留。
+- Restore a camera-local look stick and separate lean buttons. Improve default response and preserve sensitivity, look speed and camera roll. Keep automatic view-center pivots and all splats; native fixes require the complete APK.
+
 ## [1.6.3] - 2026-10-14
 
 - 原生漫游采用当前相机坐标：前后沿视线，升降沿画面上方向，左右沿画面右方向，不再把世界 Z 固定作为升降。旧书签坐标保留。
