@@ -2,6 +2,99 @@
 (() => {
 'use strict';
 
+// Source: src/shared/camera-geometry.js
+// Gaussian camera conventions: right/up/back form an orthonormal world basis.
+// Inria cameras.json stores camera-to-world columns right/down/forward.
+const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
+function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function gsTrainingPose(camera, origin=[0,0,0]) {
+  const r=camera.rotation;
+  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
+  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
+  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
+  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
+}
+function gsViewSpec(viewer, width, height) {
+  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
+  const training=viewer.trainingPose;
+  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
+  const fit=training?Math.min(width/training.width,height/training.height):1;
+  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
+  const distance=viewer.distance/viewer.camera.zoom;
+  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
+  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
+  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
+}
+function gsProjectPosition(point, spec) {
+  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
+  const depth=-gsDot3(delta,back);
+  if (spec.perspective && depth<=spec.near) return null;
+  const x=gsDot3(delta,right), y=gsDot3(delta,up);
+  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
+}
+
+
+// Source: src/shared/orbit-camera.js
+
+function gsOrbitRotate(v, axis, angle) {
+  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
+  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
+  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
+}
+function gsSetOrbitBasis(viewer, basis) {
+  const [right,,back]=basis, deg=180/Math.PI;
+  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
+  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
+  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
+  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
+}
+/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
+ * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
+ */
+function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
+  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
+  if(!viewer.packed)return null;
+  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
+  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
+  let limit=radius*radius;
+  for(let i=0;i<viewer.count;i++) {
+    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
+    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
+    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
+    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
+    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
+    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
+    const d=px*px+py*py;if(d>limit)continue;
+    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
+    if(candidates.length===32)limit=candidates[31].d;
+  }
+  if(!candidates.length)return null;
+  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
+  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
+}
+function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
+  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
+  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
+  if(!model&&x!==null&&picked===null)return false;
+  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
+  let depth=picked??fallback;
+  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
+  if(!model&&x!==null) {
+    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
+    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
+    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
+  }
+  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
+  if(depth<=spec.near)return false;
+  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
+  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
+  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
+  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
+  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
+}
+
+
 // Source: src/shared/autosave.js
 /** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
 function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
@@ -1426,6 +1519,1009 @@ async function nativeExportWriter(name){
 }
 
 
+// Source: src/shared/camera-controls.js
+
+
+
+/** Shared camera snapshots and an optional, local-only control panel. */
+const CAMERA_FORMAT = 'BuildingWebViewer.camera';
+const CAMERA_BOOK_FORMAT = 'BuildingWebViewer.camera-bookmarks';
+const CAMERA_SPACES = ['raw-world', 'lod-arrangement'];
+const CAMERA_MAX_BOOKMARKS = 100;
+
+function cameraObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
+function cameraFinite(value, label) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw Error(t("{0}必须是有限数值", [label]));
+  return value;
+}
+function cameraVector(value, length, label) {
+  if (!Array.isArray(value) || value.length !== length) throw Error(t("{0}需要 {1} 个数值", [label, length]));
+  return value.map(number => cameraFinite(number, label));
+}
+function cameraSpace(space) {
+  if (!CAMERA_SPACES.includes(space)) throw Error(t('相机坐标空间无效'));
+  return space;
+}
+function cameraScene(scene, space) {
+  if (scene == null && space === 'raw-world') return null;
+  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error(t('相机场景需要有效的文件或模型 ID 列表'));
+  const result = {ids: [...scene.ids]};
+  if (space === 'lod-arrangement') {
+    if (!['real', 'normalized'].includes(scene.scale)) throw Error(t('网格相机需要记录实际比例或统一大小模式'));
+    result.scale = scene.scale;
+  }
+  return result;
+}
+function cameraSameScene(a, b) {
+  return a?.scale === b?.scale && a?.ids?.length === b?.ids?.length && a.ids.every((id, index) => id === b.ids[index]);
+}
+
+/** Validate before mutating a viewer; snapshots use original-world or synthetic-layout targets. */
+function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
+  cameraSpace(space);
+  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || ![1,2].includes(value.version)) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）'));
+  if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与网格排列视角不能直接互用'));
+  if (!['orthographic','perspective'].includes(value.projection) || value.version===1 && value.projection!=='orthographic') throw Error(t('相机投影与文件版本不兼容'));
+  const source = value.camera;
+  if (!cameraObject(source)) throw Error(t('相机参数缺失'));
+  const azimuth = cameraFinite(source.azimuth, t('方位角')), elevation = cameraFinite(source.elevation, t('仰角'));
+  const zoom = cameraFinite(source.zoom, t('缩放倍率')), baseHeight = cameraFinite(source.baseHeight, t('基准视野高度'));
+  const limits = value.version===2 ? {minElevation:-90,minZoom:.02,maxZoom:100} : space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
+  if (Math.abs(azimuth) > 1e6) throw Error(t('方位角数值过大'));
+  if (elevation < limits.minElevation || elevation > 90) throw Error(t("仰角需在 {0}° 至 90° 之间", [limits.minElevation]));
+  if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(t("缩放倍率需在 {0} 至 {1} 之间", [limits.minZoom, limits.maxZoom]));
+  if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error(t('基准视野高度必须为有效正数'));
+  let extended={};
+  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
+  const savedScene = cameraScene(value.scene, space);
+  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
+  return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
+    camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
+      ...extended, pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
+}
+
+function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
+  cameraSpace(space);
+  if (!viewer?.camera) throw Error(t('相机尚未准备好'));
+  const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
+  const camera={...viewer.camera,pan:[...viewer.camera.pan]},projection=viewer.projection||'orthographic';
+  let localTarget=[...viewer.target],distance=viewer.distance||viewer.baseHeight*2;
+  if(viewer.flyPose){gsSetOrbitBasis({camera},viewer.flyPose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=viewer.flyPose.eye.map((v,i)=>v-viewer.flyPose.basis[2][i]*distance);}
+  const version=projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
+  const target = cameraVector(localTarget,3,t('目标点')).map((value,axis)=>value+origin[axis]);
+  return validateCameraSnapshot({format:CAMERA_FORMAT,version,space,projection,scene,
+    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
+}
+
+function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback(), render = true} = {}) {
+  const value = validateCameraSnapshot(snapshot, {space, scene, checkScene});
+  if (!Array.isArray(viewers) || !viewers.length || viewers.some(viewer => !viewer?.camera || typeof viewer.render !== 'function')) throw Error(t('请先加载数据，再应用相机'));
+  // Validate every new local target first, so a bad panel cannot leave a partial update.
+  const targets = viewers.map(viewer => {
+    const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
+    return value.camera.target.map((number, axis) => cameraFinite(number - origin[axis], t('局部目标点')));
+  });
+  pauseSync(() => {
+    viewers.forEach((viewer, index) => {
+      viewer.stopNavigation?.();viewer.flyPose=null;viewer.projection=value.projection;
+      if(value.version===2){viewer.distance=value.camera.distance;viewer.fov=value.camera.fov;viewer.near=value.camera.near;}
+      viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
+      viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
+    });
+    if(render)viewers.forEach(viewer => viewer.render());
+  });
+  return value;
+}
+
+function cameraBookmark(record, space, index) {
+  if (!cameraObject(record) || typeof record.name !== 'string' || !record.name.trim() || record.name.length > 80) throw Error(t('书签名称需为 1–80 个字符'));
+  return {id: typeof record.id === 'string' && record.id.trim() && record.id.length <= 128 ? record.id : `import-${index}`,
+    name: record.name.trim(), snapshot: validateCameraSnapshot(record.snapshot, {space, checkScene: false}),
+    ...(typeof record.updatedAt === 'string' && record.updatedAt.length <= 64 && Number.isFinite(Date.parse(record.updatedAt)) ? {updatedAt: record.updatedAt} : {})};
+}
+
+function parseCameraBookmarks(input, space) {
+  cameraSpace(space);
+  const value = typeof input === 'string' ? JSON.parse(input) : input;
+  if (value?.format === CAMERA_FORMAT) return {preserveView: true, bookmarks: [{id: 'import-0', name: t('导入视角'), snapshot: validateCameraSnapshot(value, {space, checkScene: false})}]};
+  if (!cameraObject(value) || value.format !== CAMERA_BOOK_FORMAT || value.version !== 1 || value.space !== space || !Array.isArray(value.bookmarks) || value.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error(t('书签 JSON 格式或坐标空间无效（最多 100 个书签）'));
+  const bookmarks = value.bookmarks.map((record, index) => cameraBookmark(record, space, index));
+  if (new Set(bookmarks.map(record => record.id)).size !== bookmarks.length) throw Error(t('书签 ID 重复'));
+  return {preserveView: value.preserveView !== false, bookmarks};
+}
+
+function serializeCameraBookmarks(bookmarks, space, preserveView = true) {
+  const value = {format: CAMERA_BOOK_FORMAT, version: 1, space: cameraSpace(space), preserveView: Boolean(preserveView), bookmarks};
+  parseCameraBookmarks(value, space);
+  return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Returns {preserveView, capture, restore, refresh, destroy}.
+ * Pass a separate bookmarkContainer to mount camera and bookmarks in two tabs.
+ * restore(saved, {checkScene:false}) preserves a view after changing data;
+ * bookmark loads retain strict mesh scene checking.
+ */
+function mountCameraControls({container, bookmarkContainer = null, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
+  cameraSpace(space);
+  if (!container || typeof getViewers !== 'function') throw Error(t('相机面板需要挂载容器和 getViewers'));
+  const doc = container.ownerDocument, win = doc.defaultView || globalThis;
+  const separateBookmarks = bookmarkContainer && bookmarkContainer !== container;
+  const key = `BuildingWebViewer.camera-bookmarks.v1.${space}`;
+  const limits = {minElevation: -90, minZoom: .02, maxZoom: 100};
+  const watches = new Map(), inputs = new Map(), sliders = new Map(), dragging = new Set();
+  let bookmarks = [], preserveView = true, selectedBookmark = '', disposed = false, frame = null, idCounter = 0;
+  const pendingBookmarks = new Map();
+  let pendingPreserve = null;
+  const el = (tag, text, className) => { const node = doc.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
+  const panel = el(separateBookmarks ? 'section' : 'details', undefined, `camera-controls${separateBookmarks ? ' camera-controls-docked' : ''}`);
+  const body = el('div', undefined, 'camera-controls-body'), status = el('p', '', 'camera-controls-status'); status.setAttribute('role', 'status');
+  if (!separateBookmarks) panel.append(el('summary', t('精确相机与视角书签')));
+  panel.append(body); container.replaceChildren(panel);
+  const bookPanel = el('section', undefined, 'camera-bookmarks');
+  if (separateBookmarks) bookmarkContainer.replaceChildren(bookPanel);
+  const bookStatus = separateBookmarks ? el('p', '', 'camera-controls-status') : status;
+  bookStatus.setAttribute('role', 'status');
+  const message = (text = '', error = false) => {
+    for (const node of new Set([status, bookStatus])) { node.textContent = text; node.classList.toggle('camera-controls-error', error); }
+  };
+  const attempt = callback => { try { return callback(); } catch (error) { message(error.message || String(error), true); return null; } };
+  const controls = [], bar = el('div', undefined, 'camera-controls-bar'), preserveLabel = el('label', undefined, 'camera-preserve');
+  const preserveInput = el('input'); preserveInput.type = 'checkbox'; preserveInput.checked = true;
+  preserveInput.setAttribute('aria-label', t('增删文件时保持当前视角'));
+  preserveLabel.append(preserveInput, doc.createTextNode(t('增删文件时保持当前视角')));
+  const heightLabel = el('span', '', 'camera-view-height'); bar.append(preserveLabel, heightLabel); body.append(bar);
+  const grid = el('div', undefined, 'camera-controls-grid'); body.append(grid);
+  const advanced = el('details', undefined, 'camera-advanced'), advancedGrid = el('div', undefined, 'camera-controls-grid');
+  advanced.append(el('summary', t('高级：平移与目标点')), advancedGrid); body.append(advanced);
+  const specifications = [
+    ['azimuth', t('方位角（°）'), .1], ['elevation', t('仰角（°）'), .1], ['zoom', t('缩放倍率'), .05],
+    ['pan0', t('水平平移'), .1], ['pan1', t('垂直平移'), .1],
+    ['target0', space === 'raw-world' ? t('世界目标 X') : t('排列目标 X'), .1],
+    ['target1', space === 'raw-world' ? t('世界目标 Y') : t('排列目标 Y'), .1],
+    ['target2', space === 'raw-world' ? t('世界目标 Z') : t('排列目标 Z'), .1],
+  ];
+  const uiScene = () => getScene() || (space === 'lod-arrangement' ? {ids: [], scale: 'real'} : null);
+  const available = () => {
+    const viewer = getViewers()?.[0];
+    return Boolean(viewer && (space === 'lod-arrangement' ? viewer.models?.length || uiScene()?.ids?.length : viewer.bounds));
+  };
+  function capture() { return available() ? captureCameraSnapshot(getViewers()[0], {space, scene: uiScene()}) : null; }
+  function restore(snapshot, {checkScene = true} = {}) {
+    if (!snapshot) return null;
+    if (!available()) throw Error(t('请先加载数据，再应用相机'));
+    const value = applyCameraSnapshot(getViewers(), snapshot, {space, scene: uiScene(), checkScene, pauseSync});
+    message(t('视角已应用。')); refresh(); return value;
+  }
+  function inputValue(snapshot, name) {
+    return name.startsWith('pan') ? snapshot.camera.pan[Number(name.slice(3))] : name.startsWith('target') ? snapshot.camera.target[Number(name.slice(6))] : snapshot.camera[name];
+  }
+  function displayNumber(value, name) { return name.startsWith('target') ? String(value) : String(Number(value.toPrecision(12))); }
+  function snapshotWithInput(name, raw) {
+    const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再调整相机'));
+    if (!String(raw).trim()) throw Error(t('相机参数不能为空'));
+    const value = Number(raw);
+    if(snapshot.version===1){const viewer=getViewers()[0];snapshot.version=2;Object.assign(snapshot.camera,{roll:viewer.camera.roll||0,distance:viewer.distance||viewer.baseHeight*2,fov:viewer.fov||55,near:viewer.near||.001});}
+    if (name.startsWith('pan')) snapshot.camera.pan[Number(name.slice(3))] = value;
+    else if (name.startsWith('target')) snapshot.camera.target[Number(name.slice(6))] = value;
+    else snapshot.camera[name] = value;
+    return validateCameraSnapshot(snapshot, {space, scene: uiScene()});
+  }
+  function applyInput(name, raw) { restore(snapshotWithInput(name, raw)); message(''); }
+  function sliderPosition(name, value, slider) {
+    if (name === 'zoom') return Math.max(0, Math.min(1000, 1000 * Math.log(value / limits.minZoom) / Math.log(limits.maxZoom / limits.minZoom)));
+    // +180 and -180 are identical; keep the right endpoint stable while dragging.
+    if (name === 'azimuth' && value === -180 && Number(slider.value) === 180) return 180;
+    return value;
+  }
+  function sliderNumber(name, raw) {
+    const value = Number(raw), slider = sliders.get(name);
+    if (!String(raw).trim() || !Number.isFinite(value) || value < Number(slider.min) || value > Number(slider.max)) throw Error(t('滑块数值超出范围'));
+    if (name !== 'zoom') return value;
+    if (value === 0) return limits.minZoom;
+    if (value === 1000) return limits.maxZoom;
+    return limits.minZoom * Math.exp(value / 1000 * Math.log(limits.maxZoom / limits.minZoom));
+  }
+  for (const [name, label, step] of specifications) {
+    const basic = ['azimuth', 'elevation', 'zoom'].includes(name);
+    const group = el('div', undefined, `camera-number-field${basic ? ' camera-slider-field' : ''}`), caption = el('span', label), row = el('span', undefined, 'camera-number-row');
+    const minus = el('button', '−'), input = el('input'), plus = el('button', '+');
+    for (const button of [minus, plus]) { button.type = 'button'; button.setAttribute('aria-label', `${button === minus ? t('减小') : t('增大')}${label}`); }
+    input.type = 'number'; input.step = String(step); input.setAttribute('aria-label', label); input.autocomplete = 'off';
+    if (name === 'elevation') { input.min = String(limits.minElevation); input.max = '90'; }
+    if (name === 'zoom') { input.min = String(limits.minZoom); input.max = String(limits.maxZoom); }
+    input.addEventListener('input', () => {
+      // Partial edits must leave the current camera intact; change reports errors.
+      let snapshot; try { snapshot = snapshotWithInput(name, input.value); } catch { return; }
+      attempt(() => { restore(snapshot); message(''); });
+    });
+    input.addEventListener('change', () => attempt(() => applyInput(name, input.value)));
+    input.addEventListener('blur', scheduleRefresh);
+    for (const [button, direction] of [[minus, -1], [plus, 1]]) button.addEventListener('click', event => {
+      event.preventDefault(); attempt(() => {
+        const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再调整相机'));
+        applyInput(name, Number((inputValue(snapshot, name) + direction * step).toPrecision(15)));
+      });
+    });
+    row.append(minus, input, plus); group.append(caption, row);
+    if (basic) {
+      const slider = el('input', undefined, 'camera-slider'); slider.type = 'range';
+      slider.min = String(name === 'zoom' ? 0 : name === 'azimuth' ? -180 : limits.minElevation);
+      slider.max = String(name === 'zoom' ? 1000 : name === 'azimuth' ? 180 : 90);
+      slider.step = name === 'zoom' ? '1' : '.1'; slider.setAttribute('aria-label', t("{0}滑块", [label]));
+      slider.addEventListener('pointerdown', () => dragging.add(name));
+      const finish = () => { dragging.delete(name); scheduleRefresh(); };
+      for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'change', 'blur']) slider.addEventListener(event, finish);
+      slider.addEventListener('input', () => attempt(() => applyInput(name, sliderNumber(name, slider.value))));
+      const endpoints = el('div', undefined, 'camera-slider-endpoints');
+      endpoints.append(el('span', name === 'zoom' ? `${limits.minZoom}×` : `${slider.min}°`), el('span', name === 'zoom' ? `${limits.maxZoom}×` : `${slider.max}°`));
+      group.append(slider, endpoints); sliders.set(name, slider); controls.push(slider);
+    }
+    (basic ? grid : advancedGrid).append(group); inputs.set(name, input); controls.push(minus, input, plus);
+  }
+  const help = el('p', space === 'raw-world'
+    ? t('平移按屏幕水平/垂直方向，单位与原坐标一致。目标点保留原始坐标精度。')
+    : t('目标点使用网格排列坐标；书签适用于相同模型顺序和比例模式。'), 'camera-controls-help');
+  advanced.append(help);
+  body.append(el('p', t('拖动滑块可连续调整；数字输入与鼠标操作实时同步。缩放滑块采用对数刻度。'), 'camera-controls-help'), status);
+  // In the combined legacy layout bookmarks follow the camera, not precede it.
+  if (!separateBookmarks) body.append(bookPanel);
+  const bookHeading = el('div', undefined, 'camera-bookmark-heading'), bookCount = el('span', '', 'camera-bookmark-count');
+  bookCount.setAttribute('aria-label', t('已保存书签数量')); bookHeading.append(el('strong', t('本机视角书签')), bookCount);
+  const storageHelp = el('p', t('保存在此浏览器，下次打开仍可使用。可导出 JSON 备份或转移到其他浏览器。'), 'camera-bookmark-storage');
+  const bookmarkName = el('input'), bookmarkSelect = el('select');
+  bookmarkName.type = 'text'; bookmarkName.maxLength = 80; bookmarkName.placeholder = t('输入视角名称'); bookmarkName.setAttribute('aria-label', t('视角书签名称'));
+  bookmarkSelect.size = 5; bookmarkSelect.setAttribute('aria-label', t('已保存视角'));
+  const bookmarkMeta = el('p', '', 'camera-bookmark-meta'); bookmarkMeta.setAttribute('aria-label', t('选中书签信息'));
+  bookPanel.append(bookHeading, storageHelp, bookmarkSelect, bookmarkMeta, bookmarkName);
+  const actions = el('div', undefined, 'camera-bookmark-actions');
+  const action = text => { const button = el('button', text); button.type = 'button'; actions.append(button); return button; };
+  const saveButton = action(t('保存新书签')), loadButton = action(t('加载所选')), updateButton = action(t('更新视角')), renameButton = action(t('重命名')), deleteButton = action(t('删除所选'));
+  const files = el('div', undefined, 'camera-bookmark-files');
+  const exportButton = el('button', t('导出 JSON')), importButton = el('button', t('导入 JSON'));
+  exportButton.type = importButton.type = 'button'; files.append(exportButton, importButton);
+  const importInput = el('input'); importInput.type = 'file'; importInput.accept = '.json,application/json'; importInput.hidden = true;
+  bookPanel.append(actions, files, importInput); if (separateBookmarks) bookPanel.append(bookStatus);
+  function storageUnavailable() {
+    storageHelp.textContent = t('当前浏览器无法持久保存；本次书签仍可使用，请导出 JSON 备份。');
+    message(storageHelp.textContent, true);
+  }
+  function syncStored({notifyDeleted = true} = {}) {
+    try {
+      const stored = win.localStorage.getItem(key);
+      const latest = stored ? parseCameraBookmarks(stored, space) : {bookmarks: [], preserveView: true};
+      // Rebase only unsaved local edits, never this panel's entire cached array.
+      const merged = new Map(latest.bookmarks.map(bookmark => [bookmark.id, bookmark]));
+      for (const [id, bookmark] of pendingBookmarks) { if (bookmark) merged.set(id, bookmark); else merged.delete(id); }
+      bookmarks = [...merged.values()];
+      preserveView = pendingPreserve ?? latest.preserveView; preserveInput.checked = preserveView;
+      const deleted = selectedBookmark && !merged.has(selectedBookmark);
+      updateBookmarks();
+      // Keep the name input untouched: it may contain an unfinished draft.
+      if (deleted && notifyDeleted) message(t('所选书签已在另一页面删除，请重新选择；当前视角未改变。'), true);
+      return true;
+    } catch { storageUnavailable(); return false; }
+  }
+  function persist() {
+    // Read again at the write boundary, including after asynchronous imports.
+    // When reading fails, do not overwrite records we cannot safely reconcile.
+    if (!syncStored()) return false;
+    try {
+      win.localStorage.setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView));
+      pendingBookmarks.clear(); pendingPreserve = null;
+      storageHelp.textContent = t('保存在此浏览器，下次打开仍可使用。可导出 JSON 备份或转移到其他浏览器。'); return true;
+    } catch { storageUnavailable(); return false; }
+  }
+  function updateBookmarks() {
+    bookmarkSelect.replaceChildren();
+    if (!bookmarks.length) { const empty = el('option', t('暂无书签')); empty.value = ''; bookmarkSelect.append(empty); }
+    for (const bookmark of bookmarks) { const option = el('option', bookmark.name); option.value = bookmark.id; bookmarkSelect.append(option); }
+    const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark);
+    if (!selected) selectedBookmark = '';
+    bookmarkSelect.value = selectedBookmark;
+    bookCount.textContent = `${bookmarks.length} / ${CAMERA_MAX_BOOKMARKS}`;
+    bookmarkMeta.textContent = selected ? t("{0}\n更新：{1}", [selected.name, selected.updatedAt ? new Date(selected.updatedAt).toLocaleString('zh-CN', {hour12: false}) : t('未记录（旧版书签）')]) : t('选择书签后可加载、更新、重命名或删除。');
+    loadButton.disabled = updateButton.disabled = !available() || !selectedBookmark;
+    renameButton.disabled = deleteButton.disabled = !selectedBookmark; exportButton.disabled = !bookmarks.length;
+  }
+  function scheduleRefresh() {
+    if (disposed || frame !== null) return;
+    frame = win.requestAnimationFrame(() => { frame = null; refresh(); });
+  }
+  function watchViewers() {
+    for (const viewer of getViewers() || []) {
+      if (watches.has(viewer) || typeof viewer.render !== 'function') continue;
+      const original = viewer.render;
+      const wrapped = function(...args) { const result = original.apply(this, args); scheduleRefresh(); return result; };
+      watches.set(viewer, {original, wrapped}); viewer.render = wrapped;
+    }
+  }
+  function refresh() {
+    if (disposed) return;
+    watchViewers(); const snapshot = attempt(capture), enabled = Boolean(snapshot);
+    controls.forEach(control => { control.disabled = !enabled; }); saveButton.disabled = !enabled;
+    if (snapshot) {
+      for (const [name, input] of inputs) if (doc.activeElement !== input) input.value = displayNumber(inputValue(snapshot, name), name);
+      for (const [name, slider] of sliders) {
+        if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
+        slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? t(' 倍') : t(' 度')}`);
+      }
+      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? 2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
+    } else {
+      dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
+      heightLabel.textContent = t('加载数据后可调整');
+    }
+    loadButton.disabled = updateButton.disabled = !enabled || !selectedBookmark;
+  }
+  const finishDragging = () => { if (dragging.size) { dragging.clear(); scheduleRefresh(); } };
+  win.addEventListener?.('pointerup', finishDragging); win.addEventListener?.('pointercancel', finishDragging);
+  function freshId() {
+    let id; do { id = win.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${++idCounter}`; }
+    while (bookmarks.some(bookmark => bookmark.id === id)); return id;
+  }
+  function validName() {
+    const name = bookmarkName.value.trim(); if (!name || name.length > 80) throw Error(t('请填写 1–80 个字符的书签名称')); return name;
+  }
+  function uniqueName(name) {
+    let result = name, number = 2;
+    while (bookmarks.some(bookmark => bookmark.name === result)) { const suffix = ` (${number++})`; result = name.slice(0, 80 - suffix.length) + suffix; }
+    return result;
+  }
+  preserveInput.addEventListener('change', () => {
+    const requested = preserveInput.checked; syncStored();
+    pendingPreserve = requested; preserveView = requested; preserveInput.checked = requested; persist();
+  });
+  bookmarkSelect.addEventListener('change', () => {
+    selectedBookmark = bookmarkSelect.value;
+    const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark); if (selected) bookmarkName.value = selected.name;
+    updateBookmarks();
+  });
+  saveButton.addEventListener('click', () => attempt(() => {
+    syncStored();
+    const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再保存视角'));
+    if (bookmarks.length >= CAMERA_MAX_BOOKMARKS) throw Error(t('最多保存 100 个书签，请先删除不需要的视角'));
+    const name = uniqueName(validName()), record = {id: freshId(), name, snapshot, updatedAt: new Date().toISOString()};
+    bookmarks.push(record); pendingBookmarks.set(record.id, record); selectedBookmark = record.id; bookmarkName.value = name; updateBookmarks();
+    if (persist()) message(t("已保存新书签“{0}”，下次打开仍可使用。", [name]));
+  }));
+  loadButton.addEventListener('click', () => attempt(() => {
+    syncStored();
+    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (bookmark) restore(bookmark.snapshot);
+  }));
+  updateButton.addEventListener('click', () => attempt(() => {
+    syncStored();
+    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (!bookmark) return;
+    const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再更新视角'));
+    bookmark.snapshot = snapshot; bookmark.updatedAt = new Date().toISOString(); pendingBookmarks.set(bookmark.id, bookmark); updateBookmarks();
+    if (persist()) message(t("已更新“{0}”的视角。", [bookmark.name]));
+  }));
+  renameButton.addEventListener('click', () => attempt(() => {
+    syncStored();
+    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (!bookmark) return;
+    const name = validName();
+    if (bookmarks.some(record => record.id !== bookmark.id && record.name === name)) throw Error(t('已有同名书签，请使用其他名称'));
+    bookmark.name = name; bookmark.updatedAt = new Date().toISOString(); pendingBookmarks.set(bookmark.id, bookmark); updateBookmarks();
+    if (persist()) message(t("已重命名为“{0}”。", [name]));
+  }));
+  deleteButton.addEventListener('click', () => {
+    syncStored(); if (!selectedBookmark) return;
+    pendingBookmarks.set(selectedBookmark, null);
+    bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; bookmarkName.value = ''; updateBookmarks();
+    if (persist()) message(t('书签已删除。'));
+  });
+  exportButton.addEventListener('click', async () => { try {
+    syncStored();
+    const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
+    if (isMobileApp()) { await mobileShareBlob(blob, `BuildingWebViewer-camera-${space}.json`); message(t('相机书签 JSON 已导出，不含模型数据。')); return; }
+    const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
+    win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message(t('相机书签 JSON 已导出，不含模型数据。'));
+  } catch(error) { message(error.message, true); } });
+  importButton.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files?.[0]; importInput.value = ''; if (!file) return;
+    try {
+      if (file.size > 1024 * 1024) throw Error(t('相机 JSON 超过 1 MB，请检查是否选择了正确文件'));
+      const incoming = parseCameraBookmarks(await file.text(), space);
+      if (disposed) return;
+      syncStored();
+      if (bookmarks.length + incoming.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error(t('导入后超过 100 个书签，请先删除不需要的视角'));
+      for (const bookmark of incoming.bookmarks) {
+        const record = {...bookmark, name: uniqueName(bookmark.name), id: freshId(), updatedAt: bookmark.updatedAt || new Date().toISOString()};
+        bookmarks.push(record); pendingBookmarks.set(record.id, record);
+      }
+      selectedBookmark = incoming.bookmarks.length ? bookmarks.at(-1).id : selectedBookmark;
+      if (selectedBookmark) bookmarkName.value = bookmarks.find(bookmark => bookmark.id === selectedBookmark).name;
+      updateBookmarks(); if (persist()) message(t("已导入 {0} 个书签；选择后点击“加载所选”应用。", [incoming.bookmarks.length]));
+    } catch (error) { message(error.message || String(error), true); }
+  });
+  const onStorage = event => {
+    if (!disposed && (event.key === key || event.key === null)) syncStored();
+  };
+  win.addEventListener?.('storage', onStorage);
+  syncStored({notifyDeleted: false});
+  preserveInput.checked = preserveView; updateBookmarks(); refresh();
+  return {
+    get preserveView() { return preserveView; }, capture, restore, refresh,
+    destroy() {
+      disposed = true; if (frame !== null) win.cancelAnimationFrame(frame);
+      for (const [viewer, {original, wrapped}] of watches) if (viewer.render === wrapped) viewer.render = original;
+      win.removeEventListener?.('storage', onStorage);
+      win.removeEventListener?.('pointerup', finishDragging); win.removeEventListener?.('pointercancel', finishDragging);
+      panel.remove(); if (separateBookmarks) bookPanel.remove(); watches.clear(); dragging.clear();
+    },
+  };
+}
+
+
+// Source: src/shared/camera-animation.js
+
+
+/** Renderer-independent, one-based camera timeline. No DOM, storage or video encoder. */
+const CA_FORMAT='BuildingWebViewer.camera-animation';
+const CA_EASINGS=['linear','smooth','ease-in','ease-out','hold'];
+function caFrameCount(duration,fps){
+ if(!Number.isFinite(duration)||duration<=0||duration>300||!Number.isInteger(fps)||fps<1||fps>60)throw Error('时长需大于 0 且不超过 300 秒，帧率为 1–60 的整数 / Duration: (0, 300] seconds; FPS: 1–60');
+ return Math.max(1,Math.round(duration*fps));
+}
+function caTime(frame,fps){return (frame-1)/fps;}
+function caEase(t,mode){t=Math.max(0,Math.min(1,t));if(mode==='hold')return t>=1?1:0;if(mode==='smooth')return t*t*(3-2*t);if(mode==='ease-in')return t*t;if(mode==='ease-out')return 1-(1-t)*(1-t);return t;}
+const caClone=value=>JSON.parse(JSON.stringify(value));
+const caMix=(a,b,t)=>a+(b-a)*t;
+const caLogMix=(a,b,t)=>Math.exp(caMix(Math.log(a),Math.log(b),t));
+const caSameScene=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+function caNormalizeSnapshot(raw){
+ const s=validateCameraSnapshot(raw,{space:raw?.space,checkScene:false}),c=s.camera;
+ return validateCameraSnapshot({...s,version:2,camera:{...c,roll:c.roll||0,distance:c.distance||c.baseHeight*2,fov:c.fov||55,near:c.near||.001}},{space:s.space,checkScene:false});
+}
+function caOutput(raw={}){
+ const value={format:'mp4',width:1280,height:720,bitrate:8e6,guides:false,...raw};
+ if(!['mp4','webm','png'].includes(value.format)||!Number.isInteger(value.width)||!Number.isInteger(value.height)||value.width<64||value.height<64||value.width>4096||value.height>4096||value.width%2||value.height%2||value.width*value.height>3840*2160||!Number.isFinite(value.bitrate)||value.bitrate<1e5||value.bitrate>1e8||typeof value.guides!=='boolean')throw Error('视频尺寸需为 64–4096 的偶数、总像素不超过 4K，码率为 0.1–100 Mbps / Invalid output size, bitrate or format');
+ return {format:value.format,width:value.width,height:value.height,bitrate:value.bitrate,guides:value.guides};
+}
+function caValidateProject(value){
+ if(value?.format!==CA_FORMAT||value.version!==1||!['lod-arrangement','raw-world'].includes(value.space)||!Array.isArray(value.keys)||value.keys.length>200)throw Error('无效的相机动画文件（最多 200 个关键帧） / Invalid camera animation (at most 200 keyframes)');
+ const frames=caFrameCount(value.duration,value.fps),ids=new Set(),used=new Set();let scene=null,hasScene=false;
+ const keys=value.keys.map((k,i)=>{
+  if(!k||typeof k.id!=='string'||!k.id||k.id.length>128||ids.has(k.id)||!Number.isInteger(k.frame)||k.frame<1||k.frame>frames||used.has(k.frame)||typeof k.name!=='string'||k.name.length>80||!CA_EASINGS.includes(k.easing))throw Error('关键帧编号、名称或帧位置无效；同一帧不能有两个关键帧 / Invalid or duplicate keyframe');
+  ids.add(k.id);used.add(k.frame);const snapshot=caNormalizeSnapshot(k.snapshot);if(snapshot.space!==value.space)throw Error('相机坐标空间不一致 / Camera spaces differ');
+  if(hasScene&&!caSameScene(scene,snapshot.scene))throw Error('所有关键帧必须使用相同的模型布局 / Keyframes must use the same scene layout');scene=snapshot.scene;hasScene=true;
+  return {id:k.id,frame:k.frame,name:k.name,easing:k.easing,snapshot};
+ }).sort((a,b)=>a.frame-b.frame);
+ return {format:CA_FORMAT,version:1,space:value.space,duration:frames/value.fps,fps:value.fps,keys,output:caOutput(value.output)};
+}
+function caNewProject(space='lod-arrangement'){return {format:CA_FORMAT,version:1,space,duration:5,fps:30,keys:[],output:caOutput()};}
+function caSerialize(project){return JSON.stringify(caValidateProject(project),null,2);}
+function caParse(text){if(typeof text!=='string'||text.length>2*1024*1024)throw Error('动画文件超过 2 MB / Animation file exceeds 2 MB');return caValidateProject(JSON.parse(text));}
+/** Quaternion columns are camera right/up/back, avoiding azimuth wrap and gimbal interpolation. */
+function caQuat(camera){
+ const az=camera.azimuth*Math.PI/180,el=camera.elevation*Math.PI/180,roll=(camera.roll||0)*Math.PI/180;
+ const r=[-Math.sin(az),Math.cos(az),0],u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)],b=[Math.cos(el)*Math.cos(az),Math.cos(el)*Math.sin(az),Math.sin(el)];
+ const right=r.map((v,i)=>v*Math.cos(roll)+u[i]*Math.sin(roll)),up=u.map((v,i)=>v*Math.cos(roll)-r[i]*Math.sin(roll));
+ const m=[right[0],up[0],b[0],right[1],up[1],b[1],right[2],up[2],b[2]],tr=m[0]+m[4]+m[8];let q;
+ if(tr>0){const s=Math.sqrt(tr+1)*2;q=[(m[7]-m[5])/s,(m[2]-m[6])/s,(m[3]-m[1])/s,s/4];}
+ else if(m[0]>m[4]&&m[0]>m[8]){const s=Math.sqrt(1+m[0]-m[4]-m[8])*2;q=[s/4,(m[1]+m[3])/s,(m[2]+m[6])/s,(m[7]-m[5])/s];}
+ else if(m[4]>m[8]){const s=Math.sqrt(1+m[4]-m[0]-m[8])*2;q=[(m[1]+m[3])/s,s/4,(m[5]+m[7])/s,(m[2]-m[6])/s];}
+ else{const s=Math.sqrt(1+m[8]-m[0]-m[4])*2;q=[(m[2]+m[6])/s,(m[5]+m[7])/s,s/4,(m[3]-m[1])/s];}
+ const n=Math.hypot(...q);return q.map(v=>v/n);
+}
+function caSlerp(a,b,t){let dot=a.reduce((s,v,i)=>s+v*b[i],0);if(dot<0){b=b.map(v=>-v);dot=-dot;}let q;
+ if(dot>.9995)q=a.map((v,i)=>caMix(v,b[i],t));else{const theta=Math.acos(Math.max(-1,Math.min(1,dot))),sn=Math.sin(theta);q=a.map((v,i)=>(v*Math.sin((1-t)*theta)+b[i]*Math.sin(t*theta))/sn);}const n=Math.hypot(...q);return q.map(v=>v/n);
+}
+function caBasis([x,y,z,w]){return [[1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w)],[2*(x*y-z*w),1-2*(x*x+z*z),2*(y*z+x*w)],[2*(x*z+y*w),2*(y*z-x*w),1-2*(x*x+y*y)]];}
+function caInterpolate(a,b,t){
+ if(t<=0)return caClone(a);if(t>=1)return caClone(b);if(a.projection!==b.projection)return caClone(a);
+ const x=caNormalizeSnapshot(a),y=caNormalizeSnapshot(b),c=x.camera,d=y.camera,rot={camera:{}};gsSetOrbitBasis(rot,caBasis(caSlerp(caQuat(c),caQuat(d),t)));
+ return {...x,camera:{...c,...rot.camera,zoom:caLogMix(c.zoom,d.zoom,t),baseHeight:caLogMix(c.baseHeight,d.baseHeight,t),distance:caLogMix(c.distance,d.distance,t),fov:caMix(c.fov,d.fov,t),near:caLogMix(c.near,d.near,t),pan:c.pan.map((v,i)=>caMix(v,d.pan[i],t)),target:c.target.map((v,i)=>caMix(v,d.target[i],t))}};
+}
+/** Project is validated on edits, not once per rendered frame. End regions hold nearest key. */
+function caSample(project,frame){
+ const keys=project.keys;if(!keys.length)return null;if(!Number.isFinite(frame))throw Error('Invalid playhead');
+ if(frame<=keys[0].frame)return caClone(keys[0].snapshot);if(frame>=keys.at(-1).frame)return caClone(keys.at(-1).snapshot);
+ let high=keys.findIndex(k=>k.frame>=frame);if(keys[high].frame===frame)return caClone(keys[high].snapshot);
+ const a=keys[high-1],b=keys[high];return caInterpolate(a.snapshot,b.snapshot,caEase((frame-a.frame)/(b.frame-a.frame),a.easing));
+}
+function caPutKey(project,{frame,snapshot,name,easing='smooth',id=null}){
+ const next=caClone(project),existing=next.keys.find(k=>k.frame===frame);const key={id:existing?.id||id||`key-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`,frame,name:name??existing?.name??`视角 ${frame}`,easing:existing?.easing||easing,snapshot:caNormalizeSnapshot(snapshot)};
+ next.keys=next.keys.filter(k=>k.frame!==frame);next.keys.push(key);return caValidateProject(next);
+}
+function caMoveKey(project,id,frame){const next=caClone(project),key=next.keys.find(k=>k.id===id);if(!key)throw Error('Keyframe missing');key.frame=frame;return caValidateProject(next);}
+function caResize(project,duration,fps,{stretch=true}={}){
+ const next=caClone(project),oldTotal=caFrameCount(project.duration,project.fps),total=caFrameCount(duration,fps);next.duration=total/fps;next.fps=fps;
+ if(stretch)for(const k of next.keys)k.frame=oldTotal===1?1:1+Math.round((k.frame-1)*(total-1)/(oldTotal-1));
+ return caValidateProject(next);
+}
+function caOrbit(project,snapshot){const total=caFrameCount(project.duration,project.fps);if(total<5)throw Error('环绕示例至少需要 5 帧 / Orbit needs at least 5 frames');
+ const result={...caClone(project),keys:[]},base=caNormalizeSnapshot(snapshot);
+ for(let i=0;i<5;i++){const s=caClone(base);s.camera.azimuth+=i*90;result.keys.push({id:'orbit-'+i,frame:1+Math.round(i*(total-1)/4),name:`${i*90}°`,easing:'linear',snapshot:s});}return caValidateProject(result);
+}
+
+
+// Source: src/shared/zip-writer.js
+/** Bounded ZIP/Store sink, append-only and compatible with directly written files. */
+const zwTable=Uint32Array.from({length:256},(_,n)=>{for(let i=0;i<8;i++)n=(n>>>1)^((n&1)?0xedb88320:0);return n>>>0;});
+function zwCRC(data){let n=0xffffffff;for(const b of data)n=(n>>>8)^zwTable[(n^b)&255];return(n^0xffffffff)>>>0;}
+function createStoreZip({write,maxBytes=128*1024*1024}={}){
+ const entries=[];let offset=0,closed=false;const encoder=new TextEncoder();
+ const send=async bytes=>{if(offset+bytes.byteLength>Math.min(maxBytes,0xffffffff))throw Error('帧序列超过输出上限，请缩短时长或直接写入文件 / Frame sequence exceeds output limit');await write(bytes);offset+=bytes.byteLength;};
+ return {async add(path,value){
+  if(closed||entries.length>=65000||typeof path!=='string'||path.startsWith('/')||path.split('/').some(v=>!v||v==='..'||v==='.')||/[\x00-\x1f\\]/.test(path))throw Error('Invalid ZIP entry');
+  const name=encoder.encode(path);if(name.length>65535||entries.some(e=>e.path===path))throw Error('Duplicate or long ZIP path');
+  const data=value instanceof Uint8Array?value:new Uint8Array(await value.arrayBuffer()),crc=zwCRC(data),header=new Uint8Array(30+name.length),v=new DataView(header.buffer);v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(6,0x800,true);v.setUint16(12,33,true);v.setUint32(14,crc,true);v.setUint32(18,data.length,true);v.setUint32(22,data.length,true);v.setUint16(26,name.length,true);header.set(name,30);entries.push({path,name,size:data.length,crc,offset});await send(header);await send(data);
+ },async close(){if(closed)throw Error('ZIP already closed');closed=true;const start=offset;
+  for(const e of entries){const header=new Uint8Array(46+e.name.length),v=new DataView(header.buffer);v.setUint32(0,0x02014b50,true);v.setUint16(4,20,true);v.setUint16(6,20,true);v.setUint16(8,0x800,true);v.setUint16(14,33,true);v.setUint32(16,e.crc,true);v.setUint32(20,e.size,true);v.setUint32(24,e.size,true);v.setUint16(28,e.name.length,true);v.setUint32(42,e.offset,true);header.set(e.name,46);await send(header);}
+  const end=new Uint8Array(22),v=new DataView(end.buffer);v.setUint32(0,0x06054b50,true);v.setUint16(8,entries.length,true);v.setUint16(10,entries.length,true);v.setUint32(12,offset-start,true);v.setUint32(16,start,true);await send(end);
+ },get bytes(){return offset;}};
+}
+
+
+// Source: src/shared/animation-export.js
+
+
+/** Deterministic frame production: wall-clock playback speed never drops exported frames. */
+async function caRunFrames({project,render,write,signal,onProgress=()=>{},guard=()=>true,yieldTask=()=>new Promise(r=>setTimeout(r,0))}){
+ const checked=caValidateProject(project),total=caFrameCount(checked.duration,checked.fps);if(!checked.keys.length)throw Error('请先添加关键帧 / Add a keyframe first');
+ for(let index=0;index<total;index++){
+  if(signal?.aborted)throw new DOMException('已取消 / Canceled','AbortError');if(!guard())throw Error('模型或布局已改变，导出已停止；请重新加载动画对应的场景 / Scene changed; export stopped');
+  const frame=await render(caSample(checked,index+1),index);await write(frame,index,index/checked.fps,1/checked.fps);onProgress(index+1,total);await yieldTask();
+ }
+ if(signal?.aborted)throw new DOMException('已取消 / Canceled','AbortError');
+ return total;
+}
+let caWriterPromise;
+function caLoadVideoWriter(){
+ if(globalThis.BWVVideoWriter)return Promise.resolve(globalThis.BWVVideoWriter);
+ if(!caWriterPromise)caWriterPromise=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=new URL('assets/vendor/video-writer.js?v='+encodeURIComponent(document.querySelector('meta[name="application-build"]')?.content||'preview'),document.baseURI).href;script.onload=()=>globalThis.BWVVideoWriter?resolve(globalThis.BWVVideoWriter):reject(Error('视频编码模块未就绪 / Video encoder unavailable'));script.onerror=()=>reject(Error('无法加载本地视频编码模块 / Cannot load the local video encoder'));document.head.append(script);}).catch(e=>{caWriterPromise=null;throw e;});return caWriterPromise;
+}
+async function caExportAnimation({project,adapter,width,height,format='mp4',bitrate=8e6,signal,onProgress=()=>{},writable=null,includeGuides=false}){
+ if(!['mp4','webm','png'].includes(format)||!Number.isInteger(width)||!Number.isInteger(height)||width<64||height<64||width>4096||height>4096||width%2||height%2||width*height>3840*2160||!Number.isFinite(bitrate)||bitrate<100000||bitrate>100e6)throw Error('视频尺寸需为 64–4096 的偶数，总像素不超过 4K；码率为 0.1–100 Mbps / Invalid video size or bitrate');
+ project=caValidateProject(project);if(!project.keys.length)throw Error('请先添加关键帧 / Add keyframes first');adapter.assert(project.keys[0].snapshot);
+ if(!writable&&format!=='png'&&bitrate*project.duration/8>112*1024*1024)throw Error('预计视频较大，请直接写入文件或降低时长 / Large video: save directly to disk or reduce duration');
+ let writer=null,session=null;const cancelWriter=()=>{writer?.cancel().catch(()=>{});};const guard=adapter.guard(),before=adapter.capture(),parts=[],limit=128*1024*1024;let size=0,pngFrames=0;
+ try{
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)throw Error('无法创建导出画布 / Cannot create video canvas');
+  if(format==='png'){
+   const zip=createStoreZip({maxBytes:writable?0xffffffff:limit,write:async bytes=>{if(writable)await writable.write(bytes);else{size+=bytes.byteLength;if(size>limit)throw Error('帧序列超过 128 MB，请直接写入文件 / Sequence exceeds 128 MB; save directly to disk');parts.push(bytes);}}});
+   await zip.add('animation.json',new TextEncoder().encode(caSerialize(project)));
+   await zip.add('README.txt',new TextEncoder().encode(`BWV camera frame sequence\nFPS: ${project.fps}\nFrames: ${caFrameCount(project.duration,project.fps)}\nDuration: ${project.duration} seconds\nframe_000001.png is time 0. Import as a PNG image sequence at the FPS above.\n`));
+   writer={get info(){return {encodedFrames:pngFrames,codec:'PNG'};},async add(i){const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PNG encoding failed')),'image/png'));await zip.add(`frame_${String(i+1).padStart(6,'0')}.png`,blob);pngFrames++;},async finish(){await zip.close();if(writable){await writable.close();return null;}return new Blob(parts,{type:'application/zip'});},async cancel(){parts.length=0;await writable?.abort().catch(()=>{});}};
+  }else{
+   const vendor=await caLoadVideoWriter();if(!await vendor.supported(format,{width,height,fps:project.fps,bitrate}))throw Error(`浏览器不支持此尺寸的 ${format.toUpperCase()} 编码，请改用 WebM、PNG 帧序列或降低尺寸 / This codec/size is unsupported; try WebM, PNG sequence or a smaller frame`);
+   writer=await vendor.create(canvas,{format,fps:project.fps,bitrate,writable,maxBytes:limit});
+  }
+  session=adapter.createCapture(width,height);signal?.addEventListener('abort',cancelWriter,{once:true});
+  await caRunFrames({project,signal,guard,onProgress,render:snapshot=>{adapter.apply(snapshot,{render:false});ctx.putImageData(new ImageData(session.render(),width,height),0,0);if(includeGuides)adapter.drawGuides?.(ctx,width,height);return canvas;},write:(_,i)=>writer.add(i)});
+  const result=await writer.finish();if(writer.info.encodedFrames!==caFrameCount(project.duration,project.fps))throw Error('实际编码帧数与时间轴不符 / Encoded frame count mismatch');if(signal?.aborted)throw new DOMException('Canceled','AbortError');return {blob:result,info:{...writer.info,width,height,fps:project.fps,duration:project.duration}};
+ }catch(e){await writer?.cancel().catch(()=>{});if(!writer)await writable?.abort().catch(()=>{});throw e;}
+ finally{signal?.removeEventListener('abort',cancelWriter);session?.dispose();if(guard())adapter.apply(before);}
+}
+
+
+// Source: src/shared/animation-controls.js
+
+
+/** Shared desktop animation editor. All tool-specific state lives behind adapter. */
+function mountCameraAnimation({adapter,toolbar,anchor,storageKey='BWV.camera-animation.mesh.v1'}){
+ const doc=toolbar.ownerDocument,en=doc.documentElement.lang==='en',tr=(a,b)=>en?b:a;
+ const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
+ const btn=(text,action,cls)=>{const n=el('button',text,cls);n.type='button';if(action)n.onclick=action;return n;};
+ const select=options=>{const n=el('select');for(const[value,zh,eng]of options){const o=el('option',tr(zh,eng));o.value=value;n.append(o);}return n;};
+ let project=caNewProject(adapter.space),cursor=1,selected=null,playing=false,raf=null,playStart=0,exporter=null,resultURL=null,cacheError=false,drag=null;
+ const past=[],future=[];const storage=()=>globalThis.localStorage;
+ try{const saved=storage().getItem(storageKey);if(saved)project=caParse(saved);}catch{cacheError=true;}
+ const toggle=btn(tr('相机动画','Camera animation'),()=>setOpen(panel.hidden),'ca-toggle');toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls','camera-animation');toolbar.append(toggle);
+ const panel=el('section',null,'camera-animation');panel.id='camera-animation';panel.hidden=true;panel.setAttribute('aria-label',tr('相机动画时间轴','Camera animation timeline'));anchor.after(panel);
+ const header=el('div',null,'ca-heading'),heading=el('div'),eyebrow=el('span','CAMERA ANIMATION','ca-eyebrow');heading.append(eyebrow,el('h3',tr('相机动画','Camera animation')));
+ const files=el('div',null,'ca-header-actions'),newButton=btn(tr('新建','New'),()=>{stop();commit(caNewProject(adapter.space));cursor=1;selected=null;refresh();message(tr('已新建空时间轴；可撤销。','New timeline created; Undo is available.'));}),importButton=btn(tr('导入 JSON','Import JSON'),()=>input.click()),jsonButton=btn(tr('保存 JSON','Save JSON'),()=>saveJSON()),close=btn('×',()=>setOpen(false),'ca-close');close.setAttribute('aria-label',tr('收起相机动画','Close camera animation'));
+ const compact=btn(tr('精简','Compact'),()=>{const small=panel.classList.toggle('ca-compact');compact.textContent=small?tr('展开','Expand'):tr('精简','Compact');});
+ const input=el('input');input.type='file';input.accept='.json';input.hidden=true;files.append(compact,newButton,importButton,jsonButton,close,input);header.append(heading,files);panel.append(header);
+ const settings=el('div',null,'ca-settings');panel.append(settings);
+ const field=(box,label,n)=>{const l=el('label');l.append(el('span',label),n);n.setAttribute('aria-label',label);box.append(l);return n;};
+ const duration=field(settings,tr('时长 / 秒','Duration / s'),el('input'));duration.type='number';duration.min='.016667';duration.max='300';duration.step='any';duration.value=project.duration;
+ const fps=field(settings,tr('帧率 / FPS','Frame rate / FPS'),el('input'));fps.type='number';fps.min=1;fps.max=60;fps.step=1;fps.value=project.fps;
+ const resize=field(settings,tr('调整时间轴时','When changing timing'),select([['stretch','等比例移动关键帧','Scale keyframe positions'],['keep','保留原帧号','Keep frame numbers']]));
+ const applyTime=btn(tr('应用','Apply'),()=>timing());const meta=el('span',null,'ca-meta');settings.append(applyTime,meta);
+ const transport=el('div',null,'ca-transport'),play=btn(tr('▶ 播放','▶ Play'),()=>playing?stop():start(),'ca-play'),first=btn('⏮',()=>seek(1)),prev=btn('‹',()=>seek(cursor-1)),next=btn('›',()=>seek(cursor+1));first.setAttribute('aria-label',tr('回到第一帧','First frame'));prev.setAttribute('aria-label',tr('上一帧','Previous frame'));next.setAttribute('aria-label',tr('下一帧','Next frame'));
+ const frame=el('input');frame.type='number';frame.min=1;frame.step=1;frame.setAttribute('aria-label',tr('当前帧','Current frame'));const frameWrap=el('label',null,'ca-current-frame');frameWrap.append(el('span',tr('第','Frame')),frame,el('span',tr('帧','')));
+ const time=el('output',null,'ca-time'),loopLabel=el('label',null,'ca-check'),loop=el('input');loop.type='checkbox';loopLabel.append(loop,doc.createTextNode(tr('循环','Loop')));
+ const undo=btn('↶',()=>history(-1)),redo=btn('↷',()=>history(1));undo.setAttribute('aria-label',tr('撤销时间轴修改','Undo timeline edit'));redo.setAttribute('aria-label',tr('重做时间轴修改','Redo timeline edit'));
+ const add=btn('',()=>capture(),'primary ca-add'),orbit=btn(tr('环绕示例','Orbit example'),()=>{try{stop();commit(caOrbit(project,adapter.capture()));selected=project.keys[0].id;seek(1);message(tr('已生成一周环绕，可撤销；也可拖动视角后在任意帧打点。','Created one orbit; Undo is available. You can also position the camera and capture any frame.'));}catch(e){message(e.message,true);}});
+ transport.append(first,prev,play,next,frameWrap,time,loopLabel,undo,redo,orbit,add);panel.append(transport);
+ const track=el('div',null,'ca-track');track.tabIndex=0;track.setAttribute('role','group');track.setAttribute('aria-label',tr('关键帧时间轴，左右键逐帧移动','Keyframe timeline; arrow keys step frames'));
+ const ruler=el('div',null,'ca-ruler'),marks=el('div',null,'ca-key-marks'),playhead=el('div',null,'ca-playhead');track.append(ruler,marks,playhead);panel.append(track);
+ const scrub=el('input',null,'ca-scrub');scrub.type='range';scrub.min=1;scrub.step=1;scrub.setAttribute('aria-label',tr('播放头位置','Playhead position'));panel.append(scrub);
+ const lower=el('div',null,'ca-lower'),keyBox=el('div',null,'ca-key-box'),keyHeading=el('div',null,'ca-key-heading');keyHeading.append(el('strong',tr('关键帧','Keyframes')),el('span',tr('◆ 可拖动 · 第 1 帧从 0 秒开始','Drag ◆ to retime · Frame 1 starts at 0 s')));keyBox.append(keyHeading);const list=el('div',null,'ca-key-list');keyBox.append(list);lower.append(keyBox);
+ const exportBox=el('details',null,'ca-export');exportBox.append(el('summary',tr('视频与帧序列导出','Video & image sequence export')));const exportFields=el('div',null,'ca-export-fields');exportBox.append(exportFields);
+ const format=field(exportFields,tr('格式','Format'),select([['mp4','MP4 · H.264','MP4 · H.264'],['webm','WebM · VP8','WebM · VP8'],['png','PNG 帧序列 · ZIP','PNG sequence · ZIP']]));
+ const size=field(exportFields,tr('画幅 / 分辨率','Frame / resolution'),select([['1280x720','720p · 16:9','720p · 16:9'],['1920x1080','1080p · 16:9','1080p · 16:9'],['1080x1920','竖屏 · 9:16','Portrait · 9:16'],['1080x1080','正方形 · 1:1','Square · 1:1'],['640x360','360p · 快速测试','360p · Quick test'],['custom','自定义','Custom']]));
+ const width=field(exportFields,tr('宽 / 像素','Width / px'),el('input')),height=field(exportFields,tr('高 / 像素','Height / px'),el('input'));for(const n of [width,height]){n.type='number';n.min=64;n.max=4096;n.step=2;}width.value=1280;height.value=720;
+ const bitrate=field(exportFields,tr('码率 / Mbps','Bitrate / Mbps'),el('input'));bitrate.type='number';bitrate.min=.1;bitrate.max=100;bitrate.step=.5;bitrate.value=8;
+ const extras=el('div',null,'ca-export-extras'),guidesLabel=el('label',null,'ca-check'),guides=el('input');guides.type='checkbox';guidesLabel.append(guides,doc.createTextNode(tr('导出坐标轴与比例尺','Include axes and scale')));extras.append(guidesLabel);
+ const directLabel=el('label',null,'ca-check'),direct=el('input');direct.type='checkbox';directLabel.append(direct,doc.createTextNode(tr('直接写入文件（长视频推荐）','Write directly to disk (long clips)')));directLabel.hidden=typeof globalThis.showSaveFilePicker!=='function';extras.append(directLabel);exportBox.append(extras);
+ const exportHelp=el('p',tr('只导出三维画面，不录制界面、编号标签或声音。PNG 序列可导入 PR / AE；视频编码能力取决于浏览器。','Exports the 3D view without UI, object labels or audio. Import PNG sequences into an editor at the selected FPS; video codecs depend on your browser.'),'ca-help');exportBox.append(exportHelp);
+ const submit=btn(tr('开始导出','Export animation'),()=>exportVideo(),'primary'),cancel=btn(tr('取消导出','Cancel export'),()=>exporter?.abort(),'ca-cancel');cancel.hidden=true;const exportActions=el('div',null,'ca-export-actions');exportActions.append(submit,cancel);exportBox.append(exportActions);lower.append(exportBox);panel.append(lower);
+ const hint=el('p',tr('拖动模型调整视角，再点击“打点”。每一行的过渡方式作用于到下一个关键帧的区间；首尾之外保持最近的视角。不同投影之间直接切换。','Position the camera, then capture a keyframe. Each transition controls the segment to the next key. Ends hold the nearest pose; projection changes are cuts.'),'ca-help');panel.append(hint);
+ const status=el('p',null,'ca-status');status.setAttribute('role','status');panel.append(status);
+ const progressWrap=el('div',null,'ca-progress-wrap'),progress=el('progress'),progressText=el('span');progress.max=100;progressWrap.hidden=true;progressWrap.append(progress,progressText);panel.append(progressWrap);
+ const result=el('div',null,'ca-result'),download=el('a'),video=el('video'),resultInfo=el('p',null,'ca-help');result.hidden=true;video.controls=true;video.muted=true;video.playsInline=true;result.append(download,resultInfo,video);panel.append(result);
+ const savedNote=el('p',null,'ca-cache-note');panel.append(savedNote);
+ function message(text,bad=false){status.textContent=text;status.classList.toggle('ca-error',bad);}
+ function cache(){try{storage().setItem(storageKey,caSerialize(project));cacheError=false;}catch{cacheError=true;}savedNote.textContent=cacheError?tr('缓存不可用；请保存动画 JSON 备份。','Browser storage unavailable; save animation JSON as a backup.'):tr('动画自动保存在当前浏览器 · 模型文件仍需自行加载','Animation autosaves in this browser · Reload model files separately');}
+ function commit(next){const clean=caValidateProject(next);if(JSON.stringify(clean)===JSON.stringify(project))return;past.push(caSerialize(project));if(past.length>50)past.shift();future.length=0;project=clean;cursor=Math.min(cursor,total());cache();refresh();}
+ function history(direction){if(exporter)return;stop();const from=direction<0?past:future,to=direction<0?future:past;if(!from.length)return;to.push(caSerialize(project));project=caParse(from.pop());cursor=Math.min(cursor,total());selected=null;cache();refresh();safeApply();}
+ function total(){return caFrameCount(project.duration,project.fps);}
+ function compatible(){if(!adapter.ready())return tr('请先加载网格模型，再捕获视角。','Load a mesh, then capture its view.');try{if(project.keys.length)adapter.assert(project.keys[0].snapshot);return '';}catch(e){return e.message;}}
+ function frameText(){const index=project.keys.findIndex(k=>k.frame===cursor);return index<0?tr(`在第 ${cursor} 帧打点`,`Capture frame ${cursor}`):tr(`更新第 ${cursor} 帧视角`,`Replace frame ${cursor} view`);}
+ function updatePlayhead(){frame.value=cursor;scrub.value=cursor;time.textContent=`${caTime(cursor,project.fps).toFixed(3)} s`;playhead.style.left=`${(cursor-1)/Math.max(1,total()-1)*100}%`;add.textContent=frameText();for(const m of marks.children)m.classList.toggle('active',m.dataset.keyId===selected);}
+ function safeApply(){try{const pose=caSample(project,cursor);if(pose)adapter.apply(pose);return true;}catch(e){message(e.message,true);return false;}}
+ function seek(value,{apply=true}={}){if(exporter)return;stop();setFrame(value,apply);}
+ function setFrame(value,apply=true){if(!Number.isFinite(Number(value)))return;cursor=Math.max(1,Math.min(total(),Math.round(Number(value))));const k=project.keys.find(k=>k.frame===cursor);if(k)selected=k.id;updatePlayhead();if(apply)safeApply();}
+ function start(){if(exporter||!project.keys.length)return;if(compatible()){message(compatible(),true);return;}if(cursor>=total())cursor=1;adapter.canvas()?.dispatchEvent(new CustomEvent('bwv-animation-start'));adapter.canvas()?.focus();playing=true;play.textContent=tr('❚❚ 暂停','❚❚ Pause');playStart=performance.now()-caTime(cursor,project.fps)*1000;
+  const tick=now=>{if(!playing)return;if(doc.hidden){stop();return;}let f=1+Math.floor((now-playStart)*project.fps/1000);if(f>total()){if(loop.checked){f=1+(f-1)%total();playStart=now-caTime(f,project.fps)*1000;}else{setFrame(total());stop();return;}}setFrame(f,false);if(!safeApply())return stop();raf=requestAnimationFrame(tick);};raf=requestAnimationFrame(tick);
+ }
+ function stop(){playing=false;if(raf!==null)cancelAnimationFrame(raf);raf=null;play.textContent=tr('▶ 播放','▶ Play');}
+ function setOpen(open){if(exporter)return;panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));toggle.classList.toggle('active',open);if(!open)stop();adapter.setPreviewAspect?.(open?Number(width.value)/Number(height.value):null);if(open){refresh();if(!project.keys.length)message(tr('先调整视角，再在当前帧打点；也可以先试“环绕示例”。','Position the camera and capture this frame, or try Orbit example.'));}}
+ function capture(){try{stop();const snapshot=adapter.capture();commit(caPutKey(project,{frame:cursor,snapshot,name:en?`View ${cursor}`:undefined}));selected=project.keys.find(k=>k.frame===cursor).id;renderKeys();message(tr(`已保存第 ${cursor} 帧的视角。`,`Captured frame ${cursor}.`));}catch(e){message(e.message,true);}}
+ function renderKeys(){list.replaceChildren();marks.replaceChildren();ruler.replaceChildren();for(let i=0;i<=4;i++){const n=el('span',`${(caTime(total(),project.fps)*i/4).toFixed(project.duration<5?2:1)}s`);n.style.left=`${i*25}%`;ruler.append(n);}
+  if(!project.keys.length)list.append(el('p',tr('还没有关键帧。调整视角后打点，或生成环绕示例。','No keyframes yet. Capture a camera pose, or generate an orbit example.'),'ca-empty'));
+  for(const k of project.keys){
+   const marker=btn('◆',null,'ca-key');marker.dataset.keyId=k.id;marker.style.left=`${(k.frame-1)/Math.max(1,total()-1)*100}%`;marker.title=`${k.name} · ${tr('第','Frame')} ${k.frame} · ${caTime(k.frame,project.fps).toFixed(3)}s`;marker.setAttribute('aria-label',marker.title);marker.onpointerdown=e=>{if(exporter)return;e.preventDefault();e.stopPropagation();stop();selected=k.id;setFrame(k.frame);drag={kind:'key',id:k.id,frame:k.frame};track.setPointerCapture(e.pointerId);};marker.onclick=()=>{selected=k.id;seek(k.frame);};marks.append(marker);
+   const row=el('div',null,'ca-key-row');row.classList.toggle('active',selected===k.id);const position=el('input');position.type='number';position.min=1;position.max=total();position.value=k.frame;position.setAttribute('aria-label',tr(`${k.name} 帧位置`,`${k.name} frame`));position.onchange=()=>{try{stop();const f=Number(position.value);commit(caMoveKey(project,k.id,f));selected=k.id;setFrame(f);}catch(e){position.value=k.frame;message(e.message,true);}};
+   const name=el('input');name.value=k.name;name.maxLength=80;name.setAttribute('aria-label',tr('关键帧名称','Keyframe name'));name.onchange=()=>{const next=JSON.parse(caSerialize(project));next.keys.find(x=>x.id===k.id).name=name.value.trim()||k.name;commit(next);};
+   const easing=select([['smooth','缓入缓出','Ease in/out'],['linear','匀速','Linear'],['ease-in','逐渐加速','Ease in'],['ease-out','逐渐减速','Ease out'],['hold','保持后切换','Hold / cut']]);easing.value=k.easing;easing.setAttribute('aria-label',tr(`${k.name} 到下一帧的过渡`,`${k.name} transition`));easing.onchange=()=>{const next=JSON.parse(caSerialize(project));next.keys.find(x=>x.id===k.id).easing=easing.value;commit(next);};
+   const actions=el('div',null,'ca-key-actions'),jump=btn(tr('定位','Go'),()=>{selected=k.id;seek(k.frame);renderKeys();}),replace=btn(tr('更新视角','Replace view'),()=>{try{stop();commit(caPutKey(project,{frame:k.frame,snapshot:adapter.capture(),name:k.name}));message(tr(`已更新第 ${k.frame} 帧的视角。`,`Replaced frame ${k.frame} view.`));}catch(e){message(e.message,true);}}),remove=btn('×',()=>{const next=JSON.parse(caSerialize(project));next.keys=next.keys.filter(x=>x.id!==k.id);if(selected===k.id)selected=null;commit(next);});remove.setAttribute('aria-label',tr(`删除 ${k.name}`,`Delete ${k.name}`));actions.append(jump,replace,remove);row.append(position,name,easing,actions);list.append(row);
+  }
+  updatePlayhead();
+ }
+ function refresh(){const out=project.output;format.value=out.format;width.value=out.width;height.value=out.height;bitrate.value=out.bitrate/1e6;guides.checked=out.guides;size.value=[...size.options].some(o=>o.value===`${out.width}x${out.height}`)?`${out.width}x${out.height}`:'custom';bitrate.disabled=out.format==='png';if(!panel.hidden)adapter.setPreviewAspect?.(out.width/out.height);duration.value=Number(project.duration.toFixed(6));fps.value=project.fps;frame.max=scrub.max=total();meta.textContent=tr(`${total()} 帧 · ${project.keys.length} 个关键帧`,`${total()} frames · ${project.keys.length} keys`);undo.disabled=!past.length;redo.disabled=!future.length;const reason=compatible();add.disabled=!!reason;orbit.disabled=!adapter.ready();play.disabled=submit.disabled=!!reason||!project.keys.length;jsonButton.disabled=!project.keys.length;renderKeys();cache();if(reason&&project.keys.length)message(tr('当前场景与动画不匹配：','Scene mismatch: ')+reason,true);}
+ const timing=()=>{try{stop();const next=caResize(project,Number(duration.value),Number(fps.value),{stretch:resize.value==='stretch'});commit(next);setFrame(Math.min(cursor,total()));}catch(e){duration.value=project.duration;fps.value=project.fps;message(e.message,true);}};duration.onchange=fps.onchange=timing;
+ frame.onchange=()=>seek(Number(frame.value));scrub.oninput=()=>seek(Number(scrub.value));
+ const at=e=>{const r=track.getBoundingClientRect();return 1+Math.round(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(total()-1));};
+ track.onpointerdown=e=>{if(exporter||e.button!==0||e.target.closest('button'))return;stop();drag={kind:'scrub'};track.setPointerCapture(e.pointerId);seek(at(e));};
+ track.onpointermove=e=>{if(!drag)return;const f=at(e);if(drag.kind==='key'){drag.frame=f;const mark=[...marks.children].find(n=>n.dataset.keyId===drag.id);if(mark)mark.style.left=`${(f-1)/Math.max(1,total()-1)*100}%`;setFrame(f,false);}else seek(f);};
+ const end=e=>{if(!drag)return;const d=drag;drag=null;if(track.hasPointerCapture(e.pointerId))track.releasePointerCapture(e.pointerId);if(d.kind==='key'){try{if(e.type==='pointerup'){commit(caMoveKey(project,d.id,d.frame));selected=d.id;setFrame(d.frame);}}catch(err){message(err.message,true);}renderKeys();}};
+ track.onpointerup=track.onpointercancel=end;track.onlostpointercapture=()=>{if(drag){drag=null;renderKeys();}};
+ input.onchange=async()=>{const file=input.files?.[0];input.value='';if(!file)return;try{if(file.size>2*1024*1024)throw Error('Animation file exceeds 2 MB');const next=caParse(await file.text());if(next.space!==adapter.space)throw Error('相机坐标空间不匹配 / Camera space mismatch');stop();commit(next);cursor=1;selected=null;refresh();message(compatible()||tr('动画已导入。','Animation imported.'),!!compatible());}catch(e){message(e.message,true);}};
+ function saveJSON(){const blob=new Blob([caSerialize(project)],{type:'application/json'}),url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='BWV-camera-animation.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+ function saveOutput(){try{const next=JSON.parse(caSerialize(project));next.output={format:format.value,width:Number(width.value),height:Number(height.value),bitrate:Number(bitrate.value)*1e6,guides:guides.checked};commit(next);}catch(e){message(e.message,true);}}
+ const updateSize=()=>{if(size.value!=='custom'){const[w,h]=size.value.split('x').map(Number);width.value=w;height.value=h;}saveOutput();if(!panel.hidden)adapter.setPreviewAspect?.(Number(width.value)/Number(height.value));};size.onchange=updateSize;for(const n of [width,height])n.onchange=()=>{size.value='custom';saveOutput();if(!panel.hidden)adapter.setPreviewAspect?.(Number(width.value)/Number(height.value));};format.onchange=()=>{bitrate.disabled=format.value==='png';saveOutput();};bitrate.onchange=guides.onchange=saveOutput;
+ const inertNodes=[toolbar,anchor,doc.querySelector('.sidebar'),doc.querySelector('.main-heading'),doc.getElementById('selected-models'),doc.getElementById('viewer-inspector')].filter(Boolean),oldInert=new Map();
+ function exportLock(value){for(const n of inertNodes){if(value){oldInert.set(n,n.inert);n.inert=true;}else n.inert=oldInert.get(n)||false;}if(!value)oldInert.clear();for(const n of panel.querySelectorAll('button,input,select,summary')){if(value){n.dataset.caDisabled=String(n.disabled||false);if('disabled'in n)n.disabled=true;}else if('disabled'in n){n.disabled=n.dataset.caDisabled==='true';delete n.dataset.caDisabled;}}cancel.disabled=false;cancel.hidden=!value;close.disabled=value;toggle.disabled=value;anchor.classList.toggle('ca-recording',value);}
+ async function exportVideo(){if(exporter)return;stop();const controller=new AbortController();exporter=controller;exportLock(true);progressWrap.hidden=false;progress.value=0;result.hidden=true;message(tr('正在准备逐帧导出…','Preparing frame-by-frame export…'));let writable=null;const fmt=format.value;
+  try{
+   if(direct.checked&&typeof globalThis.showSaveFilePicker==='function'){const handle=await globalThis.showSaveFilePicker({suggestedName:`BWV-camera-animation.${fmt==='png'?'zip':fmt}`,types:[{description:fmt==='png'?'PNG sequence ZIP':fmt.toUpperCase(),accept:{[fmt==='png'?'application/zip':`video/${fmt}`]:[fmt==='png'?'.zip':'.'+fmt]}}]});writable=await handle.createWritable();}
+   const started=performance.now(),encoded=await caExportAnimation({project,adapter,width:Number(width.value),height:Number(height.value),format:fmt,bitrate:Number(bitrate.value)*1e6,writable,includeGuides:guides.checked,signal:controller.signal,onProgress:(n,total)=>{progress.value=n/total*100;const elapsed=(performance.now()-started)/1000,left=n?Math.max(0,elapsed*(total-n)/n):0;progressText.textContent=tr(`${n} / ${total} 帧 · ${Math.round(n/total*100)}% · 约剩 ${Math.ceil(left)} 秒`,`${n} / ${total} frames · ${Math.round(n/total*100)}% · ~${Math.ceil(left)} s left`);if(n===total)message(tr('所有帧已渲染，正在封装文件…','All frames rendered; finalizing the file…'));}});
+   const {blob,info}=encoded;resultInfo.textContent=tr(`实际输出：${info.encodedFrames} 帧 · ${info.duration.toFixed(3)} 秒 · ${info.fps} FPS · ${info.width}×${info.height} · ${info.codec}`,`Encoded: ${info.encodedFrames} frames · ${info.duration.toFixed(3)} s · ${info.fps} FPS · ${info.width}×${info.height} · ${info.codec}`);
+   if(controller.signal.aborted)throw new DOMException('Canceled','AbortError');
+   if(blob){if(resultURL)URL.revokeObjectURL(resultURL);resultURL=URL.createObjectURL(blob);download.href=resultURL;download.download=`BWV-camera-animation.${fmt==='png'?'zip':fmt}`;download.textContent=tr(`下载 ${fmt==='png'?'PNG 帧序列 ZIP':fmt.toUpperCase()} · ${(blob.size/1048576).toFixed(1)} MB`,`Download ${fmt==='png'?'PNG sequence ZIP':fmt.toUpperCase()} · ${(blob.size/1048576).toFixed(1)} MB`);video.hidden=fmt==='png';if(fmt!=='png')video.src=resultURL;result.hidden=false;}
+   message(tr('导出完成。相机已恢复到导出前的视角。','Export complete. The camera has returned to its pre-export view.'));progress.value=100;
+  }catch(e){await writable?.abort().catch(()=>{});message(e.name==='AbortError'||controller.signal.aborted?tr('导出已取消；相机已恢复。','Export canceled; camera restored.'):e.message,e.name!=='AbortError'&&!controller.signal.aborted);}
+  finally{exporter=null;exportLock(false);refresh();}
+ }
+ const keyboard=e=>{if(exporter){if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();exporter.abort();}return;}if(!panel.contains(e.target)||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)||e.target.isContentEditable)return;
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();const d=e.key==='ArrowRight'?1:-1;if(e.shiftKey){const keys=project.keys.filter(k=>d>0?k.frame>cursor:k.frame<cursor);seek(keys.length?(d>0?keys[0]:keys.at(-1)).frame:d>0?total():1);}else seek(cursor+d);}else if(e.key===' '&&e.target.tagName!=='BUTTON'){e.preventDefault();playing?stop():start();}
+ };doc.addEventListener('keydown',keyboard,true);
+ const interrupt=()=>{if(playing)stop();};adapter.canvas()?.addEventListener('pointerdown',interrupt,true);doc.addEventListener('visibilitychange',()=>{if(doc.hidden)stop();});
+ const body=el('div',null,'ca-body');for(const n of [...panel.children])if(n!==header)body.append(n);panel.append(body);
+ refresh();
+ return {refresh(){stop();refresh();},getProject:()=>caValidateProject(project),destroy(){stop();exporter?.abort();if(resultURL)URL.revokeObjectURL(resultURL);doc.removeEventListener('keydown',keyboard,true);adapter.canvas()?.removeEventListener('pointerdown',interrupt,true);adapter.setPreviewAspect?.(null);toggle.remove();panel.remove();}};
+}
+
+
+// Source: src/shared/palettes.js
+
+/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
+const PALETTE_DEFINITIONS = Object.freeze({
+  current: {label: t('当前色带'), stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
+  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
+  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
+  grayscale: {label: t('灰度'), stops: [[.08,.08,.08],[.95,.95,.95]]},
+  'blue-white-red': {label: t('蓝—白—红'), stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
+});
+
+function samplePalette(t, palette = 'current', reverse = false) {
+  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
+  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
+  if (reverse) value = 1 - value;
+  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
+  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
+}
+
+function paletteUniforms(palette = 'current', reverse = false) {
+  const values = new Float32Array(27);
+  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
+  return values;
+}
+
+function validatePaletteOptions(options) {
+  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
+  if (options.range !== null && options.range !== undefined) {
+    const {min, max} = options.range;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error(t('手动色域需要有限数值，且最小值必须小于最大值。'));
+  }
+}
+
+const PALETTE_GLSL = `
+uniform vec3 colorStops[9];
+vec3 paletteColor(float value) {
+  float t = clamp(value, 0.0, 1.0) * 8.0;
+  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
+  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
+  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
+  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
+  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
+  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
+  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
+  return mix(colorStops[7], colorStops[8], t - 7.0);
+}`;
+
+
+// Source: src/shared/render-style.js
+/** Shared display-only options. Geometry and exported point attributes stay unchanged. */
+const PRESENTATION_DEFAULTS = {pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true};
+let presentationPreferences = {...PRESENTATION_DEFAULTS};
+function currentPresentation() { return {...presentationPreferences}; }
+function rememberPresentation(options) { presentationPreferences = {...presentationPreferences, ...options}; }
+function displaySampleIndices(total, ratio) {
+  if (!Number.isSafeInteger(total) || total < 0 || total > 0xffffffff || !Number.isFinite(ratio) || ratio < 1 || ratio > 100) throw Error('Invalid display sampling size or percentage');
+  const count = Math.floor(total * ratio / 100);
+  const indices = total > 65535 ? new Uint32Array(count) : new Uint16Array(count);
+  // One deterministic jittered sample per index stratum avoids scan-row aliasing.
+  for (let i = 0; i < count; i++) {
+    const low=Math.floor(i*total/count),high=Math.floor((i+1)*total/count);
+    let hash=(i+0x9e3779b9)>>>0;hash=Math.imul(hash^(hash>>>16),0x21f0aaad);hash=Math.imul(hash^(hash>>>15),0x735a2d97);hash=(hash^(hash>>>15))>>>0;
+    indices[i]=low+Math.floor(hash/4294967296*(high-low));
+  }
+  return indices;
+}
+function niceScale(unitsPerPixel, pixels = 90) {
+  if (!(unitsPerPixel > 0) || !Number.isFinite(unitsPerPixel)) return null;
+  const raw = unitsPerPixel * pixels, power = 10 ** Math.floor(Math.log10(raw)), n = raw / power;
+  const length = (n >= 5 ? 5 : n >= 2 ? 2 : 1) * power;
+  return {length, pixels:length / unitsPerPixel};
+}
+function rgbHex(hex) { return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255); }
+
+
+// Source: src/shared/scene-guides.js
+
+
+
+/** The ruler measures screen-plane distance, never assumes meters. */
+function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
+  const options = viewer.options;
+  if (!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount)) return;
+  ctx.save(); ctx.scale(scale,scale);
+  const h = height/scale, [right,up,depth] = viewer.basis(), x=44, y=h-112;
+  ctx.lineCap='round'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+  if(options.axes) {
+    const colors=['#bd4b50','#37875f','#427ebe'];
+    [0,1,2].sort((a,b)=>depth[a]-depth[b]).forEach(i=>{
+      const dx=right[i]*27,dy=-up[i]*27;
+      ctx.strokeStyle=colors[i];ctx.fillStyle=colors[i];ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dx,y+dy);ctx.stroke();
+      ctx.beginPath();ctx.arc(x+dx,y+dy,2.8,0,Math.PI*2);ctx.fill();
+      ctx.fillText('XYZ'[i],x+right[i]*38,y-up[i]*38+4);
+    });
+  }
+  if(options.ruler && viewer.projection !== 'perspective') {
+    const ruler=niceScale(viewer.baseHeight/viewer.camera.zoom/(height/scale));
+    if(ruler) {
+      ctx.strokeStyle='#526d66';ctx.fillStyle='#526d66';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(16,h-70);ctx.lineTo(16+ruler.pixels,h-70);
+      for(const px of [16,16+ruler.pixels]){ctx.moveTo(px,h-74);ctx.lineTo(px,h-66);}ctx.stroke();
+      ctx.font='10px sans-serif';ctx.textAlign='left';
+      ctx.fillText(`${Number(ruler.length.toPrecision(3))} ${t(viewer.options.scale==='normalized'?'布局单位':'坐标单位')}`,16,h-52);
+    }
+  }
+  const available=Math.max(80,width/scale-32);
+  if(options.pointCountLabel && viewer.pointCount){
+    const count=options.showPoints?(viewer.activeClouds||[]).reduce((sum,e)=>sum+Math.floor(e.count*(options.pointRatio??100)/100),0):0;
+    ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillStyle='#526d66';
+    ctx.fillText(t('显示 {0} / {1} 点',[count.toLocaleString(),viewer.pointCount.toLocaleString()]),Math.min(150,available/2),h-48,available/2);
+  }
+  if(options.legend){
+    const scalar=viewer.activeClouds ? options.showPoints && viewer.activeClouds.some(e=>!e.item?.displayColor) : options.colors==='height' && options.mode!=='wire';
+    const range=scalar?(viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
+    ctx.textAlign='left';ctx.font='10px sans-serif';ctx.fillStyle='#526d66';
+    if(range && Number.isFinite(range.min) && Number.isFinite(range.max)){
+      const label=options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
+      const barWidth=Math.min(90,available*.26),barX=16,barY=h-24,gradient=ctx.createLinearGradient(barX,0,barX+barWidth,0);
+      for(let i=0;i<=8;i++)gradient.addColorStop(i/8,`rgb(${samplePalette(i/8,options.palette,options.reverse).map(v=>Math.round(v*255)).join(',')})`);
+      ctx.fillStyle=gradient;ctx.fillRect(barX,barY,barWidth,8);ctx.fillStyle='#526d66';
+      ctx.fillText(`${label} · ${Number(range.min.toPrecision(5))} — ${Number(range.max.toPrecision(5))}`,barX+barWidth+8,h-17,Math.max(10,available-barWidth-8));
+    } else if(options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
+      ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('非竖直面'),31,h-17);
+      ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('近竖直面'),147,h-17);
+    }
+  }
+  ctx.restore();
+}
+function updateSceneGuides(viewer, viewport = null) {
+  if(viewer.exportTarget || !viewer.canvas.ownerDocument) return;
+  const doc=viewer.canvas.ownerDocument, parent=viewer.canvas.parentElement;
+  if(!parent) return;
+  if(!viewer.guideCanvas){viewer.guideCanvas=doc.createElement('canvas');viewer.guideCanvas.className='scene-guides';viewer.guideCanvas.setAttribute('aria-hidden','true');parent.append(viewer.guideCanvas);}
+  viewer.guideCanvas.hidden=!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount);
+  if(!parent.classList.contains('shared-scene-overlays'))parent.classList.add('shared-scene-overlays');
+  const canvas=viewer.guideCanvas, rect=viewport||viewer.canvas.getBoundingClientRect(), dpr=Math.min(globalThis.devicePixelRatio||1,2);
+  const w=Math.round(Math.min(420,rect.width)*dpr),h=Math.round(160*dpr);const cssWidth=`${w/dpr}px`;if(canvas.style.width!==cssWidth)canvas.style.width=cssWidth;
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(0,h-rect.height*dpr);
+  drawSceneGuides(ctx,viewer,w,rect.height*dpr,dpr);ctx.restore();
+}
+
+
+// Source: src/shared/image-export.js
+
+
+
+
+function validateImageSize(width,height,maxSide=8192) {
+  if(!Number.isInteger(width)||!Number.isInteger(height)||width<16||height<16||width>maxSide||height>maxSide||width*height>32*1024*1024)throw Error(t('图片尺寸需为 16–{0} 的整数，总像素不超过 3200 万。',[maxSide]));
+  return {width,height};
+}
+/** Re-render using an RGBA/depth framebuffer, without resizing the visible canvas. */
+function renderImagePixels(viewer,width,height,{transparent=false}={}) {
+  const gl=viewer.gl;
+  if(viewer.disposed||viewer.contextLost||gl.isContextLost())throw Error(t('渲染器暂不可用，请重新加载数据。'));
+  validateImageSize(width,height,Math.min(8192,gl.getParameter(gl.MAX_TEXTURE_SIZE),gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)));
+  const previous=gl.getParameter(gl.FRAMEBUFFER_BINDING), framebuffer=gl.createFramebuffer(), texture=gl.createTexture(), depth=gl.createRenderbuffer();
+  try {
+    gl.bindTexture(gl.TEXTURE_2D,texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    gl.bindRenderbuffer(gl.RENDERBUFFER,depth);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,width,height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depth);
+    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw Error(t('无法分配导出画布，请降低分辨率。'));
+    viewer.exportTarget={width,height,transparent,scale:height/Math.max(1,viewer.canvas.clientHeight)};
+    viewer.render();
+    const raw=new Uint8Array(width*height*4);gl.readPixels(0,0,width,height,gl.RGBA,gl.UNSIGNED_BYTE,raw);
+    if(gl.getError()!==gl.NO_ERROR)throw Error(t('导出读取失败，请降低分辨率。'));
+    const pixels=new Uint8ClampedArray(raw.length),stride=width*4;
+    for(let y=0;y<height;y++)pixels.set(raw.subarray((height-y-1)*stride,(height-y)*stride),y*stride);
+    // WebGL's alpha blending leaves premultiplied RGB; ImageData expects straight RGB.
+    if(transparent)for(let i=0;i<pixels.length;i+=4){const a=pixels[i+3];if(a&&a<255)for(let c=0;c<3;c++)pixels[i+c]=Math.min(255,Math.round(pixels[i+c]*255/a));}
+    return pixels;
+  } finally {
+    viewer.exportTarget=null;gl.bindFramebuffer(gl.FRAMEBUFFER,previous);gl.bindTexture(gl.TEXTURE_2D,null);gl.bindRenderbuffer(gl.RENDERBUFFER,null);
+    gl.deleteFramebuffer(framebuffer);gl.deleteTexture(texture);gl.deleteRenderbuffer(depth);viewer.render();
+  }
+}
+function projectImagePoint(point, viewer, width, height) {
+  if(viewer.projection==='perspective'){const p=gsProjectPosition(point,gsViewSpec(viewer,width,height));return p?[p.x,p.y]:[NaN,NaN];}
+  const [r,u]=viewer.basis(),h=viewer.baseHeight/viewer.camera.zoom,w=h*width/height;
+  const p=point.map((v,i)=>v-viewer.target[i]);
+  const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
+  return [(dot(p,r)-viewer.camera.pan[0])/w*width+width/2,height/2-(dot(p,u)-viewer.camera.pan[1])/h*height];
+}
+/** Genuine vector linework. Intentionally no raster embedding or hidden-surface promise. */
+function wireframeSVG(viewer,width,height,{transparent=false}={}) {
+  validateImageSize(width,height);
+  const count=viewer.edgeCount ?? ((viewer.options.mode==='wire'||viewer.options.mode==='solid-wire'?viewer.buffers?.allEdges?.count:viewer.buffers?.featureEdges?.count)||0)/2;
+  if(count>200000)throw Error(t('SVG 超过 20 万条线，请减少选择或使用位图导出。'));
+  const segments=viewer.vectorSegments?.();
+  if(!segments?.length)throw Error(t('当前没有可导出的线框。'));
+  if(segments.length>200000)throw Error(t('SVG 超过 20 万条线，请减少选择或使用位图导出。'));
+  const parts=[`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`, '<title>BuildingWebViewer vector wireframe projection</title>'];
+  if(!transparent)parts.push(`<rect width="100%" height="100%" fill="#f3f5f6"/>`);
+  const stroke=/^#[a-f0-9]{6}$/i.test(viewer.options.wireColor||'')?viewer.options.wireColor:'#496577';
+  parts.push(`<g fill="none" stroke="${stroke}" stroke-width="${Number(viewer.options.lineWidth)||1}" stroke-linecap="round">`);
+  for(const [a,b] of segments){const p=projectImagePoint(a,viewer,width,height),q=projectImagePoint(b,viewer,width,height);if([...p,...q].every(Number.isFinite))parts.push(`<path d="M${p.map(n=>n.toFixed(3)).join(' ')}L${q.map(n=>n.toFixed(3)).join(' ')}"/>`);}
+  parts.push('</g></svg>');return parts.join('\n');
+}
+async function downloadImageBlob(blob,filename,doc=document) {
+  if(isMobileApp()){await mobileShareBlob(blob,filename);return;}
+  const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function canvasImageBlob(canvas,format,quality=.92) {
+  const mime={png:'image/png',jpeg:'image/jpeg',webp:'image/webp'}[format];
+  if(!mime)throw Error(t('不支持的图片格式'));
+  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?.type===mime?resolve(blob):reject(Error(t('浏览器不支持此格式或图片尺寸，请改用 PNG 或减小尺寸。'))),mime,quality));
+}
+function mountImageExport({root=document,getViewers,pauseSync=callback=>callback()}) {
+  const container=root.querySelector('#settings-panel-camera');if(!container)return;
+  const doc=container.ownerDocument,section=doc.createElement('section');section.className='inspector-section image-export';
+  const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
+  section.append(el('h3','截图与导出'));const quick=root.getElementById('screenshot');if(quick){quick.textContent=t('快速截图 PNG');section.append(quick);}
+  const help=el('p','快速截图使用当前渲染像素；高级导出按指定像素重新渲染。');help.className='presentation-help';section.append(help);
+  const details=el('details');details.append(el('summary','高级导出'));section.append(details);
+  function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
+  const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
+  const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'||root.body.dataset.tool==='gaussian'?[]:[['svg','SVG · 线框矢量']])]));
+  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
+  const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
+  const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));
+  const number=(value)=>{const node=el('input');node.type='number';node.min='16';node.max='8192';node.step='1';node.value=value;return node;};
+  const width=field('宽度（px）',number('1920')),height=field('高度（px）',number('1080'));
+  const quality=number('92');quality.min='1';quality.max='100';field('压缩质量（%）',quality);
+  const transparency=el('input');transparency.type='checkbox';field('透明背景',transparency);
+  const guides=field('截图内容',select([['clean','纯净画面'],['overlays','包含已开启的辅助信息']]));
+  const note=el('p','纯净画面只含渲染内容；辅助信息包含已开启的方向、标尺、图例与点数。网格随显示设置，页面按钮与编号标签不导出。多视窗横向拼接，宽度为总宽度。');note.className='presentation-help';details.append(note);
+  const svgNote=el('p','SVG 仅导出线框投影：不含点云、实体面、遮挡、网格、方向标尺或立体线材质。');svgNote.className='presentation-help';svgNote.hidden=true;details.append(svgNote);
+  const submit=el('button','导出图片'),status=el('p');status.setAttribute('role','status');status.className='presentation-help';details.append(submit,status);container.append(section);
+  const visible=()=>getViewers().filter(v=>!v.disposed&&v.canvas.getBoundingClientRect().width>0&&v.canvas.getBoundingClientRect().height>0);
+  const chosen=()=>{const list=visible();return scope.value==='all'?list:list[Number(scope.value)]?[list[Number(scope.value)]]:[];};
+  preset.onchange=()=>{if(preset.value==='current'){const list=chosen();width.value=list.reduce((sum,v)=>sum+v.canvas.width,0)||1920;height.value=list[0]?.canvas.height||1080;}else if(preset.value!=='custom'){[width.value,height.value]=preset.value.split('x');}};
+  width.oninput=height.oninput=()=>{preset.value='custom';};
+  format.onchange=()=>{const svg=format.value==='svg';svgNote.hidden=!svg;guides.disabled=svg;antialias.disabled=svg;quality.disabled=['png','svg'].includes(format.value);transparency.disabled=format.value==='jpeg';};format.onchange();
+  async function save(quickMode=false){
+    const list=quickMode?visible():chosen();if(!list.length)throw Error(t('没有可导出的视窗。'));
+    if(!list.some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0))throw Error(t('请先加载数据。'));
+    const fmt=quickMode?'png':format.value;
+    let w=Number(width.value),h=Number(height.value);
+    if(quickMode){pauseSync(()=>list.forEach(v=>v.render()));w=list.reduce((sum,v)=>sum+v.canvas.width,0);h=Math.max(...list.map(v=>v.canvas.height));}
+    validateImageSize(w,h);if(Math.floor(w/list.length)<16)throw Error(t('每个视窗宽度至少为 16 像素。'));
+    if(fmt==='svg'){if(list.length!==1)throw Error(t('SVG 请指定单个视窗。'));await downloadImageBlob(new Blob([wireframeSVG(list[0],w,h,{transparent:transparency.checked})],{type:'image/svg+xml'}),'BuildingWebViewer.svg',doc);return;}
+    const q=Number(quality.value);if(!quickMode&&fmt!=='png'&&(!Number.isFinite(q)||q<1||q>100))throw Error(t('压缩质量需在 1–100 之间。'));
+    const output=doc.createElement('canvas');output.width=w;output.height=h;const ctx=output.getContext('2d');
+    const transparent=!quickMode&&transparency.checked&&fmt!=='jpeg';if(!transparent){ctx.fillStyle='#f3f5f6';ctx.fillRect(0,0,w,h);}
+    let x=0;
+    for(let i=0;i<list.length;i++){
+      const viewer=list[i],pw=quickMode?viewer.canvas.width:Math.floor((i+1)*w/list.length)-Math.floor(i*w/list.length),ph=quickMode?viewer.canvas.height:h;
+      if(quickMode){pauseSync(()=>viewer.render());ctx.drawImage(viewer.canvas,x,0);}else{
+        const aa=Number(antialias.value),pixels=pauseSync(()=>renderImagePixels(viewer,pw*aa,ph*aa,{transparent}));const part=doc.createElement('canvas');part.width=pw*aa;part.height=ph*aa;
+        part.getContext('2d').putImageData(new ImageData(pixels,pw*aa,ph*aa),0,0);ctx.drawImage(part,x,0,pw,ph);
+      }
+      if(!quickMode&&guides.value==='overlays'){const scale=ph/Math.max(1,viewer.canvas.clientHeight);ctx.save();ctx.beginPath();ctx.rect(x,0,pw,ph);ctx.clip();ctx.translate(x,0);drawSceneGuides(ctx,viewer,Math.min(pw,420*scale),ph,scale);ctx.restore();}x+=pw;
+    }
+    const blob=await canvasImageBlob(output,fmt,q/100);await downloadImageBlob(blob,`BuildingWebViewer-${w}x${h}.${fmt==='jpeg'?'jpg':fmt}`,doc);
+  }
+  const run=async quickMode=>{submit.disabled=true;if(quick)quick.disabled=true;status.textContent=t('正在导出…');try{await save(quickMode);status.textContent=t('图片已导出。');}catch(error){status.textContent=error.message;}finally{submit.disabled=false;if(quick)quick.disabled=!visible().some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0);}};
+  submit.onclick=()=>run(false);if(quick)quick.onclick=()=>run(true);
+}
+
+
+// Source: src/shared/animation-render-target.js
+
+/** One reusable offscreen target per export, shared by future renderer adapters. */
+function createAnimationRenderTarget(viewer,width,height){
+ const gl=viewer.gl;if(viewer.disposed||viewer.contextLost||gl.isContextLost())throw Error('渲染器不可用 / Renderer unavailable');
+ validateImageSize(width,height,Math.min(4096,gl.getParameter(gl.MAX_TEXTURE_SIZE),gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)));
+ const previous=gl.getParameter(gl.FRAMEBUFFER_BINDING),fb=gl.createFramebuffer(),texture=gl.createTexture(),depth=gl.createRenderbuffer();
+ const raw=new Uint8Array(width*height*4),pixels=new Uint8ClampedArray(raw.length);let disposed=false;
+ const dispose=()=>{if(disposed)return;disposed=true;gl.deleteFramebuffer(fb);gl.deleteTexture(texture);gl.deleteRenderbuffer(depth);};
+ try{
+  gl.bindTexture(gl.TEXTURE_2D,texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.bindRenderbuffer(gl.RENDERBUFFER,depth);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,width,height);gl.bindFramebuffer(gl.FRAMEBUFFER,fb);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depth);
+  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw Error('无法分配导出画面，请降低分辨率 / Cannot allocate video frame; reduce resolution');
+ }catch(e){dispose();throw e;}finally{gl.bindFramebuffer(gl.FRAMEBUFFER,previous);gl.bindTexture(gl.TEXTURE_2D,null);gl.bindRenderbuffer(gl.RENDERBUFFER,null);}
+ return {render(){
+  if(disposed||viewer.contextLost||gl.isContextLost())throw Error('视频渲染已中断 / Video rendering interrupted');
+  const before=gl.getParameter(gl.FRAMEBUFFER_BINDING),target=viewer.exportTarget;
+  try{viewer.exportTarget={width,height,transparent:false,scale:height/Math.max(1,viewer.canvas.clientHeight)};gl.bindFramebuffer(gl.FRAMEBUFFER,fb);viewer.render();gl.readPixels(0,0,width,height,gl.RGBA,gl.UNSIGNED_BYTE,raw);if(gl.getError()!==gl.NO_ERROR)throw Error('视频帧读取失败 / Frame readback failed');
+   const stride=width*4;for(let y=0;y<height;y++)pixels.set(raw.subarray((height-y-1)*stride,(height-y)*stride),y*stride);return pixels;
+  }finally{viewer.exportTarget=target;gl.bindFramebuffer(gl.FRAMEBUFFER,before);}
+ },dispose};
+}
+
+
+// Source: src/lod/animation-adapter.js
+
+
+
+/** Mesh-specific boundary. Shared timeline/export modules never import this viewer. */
+function createMeshAnimationAdapter({getViewer,getModels,getScene}){
+ let aspect=null,oldStyle=null;
+ const resizePreview=()=>{const v=getViewer();if(!v?.canvas||!aspect)return;const c=v.canvas,p=c.parentElement,w=Math.min(p.clientWidth,p.clientHeight*aspect),h=w/aspect;c.style.inset='auto';c.style.position='absolute';c.style.left=`${(p.clientWidth-w)/2}px`;c.style.top=`${(p.clientHeight-h)/2}px`;c.style.width=`${w}px`;c.style.height=`${h}px`;v.requestRender();};
+ const observer=new ResizeObserver(resizePreview);if(getViewer()?.canvas)observer.observe(getViewer().canvas.parentElement);
+ const ready=()=>{const v=getViewer();return !!v&&!v.disposed&&!v.contextLost&&!!v.triangleCount&&getModels().length>0;};
+ const requireViewer=()=>{if(!ready())throw Error('请先加载网格模型 / Load a mesh first');return getViewer();};
+ return {space:'lod-arrangement',ready,
+  capture(){const v=requireViewer(),snapshot=captureCameraSnapshot(v,{space:'lod-arrangement',scene:getScene()});return validateCameraSnapshot({...snapshot,version:2,camera:{...snapshot.camera,roll:snapshot.camera.roll||0,distance:snapshot.camera.distance??v.distance,fov:snapshot.camera.fov??v.fov,near:snapshot.camera.near??v.near}},{space:'lod-arrangement',scene:getScene()});},
+  assert(snapshot){requireViewer();validateCameraSnapshot(snapshot,{space:'lod-arrangement',scene:getScene()});},
+  apply(snapshot,{render=true}={}){const v=requireViewer();v.fly?.leave();applyCameraSnapshot([v],snapshot,{space:'lod-arrangement',scene:getScene(),render});},
+  guard(){const models=getModels(),scale=getScene().scale,v=getViewer();return ()=>ready()&&getViewer()===v&&getModels()===models&&getScene().scale===scale;},
+  createCapture(width,height){return createAnimationRenderTarget(requireViewer(),width,height);},
+  drawGuides(ctx,width,height){const v=requireViewer();drawSceneGuides(ctx,v,Math.min(width,420*height/Math.max(1,v.canvas.clientHeight)),height,height/Math.max(1,v.canvas.clientHeight));},
+  canvas(){return getViewer()?.canvas;},
+  setPreviewAspect(value){const v=getViewer();if(!v?.canvas)return;const c=v.canvas;aspect=Number.isFinite(value)&&value>0?value:null;
+   if(aspect){if(!oldStyle)oldStyle=Object.fromEntries(['inset','position','left','top','width','height'].map(k=>[k,c.style[k]]));c.parentElement.classList.add('ca-composition');resizePreview();}
+   else if(oldStyle){for(const[k,v]of Object.entries(oldStyle))c.style[k]=v;oldStyle=null;c.parentElement.classList.remove('ca-composition');v.requestRender();}
+  },
+  destroy(){observer.disconnect();},
+ };
+}
+
+
 // Source: src/shared/zip-import.js
 
 /** Bounded local ZIP reader. File slices avoid retaining a second complete archive buffer. */
@@ -2026,39 +3122,6 @@ function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
 }
 
 
-// Source: src/shared/camera-geometry.js
-// Gaussian camera conventions: right/up/back form an orthonormal world basis.
-// Inria cameras.json stores camera-to-world columns right/down/forward.
-const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
-function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
-function gsTrainingPose(camera, origin=[0,0,0]) {
-  const r=camera.rotation;
-  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
-  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
-  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
-  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
-}
-function gsViewSpec(viewer, width, height) {
-  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
-  const training=viewer.trainingPose;
-  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
-  const fit=training?Math.min(width/training.width,height/training.height):1;
-  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
-  const distance=viewer.distance/viewer.camera.zoom;
-  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
-  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
-  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
-}
-function gsProjectPosition(point, spec) {
-  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
-  const depth=-gsDot3(delta,back);
-  if (spec.perspective && depth<=spec.near) return null;
-  const x=gsDot3(delta,right), y=gsDot3(delta,up);
-  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
-}
-
-
 // Source: src/shared/fly-camera.js
 
 const FLY_CAMERA_DEFAULTS = Object.freeze({sensitivity: .12, speed: .15, rollSpeed: 30});
@@ -2303,269 +3366,6 @@ function mountCameraNavigationControls(container, viewer) {
     }
   }
   refresh(); container.append(section);
-}
-
-
-// Source: src/shared/palettes.js
-
-/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
-const PALETTE_DEFINITIONS = Object.freeze({
-  current: {label: t('当前色带'), stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
-  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
-  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
-  grayscale: {label: t('灰度'), stops: [[.08,.08,.08],[.95,.95,.95]]},
-  'blue-white-red': {label: t('蓝—白—红'), stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
-});
-
-function samplePalette(t, palette = 'current', reverse = false) {
-  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
-  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
-  if (reverse) value = 1 - value;
-  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
-  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
-}
-
-function paletteUniforms(palette = 'current', reverse = false) {
-  const values = new Float32Array(27);
-  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
-  return values;
-}
-
-function validatePaletteOptions(options) {
-  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
-  if (options.range !== null && options.range !== undefined) {
-    const {min, max} = options.range;
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error(t('手动色域需要有限数值，且最小值必须小于最大值。'));
-  }
-}
-
-const PALETTE_GLSL = `
-uniform vec3 colorStops[9];
-vec3 paletteColor(float value) {
-  float t = clamp(value, 0.0, 1.0) * 8.0;
-  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
-  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
-  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
-  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
-  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
-  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
-  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
-  return mix(colorStops[7], colorStops[8], t - 7.0);
-}`;
-
-
-// Source: src/shared/render-style.js
-/** Shared display-only options. Geometry and exported point attributes stay unchanged. */
-const PRESENTATION_DEFAULTS = {pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true};
-let presentationPreferences = {...PRESENTATION_DEFAULTS};
-function currentPresentation() { return {...presentationPreferences}; }
-function rememberPresentation(options) { presentationPreferences = {...presentationPreferences, ...options}; }
-function displaySampleIndices(total, ratio) {
-  if (!Number.isSafeInteger(total) || total < 0 || total > 0xffffffff || !Number.isFinite(ratio) || ratio < 1 || ratio > 100) throw Error('Invalid display sampling size or percentage');
-  const count = Math.floor(total * ratio / 100);
-  const indices = total > 65535 ? new Uint32Array(count) : new Uint16Array(count);
-  // One deterministic jittered sample per index stratum avoids scan-row aliasing.
-  for (let i = 0; i < count; i++) {
-    const low=Math.floor(i*total/count),high=Math.floor((i+1)*total/count);
-    let hash=(i+0x9e3779b9)>>>0;hash=Math.imul(hash^(hash>>>16),0x21f0aaad);hash=Math.imul(hash^(hash>>>15),0x735a2d97);hash=(hash^(hash>>>15))>>>0;
-    indices[i]=low+Math.floor(hash/4294967296*(high-low));
-  }
-  return indices;
-}
-function niceScale(unitsPerPixel, pixels = 90) {
-  if (!(unitsPerPixel > 0) || !Number.isFinite(unitsPerPixel)) return null;
-  const raw = unitsPerPixel * pixels, power = 10 ** Math.floor(Math.log10(raw)), n = raw / power;
-  const length = (n >= 5 ? 5 : n >= 2 ? 2 : 1) * power;
-  return {length, pixels:length / unitsPerPixel};
-}
-function rgbHex(hex) { return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255); }
-
-
-// Source: src/shared/scene-guides.js
-
-
-
-/** The ruler measures screen-plane distance, never assumes meters. */
-function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
-  const options = viewer.options;
-  if (!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount)) return;
-  ctx.save(); ctx.scale(scale,scale);
-  const h = height/scale, [right,up,depth] = viewer.basis(), x=44, y=h-112;
-  ctx.lineCap='round'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
-  if(options.axes) {
-    const colors=['#bd4b50','#37875f','#427ebe'];
-    [0,1,2].sort((a,b)=>depth[a]-depth[b]).forEach(i=>{
-      const dx=right[i]*27,dy=-up[i]*27;
-      ctx.strokeStyle=colors[i];ctx.fillStyle=colors[i];ctx.lineWidth=2;
-      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dx,y+dy);ctx.stroke();
-      ctx.beginPath();ctx.arc(x+dx,y+dy,2.8,0,Math.PI*2);ctx.fill();
-      ctx.fillText('XYZ'[i],x+right[i]*38,y-up[i]*38+4);
-    });
-  }
-  if(options.ruler && viewer.projection !== 'perspective') {
-    const ruler=niceScale(viewer.baseHeight/viewer.camera.zoom/(height/scale));
-    if(ruler) {
-      ctx.strokeStyle='#526d66';ctx.fillStyle='#526d66';ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.moveTo(16,h-70);ctx.lineTo(16+ruler.pixels,h-70);
-      for(const px of [16,16+ruler.pixels]){ctx.moveTo(px,h-74);ctx.lineTo(px,h-66);}ctx.stroke();
-      ctx.font='10px sans-serif';ctx.textAlign='left';
-      ctx.fillText(`${Number(ruler.length.toPrecision(3))} ${t(viewer.options.scale==='normalized'?'布局单位':'坐标单位')}`,16,h-52);
-    }
-  }
-  const available=Math.max(80,width/scale-32);
-  if(options.pointCountLabel && viewer.pointCount){
-    const count=options.showPoints?(viewer.activeClouds||[]).reduce((sum,e)=>sum+Math.floor(e.count*(options.pointRatio??100)/100),0):0;
-    ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillStyle='#526d66';
-    ctx.fillText(t('显示 {0} / {1} 点',[count.toLocaleString(),viewer.pointCount.toLocaleString()]),Math.min(150,available/2),h-48,available/2);
-  }
-  if(options.legend){
-    const scalar=viewer.activeClouds ? options.showPoints && viewer.activeClouds.some(e=>!e.item?.displayColor) : options.colors==='height' && options.mode!=='wire';
-    const range=scalar?(viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
-    ctx.textAlign='left';ctx.font='10px sans-serif';ctx.fillStyle='#526d66';
-    if(range && Number.isFinite(range.min) && Number.isFinite(range.max)){
-      const label=options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
-      const barWidth=Math.min(90,available*.26),barX=16,barY=h-24,gradient=ctx.createLinearGradient(barX,0,barX+barWidth,0);
-      for(let i=0;i<=8;i++)gradient.addColorStop(i/8,`rgb(${samplePalette(i/8,options.palette,options.reverse).map(v=>Math.round(v*255)).join(',')})`);
-      ctx.fillStyle=gradient;ctx.fillRect(barX,barY,barWidth,8);ctx.fillStyle='#526d66';
-      ctx.fillText(`${label} · ${Number(range.min.toPrecision(5))} — ${Number(range.max.toPrecision(5))}`,barX+barWidth+8,h-17,Math.max(10,available-barWidth-8));
-    } else if(options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
-      ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('非竖直面'),31,h-17);
-      ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('近竖直面'),147,h-17);
-    }
-  }
-  ctx.restore();
-}
-function updateSceneGuides(viewer, viewport = null) {
-  if(viewer.exportTarget || !viewer.canvas.ownerDocument) return;
-  const doc=viewer.canvas.ownerDocument, parent=viewer.canvas.parentElement;
-  if(!parent) return;
-  if(!viewer.guideCanvas){viewer.guideCanvas=doc.createElement('canvas');viewer.guideCanvas.className='scene-guides';viewer.guideCanvas.setAttribute('aria-hidden','true');parent.append(viewer.guideCanvas);}
-  viewer.guideCanvas.hidden=!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount);
-  if(!parent.classList.contains('shared-scene-overlays'))parent.classList.add('shared-scene-overlays');
-  const canvas=viewer.guideCanvas, rect=viewport||viewer.canvas.getBoundingClientRect(), dpr=Math.min(globalThis.devicePixelRatio||1,2);
-  const w=Math.round(Math.min(420,rect.width)*dpr),h=Math.round(160*dpr);const cssWidth=`${w/dpr}px`;if(canvas.style.width!==cssWidth)canvas.style.width=cssWidth;
-  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
-  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(0,h-rect.height*dpr);
-  drawSceneGuides(ctx,viewer,w,rect.height*dpr,dpr);ctx.restore();
-}
-
-
-// Source: src/shared/image-export.js
-
-
-
-
-function validateImageSize(width,height,maxSide=8192) {
-  if(!Number.isInteger(width)||!Number.isInteger(height)||width<16||height<16||width>maxSide||height>maxSide||width*height>32*1024*1024)throw Error(t('图片尺寸需为 16–{0} 的整数，总像素不超过 3200 万。',[maxSide]));
-  return {width,height};
-}
-/** Re-render using an RGBA/depth framebuffer, without resizing the visible canvas. */
-function renderImagePixels(viewer,width,height,{transparent=false}={}) {
-  const gl=viewer.gl;
-  if(viewer.disposed||viewer.contextLost||gl.isContextLost())throw Error(t('渲染器暂不可用，请重新加载数据。'));
-  validateImageSize(width,height,Math.min(8192,gl.getParameter(gl.MAX_TEXTURE_SIZE),gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)));
-  const previous=gl.getParameter(gl.FRAMEBUFFER_BINDING), framebuffer=gl.createFramebuffer(), texture=gl.createTexture(), depth=gl.createRenderbuffer();
-  try {
-    gl.bindTexture(gl.TEXTURE_2D,texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
-    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
-    gl.bindRenderbuffer(gl.RENDERBUFFER,depth);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,width,height);
-    gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depth);
-    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw Error(t('无法分配导出画布，请降低分辨率。'));
-    viewer.exportTarget={width,height,transparent,scale:height/Math.max(1,viewer.canvas.clientHeight)};
-    viewer.render();
-    const raw=new Uint8Array(width*height*4);gl.readPixels(0,0,width,height,gl.RGBA,gl.UNSIGNED_BYTE,raw);
-    if(gl.getError()!==gl.NO_ERROR)throw Error(t('导出读取失败，请降低分辨率。'));
-    const pixels=new Uint8ClampedArray(raw.length),stride=width*4;
-    for(let y=0;y<height;y++)pixels.set(raw.subarray((height-y-1)*stride,(height-y)*stride),y*stride);
-    // WebGL's alpha blending leaves premultiplied RGB; ImageData expects straight RGB.
-    if(transparent)for(let i=0;i<pixels.length;i+=4){const a=pixels[i+3];if(a&&a<255)for(let c=0;c<3;c++)pixels[i+c]=Math.min(255,Math.round(pixels[i+c]*255/a));}
-    return pixels;
-  } finally {
-    viewer.exportTarget=null;gl.bindFramebuffer(gl.FRAMEBUFFER,previous);gl.bindTexture(gl.TEXTURE_2D,null);gl.bindRenderbuffer(gl.RENDERBUFFER,null);
-    gl.deleteFramebuffer(framebuffer);gl.deleteTexture(texture);gl.deleteRenderbuffer(depth);viewer.render();
-  }
-}
-function projectImagePoint(point, viewer, width, height) {
-  if(viewer.projection==='perspective'){const p=gsProjectPosition(point,gsViewSpec(viewer,width,height));return p?[p.x,p.y]:[NaN,NaN];}
-  const [r,u]=viewer.basis(),h=viewer.baseHeight/viewer.camera.zoom,w=h*width/height;
-  const p=point.map((v,i)=>v-viewer.target[i]);
-  const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
-  return [(dot(p,r)-viewer.camera.pan[0])/w*width+width/2,height/2-(dot(p,u)-viewer.camera.pan[1])/h*height];
-}
-/** Genuine vector linework. Intentionally no raster embedding or hidden-surface promise. */
-function wireframeSVG(viewer,width,height,{transparent=false}={}) {
-  validateImageSize(width,height);
-  const count=viewer.edgeCount ?? ((viewer.options.mode==='wire'||viewer.options.mode==='solid-wire'?viewer.buffers?.allEdges?.count:viewer.buffers?.featureEdges?.count)||0)/2;
-  if(count>200000)throw Error(t('SVG 超过 20 万条线，请减少选择或使用位图导出。'));
-  const segments=viewer.vectorSegments?.();
-  if(!segments?.length)throw Error(t('当前没有可导出的线框。'));
-  if(segments.length>200000)throw Error(t('SVG 超过 20 万条线，请减少选择或使用位图导出。'));
-  const parts=[`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`, '<title>BuildingWebViewer vector wireframe projection</title>'];
-  if(!transparent)parts.push(`<rect width="100%" height="100%" fill="#f3f5f6"/>`);
-  const stroke=/^#[a-f0-9]{6}$/i.test(viewer.options.wireColor||'')?viewer.options.wireColor:'#496577';
-  parts.push(`<g fill="none" stroke="${stroke}" stroke-width="${Number(viewer.options.lineWidth)||1}" stroke-linecap="round">`);
-  for(const [a,b] of segments){const p=projectImagePoint(a,viewer,width,height),q=projectImagePoint(b,viewer,width,height);if([...p,...q].every(Number.isFinite))parts.push(`<path d="M${p.map(n=>n.toFixed(3)).join(' ')}L${q.map(n=>n.toFixed(3)).join(' ')}"/>`);}
-  parts.push('</g></svg>');return parts.join('\n');
-}
-async function downloadImageBlob(blob,filename,doc=document) {
-  if(isMobileApp()){await mobileShareBlob(blob,filename);return;}
-  const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
-}
-function canvasImageBlob(canvas,format,quality=.92) {
-  const mime={png:'image/png',jpeg:'image/jpeg',webp:'image/webp'}[format];
-  if(!mime)throw Error(t('不支持的图片格式'));
-  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?.type===mime?resolve(blob):reject(Error(t('浏览器不支持此格式或图片尺寸，请改用 PNG 或减小尺寸。'))),mime,quality));
-}
-function mountImageExport({root=document,getViewers,pauseSync=callback=>callback()}) {
-  const container=root.querySelector('#settings-panel-camera');if(!container)return;
-  const doc=container.ownerDocument,section=doc.createElement('section');section.className='inspector-section image-export';
-  const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
-  section.append(el('h3','截图与导出'));const quick=root.getElementById('screenshot');if(quick){quick.textContent=t('快速截图 PNG');section.append(quick);}
-  const help=el('p','快速截图使用当前渲染像素；高级导出按指定像素重新渲染。');help.className='presentation-help';section.append(help);
-  const details=el('details');details.append(el('summary','高级导出'));section.append(details);
-  function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
-  const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
-  const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'||root.body.dataset.tool==='gaussian'?[]:[['svg','SVG · 线框矢量']])]));
-  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
-  const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
-  const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));
-  const number=(value)=>{const node=el('input');node.type='number';node.min='16';node.max='8192';node.step='1';node.value=value;return node;};
-  const width=field('宽度（px）',number('1920')),height=field('高度（px）',number('1080'));
-  const quality=number('92');quality.min='1';quality.max='100';field('压缩质量（%）',quality);
-  const transparency=el('input');transparency.type='checkbox';field('透明背景',transparency);
-  const guides=field('截图内容',select([['clean','纯净画面'],['overlays','包含已开启的辅助信息']]));
-  const note=el('p','纯净画面只含渲染内容；辅助信息包含已开启的方向、标尺、图例与点数。网格随显示设置，页面按钮与编号标签不导出。多视窗横向拼接，宽度为总宽度。');note.className='presentation-help';details.append(note);
-  const svgNote=el('p','SVG 仅导出线框投影：不含点云、实体面、遮挡、网格、方向标尺或立体线材质。');svgNote.className='presentation-help';svgNote.hidden=true;details.append(svgNote);
-  const submit=el('button','导出图片'),status=el('p');status.setAttribute('role','status');status.className='presentation-help';details.append(submit,status);container.append(section);
-  const visible=()=>getViewers().filter(v=>!v.disposed&&v.canvas.getBoundingClientRect().width>0&&v.canvas.getBoundingClientRect().height>0);
-  const chosen=()=>{const list=visible();return scope.value==='all'?list:list[Number(scope.value)]?[list[Number(scope.value)]]:[];};
-  preset.onchange=()=>{if(preset.value==='current'){const list=chosen();width.value=list.reduce((sum,v)=>sum+v.canvas.width,0)||1920;height.value=list[0]?.canvas.height||1080;}else if(preset.value!=='custom'){[width.value,height.value]=preset.value.split('x');}};
-  width.oninput=height.oninput=()=>{preset.value='custom';};
-  format.onchange=()=>{const svg=format.value==='svg';svgNote.hidden=!svg;guides.disabled=svg;antialias.disabled=svg;quality.disabled=['png','svg'].includes(format.value);transparency.disabled=format.value==='jpeg';};format.onchange();
-  async function save(quickMode=false){
-    const list=quickMode?visible():chosen();if(!list.length)throw Error(t('没有可导出的视窗。'));
-    if(!list.some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0))throw Error(t('请先加载数据。'));
-    const fmt=quickMode?'png':format.value;
-    let w=Number(width.value),h=Number(height.value);
-    if(quickMode){pauseSync(()=>list.forEach(v=>v.render()));w=list.reduce((sum,v)=>sum+v.canvas.width,0);h=Math.max(...list.map(v=>v.canvas.height));}
-    validateImageSize(w,h);if(Math.floor(w/list.length)<16)throw Error(t('每个视窗宽度至少为 16 像素。'));
-    if(fmt==='svg'){if(list.length!==1)throw Error(t('SVG 请指定单个视窗。'));await downloadImageBlob(new Blob([wireframeSVG(list[0],w,h,{transparent:transparency.checked})],{type:'image/svg+xml'}),'BuildingWebViewer.svg',doc);return;}
-    const q=Number(quality.value);if(!quickMode&&fmt!=='png'&&(!Number.isFinite(q)||q<1||q>100))throw Error(t('压缩质量需在 1–100 之间。'));
-    const output=doc.createElement('canvas');output.width=w;output.height=h;const ctx=output.getContext('2d');
-    const transparent=!quickMode&&transparency.checked&&fmt!=='jpeg';if(!transparent){ctx.fillStyle='#f3f5f6';ctx.fillRect(0,0,w,h);}
-    let x=0;
-    for(let i=0;i<list.length;i++){
-      const viewer=list[i],pw=quickMode?viewer.canvas.width:Math.floor((i+1)*w/list.length)-Math.floor(i*w/list.length),ph=quickMode?viewer.canvas.height:h;
-      if(quickMode){pauseSync(()=>viewer.render());ctx.drawImage(viewer.canvas,x,0);}else{
-        const aa=Number(antialias.value),pixels=pauseSync(()=>renderImagePixels(viewer,pw*aa,ph*aa,{transparent}));const part=doc.createElement('canvas');part.width=pw*aa;part.height=ph*aa;
-        part.getContext('2d').putImageData(new ImageData(pixels,pw*aa,ph*aa),0,0);ctx.drawImage(part,x,0,pw,ph);
-      }
-      if(!quickMode&&guides.value==='overlays'){const scale=ph/Math.max(1,viewer.canvas.clientHeight);ctx.save();ctx.beginPath();ctx.rect(x,0,pw,ph);ctx.clip();ctx.translate(x,0);drawSceneGuides(ctx,viewer,Math.min(pw,420*scale),ph,scale);ctx.restore();}x+=pw;
-    }
-    const blob=await canvasImageBlob(output,fmt,q/100);await downloadImageBlob(blob,`BuildingWebViewer-${w}x${h}.${fmt==='jpeg'?'jpg':fmt}`,doc);
-  }
-  const run=async quickMode=>{submit.disabled=true;if(quick)quick.disabled=true;status.textContent=t('正在导出…');try{await save(quickMode);status.textContent=t('图片已导出。');}catch(error){status.textContent=error.message;}finally{submit.disabled=false;if(quick)quick.disabled=!visible().some(v=>(v.pointCount||v.edgeCount||v.triangleCount)>0);}};
-  submit.onclick=()=>run(false);if(quick)quick.onclick=()=>run(true);
 }
 
 
@@ -2863,66 +3663,6 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
   });
   select(current);
   return {open, close};
-}
-
-
-// Source: src/shared/orbit-camera.js
-
-function gsOrbitRotate(v, axis, angle) {
-  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
-  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
-  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
-}
-function gsSetOrbitBasis(viewer, basis) {
-  const [right,,back]=basis, deg=180/Math.PI;
-  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
-  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
-  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
-  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
-}
-/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
- * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
- */
-function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
-  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
-  if(!viewer.packed)return null;
-  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
-  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
-  let limit=radius*radius;
-  for(let i=0;i<viewer.count;i++) {
-    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
-    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
-    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
-    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
-    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
-    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
-    const d=px*px+py*py;if(d>limit)continue;
-    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
-    if(candidates.length===32)limit=candidates[31].d;
-  }
-  if(!candidates.length)return null;
-  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
-  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
-}
-function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
-  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
-  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
-  if(!model&&x!==null&&picked===null)return false;
-  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
-  let depth=picked??fallback;
-  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
-  if(!model&&x!==null) {
-    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
-    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
-    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
-  }
-  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
-  if(depth<=spec.near)return false;
-  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
-  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
-  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
-  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
-  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
 }
 
 
@@ -3628,440 +4368,6 @@ function parseLodIds(value, catalogById) {
 }
 
 
-// Source: src/shared/camera-controls.js
-
-
-
-/** Shared camera snapshots and an optional, local-only control panel. */
-const CAMERA_FORMAT = 'BuildingWebViewer.camera';
-const CAMERA_BOOK_FORMAT = 'BuildingWebViewer.camera-bookmarks';
-const CAMERA_SPACES = ['raw-world', 'lod-arrangement'];
-const CAMERA_MAX_BOOKMARKS = 100;
-
-function cameraObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
-function cameraFinite(value, label) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw Error(t("{0}必须是有限数值", [label]));
-  return value;
-}
-function cameraVector(value, length, label) {
-  if (!Array.isArray(value) || value.length !== length) throw Error(t("{0}需要 {1} 个数值", [label, length]));
-  return value.map(number => cameraFinite(number, label));
-}
-function cameraSpace(space) {
-  if (!CAMERA_SPACES.includes(space)) throw Error(t('相机坐标空间无效'));
-  return space;
-}
-function cameraScene(scene, space) {
-  if (scene == null && space === 'raw-world') return null;
-  if (!cameraObject(scene) || !Array.isArray(scene.ids) || scene.ids.length > 10000 || scene.ids.some(id => typeof id !== 'string' || id.length > 1024)) throw Error(t('相机场景需要有效的文件或模型 ID 列表'));
-  const result = {ids: [...scene.ids]};
-  if (space === 'lod-arrangement') {
-    if (!['real', 'normalized'].includes(scene.scale)) throw Error(t('网格相机需要记录实际比例或统一大小模式'));
-    result.scale = scene.scale;
-  }
-  return result;
-}
-function cameraSameScene(a, b) {
-  return a?.scale === b?.scale && a?.ids?.length === b?.ids?.length && a.ids.every((id, index) => id === b.ids[index]);
-}
-
-/** Validate before mutating a viewer; snapshots use original-world or synthetic-layout targets. */
-function validateCameraSnapshot(value, {space = value?.space, scene = null, checkScene = true} = {}) {
-  cameraSpace(space);
-  if (!cameraObject(value) || value.format !== CAMERA_FORMAT || ![1,2].includes(value.version)) throw Error(t('不是受支持的相机 JSON（需要 BuildingWebViewer.camera v1/v2）'));
-  if (value.space !== space) throw Error(t('相机坐标空间不匹配：点云/线框视角与网格排列视角不能直接互用'));
-  if (!['orthographic','perspective'].includes(value.projection) || value.version===1 && value.projection!=='orthographic') throw Error(t('相机投影与文件版本不兼容'));
-  const source = value.camera;
-  if (!cameraObject(source)) throw Error(t('相机参数缺失'));
-  const azimuth = cameraFinite(source.azimuth, t('方位角')), elevation = cameraFinite(source.elevation, t('仰角'));
-  const zoom = cameraFinite(source.zoom, t('缩放倍率')), baseHeight = cameraFinite(source.baseHeight, t('基准视野高度'));
-  const limits = value.version===2 ? {minElevation:-90,minZoom:.02,maxZoom:100} : space === 'lod-arrangement' ? {minElevation: 0, minZoom: .15, maxZoom: 30} : {minElevation: -89, minZoom: .02, maxZoom: 100};
-  if (Math.abs(azimuth) > 1e6) throw Error(t('方位角数值过大'));
-  if (elevation < limits.minElevation || elevation > 90) throw Error(t("仰角需在 {0}° 至 90° 之间", [limits.minElevation]));
-  if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(t("缩放倍率需在 {0} 至 {1} 之间", [limits.minZoom, limits.maxZoom]));
-  if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error(t('基准视野高度必须为有效正数'));
-  let extended={};
-  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
-  const savedScene = cameraScene(value.scene, space);
-  if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
-  return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
-    camera: {azimuth: ((azimuth + 180) % 360 + 360) % 360 - 180, elevation, zoom,
-      ...extended, pan: cameraVector(source.pan, 2, t('平移')), target: cameraVector(source.target, 3, t('目标点')), baseHeight}, scene: savedScene};
-}
-
-function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
-  cameraSpace(space);
-  if (!viewer?.camera) throw Error(t('相机尚未准备好'));
-  const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
-  const camera={...viewer.camera,pan:[...viewer.camera.pan]},projection=viewer.projection||'orthographic';
-  let localTarget=[...viewer.target],distance=viewer.distance||viewer.baseHeight*2;
-  if(viewer.flyPose){gsSetOrbitBasis({camera},viewer.flyPose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=viewer.flyPose.eye.map((v,i)=>v-viewer.flyPose.basis[2][i]*distance);}
-  const version=projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
-  const target = cameraVector(localTarget,3,t('目标点')).map((value,axis)=>value+origin[axis]);
-  return validateCameraSnapshot({format:CAMERA_FORMAT,version,space,projection,scene,
-    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
-}
-
-function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback()} = {}) {
-  const value = validateCameraSnapshot(snapshot, {space, scene, checkScene});
-  if (!Array.isArray(viewers) || !viewers.length || viewers.some(viewer => !viewer?.camera || typeof viewer.render !== 'function')) throw Error(t('请先加载数据，再应用相机'));
-  // Validate every new local target first, so a bad panel cannot leave a partial update.
-  const targets = viewers.map(viewer => {
-    const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
-    return value.camera.target.map((number, axis) => cameraFinite(number - origin[axis], t('局部目标点')));
-  });
-  pauseSync(() => {
-    viewers.forEach((viewer, index) => {
-      viewer.stopNavigation?.();viewer.flyPose=null;viewer.projection=value.projection;
-      if(value.version===2){viewer.distance=value.camera.distance;viewer.fov=value.camera.fov;viewer.near=value.camera.near;}
-      viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
-      viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
-    });
-    viewers.forEach(viewer => viewer.render());
-  });
-  return value;
-}
-
-function cameraBookmark(record, space, index) {
-  if (!cameraObject(record) || typeof record.name !== 'string' || !record.name.trim() || record.name.length > 80) throw Error(t('书签名称需为 1–80 个字符'));
-  return {id: typeof record.id === 'string' && record.id.trim() && record.id.length <= 128 ? record.id : `import-${index}`,
-    name: record.name.trim(), snapshot: validateCameraSnapshot(record.snapshot, {space, checkScene: false}),
-    ...(typeof record.updatedAt === 'string' && record.updatedAt.length <= 64 && Number.isFinite(Date.parse(record.updatedAt)) ? {updatedAt: record.updatedAt} : {})};
-}
-
-function parseCameraBookmarks(input, space) {
-  cameraSpace(space);
-  const value = typeof input === 'string' ? JSON.parse(input) : input;
-  if (value?.format === CAMERA_FORMAT) return {preserveView: true, bookmarks: [{id: 'import-0', name: t('导入视角'), snapshot: validateCameraSnapshot(value, {space, checkScene: false})}]};
-  if (!cameraObject(value) || value.format !== CAMERA_BOOK_FORMAT || value.version !== 1 || value.space !== space || !Array.isArray(value.bookmarks) || value.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error(t('书签 JSON 格式或坐标空间无效（最多 100 个书签）'));
-  const bookmarks = value.bookmarks.map((record, index) => cameraBookmark(record, space, index));
-  if (new Set(bookmarks.map(record => record.id)).size !== bookmarks.length) throw Error(t('书签 ID 重复'));
-  return {preserveView: value.preserveView !== false, bookmarks};
-}
-
-function serializeCameraBookmarks(bookmarks, space, preserveView = true) {
-  const value = {format: CAMERA_BOOK_FORMAT, version: 1, space: cameraSpace(space), preserveView: Boolean(preserveView), bookmarks};
-  parseCameraBookmarks(value, space);
-  return JSON.stringify(value, null, 2);
-}
-
-/**
- * Returns {preserveView, capture, restore, refresh, destroy}.
- * Pass a separate bookmarkContainer to mount camera and bookmarks in two tabs.
- * restore(saved, {checkScene:false}) preserves a view after changing data;
- * bookmark loads retain strict mesh scene checking.
- */
-function mountCameraControls({container, bookmarkContainer = null, getViewers, space, getScene = () => null, pauseSync = callback => callback()} = {}) {
-  cameraSpace(space);
-  if (!container || typeof getViewers !== 'function') throw Error(t('相机面板需要挂载容器和 getViewers'));
-  const doc = container.ownerDocument, win = doc.defaultView || globalThis;
-  const separateBookmarks = bookmarkContainer && bookmarkContainer !== container;
-  const key = `BuildingWebViewer.camera-bookmarks.v1.${space}`;
-  const limits = {minElevation: -90, minZoom: .02, maxZoom: 100};
-  const watches = new Map(), inputs = new Map(), sliders = new Map(), dragging = new Set();
-  let bookmarks = [], preserveView = true, selectedBookmark = '', disposed = false, frame = null, idCounter = 0;
-  const pendingBookmarks = new Map();
-  let pendingPreserve = null;
-  const el = (tag, text, className) => { const node = doc.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
-  const panel = el(separateBookmarks ? 'section' : 'details', undefined, `camera-controls${separateBookmarks ? ' camera-controls-docked' : ''}`);
-  const body = el('div', undefined, 'camera-controls-body'), status = el('p', '', 'camera-controls-status'); status.setAttribute('role', 'status');
-  if (!separateBookmarks) panel.append(el('summary', t('精确相机与视角书签')));
-  panel.append(body); container.replaceChildren(panel);
-  const bookPanel = el('section', undefined, 'camera-bookmarks');
-  if (separateBookmarks) bookmarkContainer.replaceChildren(bookPanel);
-  const bookStatus = separateBookmarks ? el('p', '', 'camera-controls-status') : status;
-  bookStatus.setAttribute('role', 'status');
-  const message = (text = '', error = false) => {
-    for (const node of new Set([status, bookStatus])) { node.textContent = text; node.classList.toggle('camera-controls-error', error); }
-  };
-  const attempt = callback => { try { return callback(); } catch (error) { message(error.message || String(error), true); return null; } };
-  const controls = [], bar = el('div', undefined, 'camera-controls-bar'), preserveLabel = el('label', undefined, 'camera-preserve');
-  const preserveInput = el('input'); preserveInput.type = 'checkbox'; preserveInput.checked = true;
-  preserveInput.setAttribute('aria-label', t('增删文件时保持当前视角'));
-  preserveLabel.append(preserveInput, doc.createTextNode(t('增删文件时保持当前视角')));
-  const heightLabel = el('span', '', 'camera-view-height'); bar.append(preserveLabel, heightLabel); body.append(bar);
-  const grid = el('div', undefined, 'camera-controls-grid'); body.append(grid);
-  const advanced = el('details', undefined, 'camera-advanced'), advancedGrid = el('div', undefined, 'camera-controls-grid');
-  advanced.append(el('summary', t('高级：平移与目标点')), advancedGrid); body.append(advanced);
-  const specifications = [
-    ['azimuth', t('方位角（°）'), .1], ['elevation', t('仰角（°）'), .1], ['zoom', t('缩放倍率'), .05],
-    ['pan0', t('水平平移'), .1], ['pan1', t('垂直平移'), .1],
-    ['target0', space === 'raw-world' ? t('世界目标 X') : t('排列目标 X'), .1],
-    ['target1', space === 'raw-world' ? t('世界目标 Y') : t('排列目标 Y'), .1],
-    ['target2', space === 'raw-world' ? t('世界目标 Z') : t('排列目标 Z'), .1],
-  ];
-  const uiScene = () => getScene() || (space === 'lod-arrangement' ? {ids: [], scale: 'real'} : null);
-  const available = () => {
-    const viewer = getViewers()?.[0];
-    return Boolean(viewer && (space === 'lod-arrangement' ? viewer.models?.length || uiScene()?.ids?.length : viewer.bounds));
-  };
-  function capture() { return available() ? captureCameraSnapshot(getViewers()[0], {space, scene: uiScene()}) : null; }
-  function restore(snapshot, {checkScene = true} = {}) {
-    if (!snapshot) return null;
-    if (!available()) throw Error(t('请先加载数据，再应用相机'));
-    const value = applyCameraSnapshot(getViewers(), snapshot, {space, scene: uiScene(), checkScene, pauseSync});
-    message(t('视角已应用。')); refresh(); return value;
-  }
-  function inputValue(snapshot, name) {
-    return name.startsWith('pan') ? snapshot.camera.pan[Number(name.slice(3))] : name.startsWith('target') ? snapshot.camera.target[Number(name.slice(6))] : snapshot.camera[name];
-  }
-  function displayNumber(value, name) { return name.startsWith('target') ? String(value) : String(Number(value.toPrecision(12))); }
-  function snapshotWithInput(name, raw) {
-    const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再调整相机'));
-    if (!String(raw).trim()) throw Error(t('相机参数不能为空'));
-    const value = Number(raw);
-    if(snapshot.version===1){const viewer=getViewers()[0];snapshot.version=2;Object.assign(snapshot.camera,{roll:viewer.camera.roll||0,distance:viewer.distance||viewer.baseHeight*2,fov:viewer.fov||55,near:viewer.near||.001});}
-    if (name.startsWith('pan')) snapshot.camera.pan[Number(name.slice(3))] = value;
-    else if (name.startsWith('target')) snapshot.camera.target[Number(name.slice(6))] = value;
-    else snapshot.camera[name] = value;
-    return validateCameraSnapshot(snapshot, {space, scene: uiScene()});
-  }
-  function applyInput(name, raw) { restore(snapshotWithInput(name, raw)); message(''); }
-  function sliderPosition(name, value, slider) {
-    if (name === 'zoom') return Math.max(0, Math.min(1000, 1000 * Math.log(value / limits.minZoom) / Math.log(limits.maxZoom / limits.minZoom)));
-    // +180 and -180 are identical; keep the right endpoint stable while dragging.
-    if (name === 'azimuth' && value === -180 && Number(slider.value) === 180) return 180;
-    return value;
-  }
-  function sliderNumber(name, raw) {
-    const value = Number(raw), slider = sliders.get(name);
-    if (!String(raw).trim() || !Number.isFinite(value) || value < Number(slider.min) || value > Number(slider.max)) throw Error(t('滑块数值超出范围'));
-    if (name !== 'zoom') return value;
-    if (value === 0) return limits.minZoom;
-    if (value === 1000) return limits.maxZoom;
-    return limits.minZoom * Math.exp(value / 1000 * Math.log(limits.maxZoom / limits.minZoom));
-  }
-  for (const [name, label, step] of specifications) {
-    const basic = ['azimuth', 'elevation', 'zoom'].includes(name);
-    const group = el('div', undefined, `camera-number-field${basic ? ' camera-slider-field' : ''}`), caption = el('span', label), row = el('span', undefined, 'camera-number-row');
-    const minus = el('button', '−'), input = el('input'), plus = el('button', '+');
-    for (const button of [minus, plus]) { button.type = 'button'; button.setAttribute('aria-label', `${button === minus ? t('减小') : t('增大')}${label}`); }
-    input.type = 'number'; input.step = String(step); input.setAttribute('aria-label', label); input.autocomplete = 'off';
-    if (name === 'elevation') { input.min = String(limits.minElevation); input.max = '90'; }
-    if (name === 'zoom') { input.min = String(limits.minZoom); input.max = String(limits.maxZoom); }
-    input.addEventListener('input', () => {
-      // Partial edits must leave the current camera intact; change reports errors.
-      let snapshot; try { snapshot = snapshotWithInput(name, input.value); } catch { return; }
-      attempt(() => { restore(snapshot); message(''); });
-    });
-    input.addEventListener('change', () => attempt(() => applyInput(name, input.value)));
-    input.addEventListener('blur', scheduleRefresh);
-    for (const [button, direction] of [[minus, -1], [plus, 1]]) button.addEventListener('click', event => {
-      event.preventDefault(); attempt(() => {
-        const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再调整相机'));
-        applyInput(name, Number((inputValue(snapshot, name) + direction * step).toPrecision(15)));
-      });
-    });
-    row.append(minus, input, plus); group.append(caption, row);
-    if (basic) {
-      const slider = el('input', undefined, 'camera-slider'); slider.type = 'range';
-      slider.min = String(name === 'zoom' ? 0 : name === 'azimuth' ? -180 : limits.minElevation);
-      slider.max = String(name === 'zoom' ? 1000 : name === 'azimuth' ? 180 : 90);
-      slider.step = name === 'zoom' ? '1' : '.1'; slider.setAttribute('aria-label', t("{0}滑块", [label]));
-      slider.addEventListener('pointerdown', () => dragging.add(name));
-      const finish = () => { dragging.delete(name); scheduleRefresh(); };
-      for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'change', 'blur']) slider.addEventListener(event, finish);
-      slider.addEventListener('input', () => attempt(() => applyInput(name, sliderNumber(name, slider.value))));
-      const endpoints = el('div', undefined, 'camera-slider-endpoints');
-      endpoints.append(el('span', name === 'zoom' ? `${limits.minZoom}×` : `${slider.min}°`), el('span', name === 'zoom' ? `${limits.maxZoom}×` : `${slider.max}°`));
-      group.append(slider, endpoints); sliders.set(name, slider); controls.push(slider);
-    }
-    (basic ? grid : advancedGrid).append(group); inputs.set(name, input); controls.push(minus, input, plus);
-  }
-  const help = el('p', space === 'raw-world'
-    ? t('平移按屏幕水平/垂直方向，单位与原坐标一致。目标点保留原始坐标精度。')
-    : t('目标点使用网格排列坐标；书签适用于相同模型顺序和比例模式。'), 'camera-controls-help');
-  advanced.append(help);
-  body.append(el('p', t('拖动滑块可连续调整；数字输入与鼠标操作实时同步。缩放滑块采用对数刻度。'), 'camera-controls-help'), status);
-  // In the combined legacy layout bookmarks follow the camera, not precede it.
-  if (!separateBookmarks) body.append(bookPanel);
-  const bookHeading = el('div', undefined, 'camera-bookmark-heading'), bookCount = el('span', '', 'camera-bookmark-count');
-  bookCount.setAttribute('aria-label', t('已保存书签数量')); bookHeading.append(el('strong', t('本机视角书签')), bookCount);
-  const storageHelp = el('p', t('保存在此浏览器，下次打开仍可使用。可导出 JSON 备份或转移到其他浏览器。'), 'camera-bookmark-storage');
-  const bookmarkName = el('input'), bookmarkSelect = el('select');
-  bookmarkName.type = 'text'; bookmarkName.maxLength = 80; bookmarkName.placeholder = t('输入视角名称'); bookmarkName.setAttribute('aria-label', t('视角书签名称'));
-  bookmarkSelect.size = 5; bookmarkSelect.setAttribute('aria-label', t('已保存视角'));
-  const bookmarkMeta = el('p', '', 'camera-bookmark-meta'); bookmarkMeta.setAttribute('aria-label', t('选中书签信息'));
-  bookPanel.append(bookHeading, storageHelp, bookmarkSelect, bookmarkMeta, bookmarkName);
-  const actions = el('div', undefined, 'camera-bookmark-actions');
-  const action = text => { const button = el('button', text); button.type = 'button'; actions.append(button); return button; };
-  const saveButton = action(t('保存新书签')), loadButton = action(t('加载所选')), updateButton = action(t('更新视角')), renameButton = action(t('重命名')), deleteButton = action(t('删除所选'));
-  const files = el('div', undefined, 'camera-bookmark-files');
-  const exportButton = el('button', t('导出 JSON')), importButton = el('button', t('导入 JSON'));
-  exportButton.type = importButton.type = 'button'; files.append(exportButton, importButton);
-  const importInput = el('input'); importInput.type = 'file'; importInput.accept = '.json,application/json'; importInput.hidden = true;
-  bookPanel.append(actions, files, importInput); if (separateBookmarks) bookPanel.append(bookStatus);
-  function storageUnavailable() {
-    storageHelp.textContent = t('当前浏览器无法持久保存；本次书签仍可使用，请导出 JSON 备份。');
-    message(storageHelp.textContent, true);
-  }
-  function syncStored({notifyDeleted = true} = {}) {
-    try {
-      const stored = win.localStorage.getItem(key);
-      const latest = stored ? parseCameraBookmarks(stored, space) : {bookmarks: [], preserveView: true};
-      // Rebase only unsaved local edits, never this panel's entire cached array.
-      const merged = new Map(latest.bookmarks.map(bookmark => [bookmark.id, bookmark]));
-      for (const [id, bookmark] of pendingBookmarks) { if (bookmark) merged.set(id, bookmark); else merged.delete(id); }
-      bookmarks = [...merged.values()];
-      preserveView = pendingPreserve ?? latest.preserveView; preserveInput.checked = preserveView;
-      const deleted = selectedBookmark && !merged.has(selectedBookmark);
-      updateBookmarks();
-      // Keep the name input untouched: it may contain an unfinished draft.
-      if (deleted && notifyDeleted) message(t('所选书签已在另一页面删除，请重新选择；当前视角未改变。'), true);
-      return true;
-    } catch { storageUnavailable(); return false; }
-  }
-  function persist() {
-    // Read again at the write boundary, including after asynchronous imports.
-    // When reading fails, do not overwrite records we cannot safely reconcile.
-    if (!syncStored()) return false;
-    try {
-      win.localStorage.setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView));
-      pendingBookmarks.clear(); pendingPreserve = null;
-      storageHelp.textContent = t('保存在此浏览器，下次打开仍可使用。可导出 JSON 备份或转移到其他浏览器。'); return true;
-    } catch { storageUnavailable(); return false; }
-  }
-  function updateBookmarks() {
-    bookmarkSelect.replaceChildren();
-    if (!bookmarks.length) { const empty = el('option', t('暂无书签')); empty.value = ''; bookmarkSelect.append(empty); }
-    for (const bookmark of bookmarks) { const option = el('option', bookmark.name); option.value = bookmark.id; bookmarkSelect.append(option); }
-    const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark);
-    if (!selected) selectedBookmark = '';
-    bookmarkSelect.value = selectedBookmark;
-    bookCount.textContent = `${bookmarks.length} / ${CAMERA_MAX_BOOKMARKS}`;
-    bookmarkMeta.textContent = selected ? t("{0}\n更新：{1}", [selected.name, selected.updatedAt ? new Date(selected.updatedAt).toLocaleString('zh-CN', {hour12: false}) : t('未记录（旧版书签）')]) : t('选择书签后可加载、更新、重命名或删除。');
-    loadButton.disabled = updateButton.disabled = !available() || !selectedBookmark;
-    renameButton.disabled = deleteButton.disabled = !selectedBookmark; exportButton.disabled = !bookmarks.length;
-  }
-  function scheduleRefresh() {
-    if (disposed || frame !== null) return;
-    frame = win.requestAnimationFrame(() => { frame = null; refresh(); });
-  }
-  function watchViewers() {
-    for (const viewer of getViewers() || []) {
-      if (watches.has(viewer) || typeof viewer.render !== 'function') continue;
-      const original = viewer.render;
-      const wrapped = function(...args) { const result = original.apply(this, args); scheduleRefresh(); return result; };
-      watches.set(viewer, {original, wrapped}); viewer.render = wrapped;
-    }
-  }
-  function refresh() {
-    if (disposed) return;
-    watchViewers(); const snapshot = attempt(capture), enabled = Boolean(snapshot);
-    controls.forEach(control => { control.disabled = !enabled; }); saveButton.disabled = !enabled;
-    if (snapshot) {
-      for (const [name, input] of inputs) if (doc.activeElement !== input) input.value = displayNumber(inputValue(snapshot, name), name);
-      for (const [name, slider] of sliders) {
-        if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
-        slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? t(' 倍') : t(' 度')}`);
-      }
-      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? 2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
-    } else {
-      dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
-      heightLabel.textContent = t('加载数据后可调整');
-    }
-    loadButton.disabled = updateButton.disabled = !enabled || !selectedBookmark;
-  }
-  const finishDragging = () => { if (dragging.size) { dragging.clear(); scheduleRefresh(); } };
-  win.addEventListener?.('pointerup', finishDragging); win.addEventListener?.('pointercancel', finishDragging);
-  function freshId() {
-    let id; do { id = win.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${++idCounter}`; }
-    while (bookmarks.some(bookmark => bookmark.id === id)); return id;
-  }
-  function validName() {
-    const name = bookmarkName.value.trim(); if (!name || name.length > 80) throw Error(t('请填写 1–80 个字符的书签名称')); return name;
-  }
-  function uniqueName(name) {
-    let result = name, number = 2;
-    while (bookmarks.some(bookmark => bookmark.name === result)) { const suffix = ` (${number++})`; result = name.slice(0, 80 - suffix.length) + suffix; }
-    return result;
-  }
-  preserveInput.addEventListener('change', () => {
-    const requested = preserveInput.checked; syncStored();
-    pendingPreserve = requested; preserveView = requested; preserveInput.checked = requested; persist();
-  });
-  bookmarkSelect.addEventListener('change', () => {
-    selectedBookmark = bookmarkSelect.value;
-    const selected = bookmarks.find(bookmark => bookmark.id === selectedBookmark); if (selected) bookmarkName.value = selected.name;
-    updateBookmarks();
-  });
-  saveButton.addEventListener('click', () => attempt(() => {
-    syncStored();
-    const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再保存视角'));
-    if (bookmarks.length >= CAMERA_MAX_BOOKMARKS) throw Error(t('最多保存 100 个书签，请先删除不需要的视角'));
-    const name = uniqueName(validName()), record = {id: freshId(), name, snapshot, updatedAt: new Date().toISOString()};
-    bookmarks.push(record); pendingBookmarks.set(record.id, record); selectedBookmark = record.id; bookmarkName.value = name; updateBookmarks();
-    if (persist()) message(t("已保存新书签“{0}”，下次打开仍可使用。", [name]));
-  }));
-  loadButton.addEventListener('click', () => attempt(() => {
-    syncStored();
-    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (bookmark) restore(bookmark.snapshot);
-  }));
-  updateButton.addEventListener('click', () => attempt(() => {
-    syncStored();
-    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (!bookmark) return;
-    const snapshot = capture(); if (!snapshot) throw Error(t('请先加载数据，再更新视角'));
-    bookmark.snapshot = snapshot; bookmark.updatedAt = new Date().toISOString(); pendingBookmarks.set(bookmark.id, bookmark); updateBookmarks();
-    if (persist()) message(t("已更新“{0}”的视角。", [bookmark.name]));
-  }));
-  renameButton.addEventListener('click', () => attempt(() => {
-    syncStored();
-    const bookmark = bookmarks.find(record => record.id === selectedBookmark); if (!bookmark) return;
-    const name = validName();
-    if (bookmarks.some(record => record.id !== bookmark.id && record.name === name)) throw Error(t('已有同名书签，请使用其他名称'));
-    bookmark.name = name; bookmark.updatedAt = new Date().toISOString(); pendingBookmarks.set(bookmark.id, bookmark); updateBookmarks();
-    if (persist()) message(t("已重命名为“{0}”。", [name]));
-  }));
-  deleteButton.addEventListener('click', () => {
-    syncStored(); if (!selectedBookmark) return;
-    pendingBookmarks.set(selectedBookmark, null);
-    bookmarks = bookmarks.filter(bookmark => bookmark.id !== selectedBookmark); selectedBookmark = ''; bookmarkName.value = ''; updateBookmarks();
-    if (persist()) message(t('书签已删除。'));
-  });
-  exportButton.addEventListener('click', async () => { try {
-    syncStored();
-    const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
-    if (isMobileApp()) { await mobileShareBlob(blob, `BuildingWebViewer-camera-${space}.json`); message(t('相机书签 JSON 已导出，不含模型数据。')); return; }
-    const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
-    win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message(t('相机书签 JSON 已导出，不含模型数据。'));
-  } catch(error) { message(error.message, true); } });
-  importButton.addEventListener('click', () => importInput.click());
-  importInput.addEventListener('change', async () => {
-    const file = importInput.files?.[0]; importInput.value = ''; if (!file) return;
-    try {
-      if (file.size > 1024 * 1024) throw Error(t('相机 JSON 超过 1 MB，请检查是否选择了正确文件'));
-      const incoming = parseCameraBookmarks(await file.text(), space);
-      if (disposed) return;
-      syncStored();
-      if (bookmarks.length + incoming.bookmarks.length > CAMERA_MAX_BOOKMARKS) throw Error(t('导入后超过 100 个书签，请先删除不需要的视角'));
-      for (const bookmark of incoming.bookmarks) {
-        const record = {...bookmark, name: uniqueName(bookmark.name), id: freshId(), updatedAt: bookmark.updatedAt || new Date().toISOString()};
-        bookmarks.push(record); pendingBookmarks.set(record.id, record);
-      }
-      selectedBookmark = incoming.bookmarks.length ? bookmarks.at(-1).id : selectedBookmark;
-      if (selectedBookmark) bookmarkName.value = bookmarks.find(bookmark => bookmark.id === selectedBookmark).name;
-      updateBookmarks(); if (persist()) message(t("已导入 {0} 个书签；选择后点击“加载所选”应用。", [incoming.bookmarks.length]));
-    } catch (error) { message(error.message || String(error), true); }
-  });
-  const onStorage = event => {
-    if (!disposed && (event.key === key || event.key === null)) syncStored();
-  };
-  win.addEventListener?.('storage', onStorage);
-  syncStored({notifyDeleted: false});
-  preserveInput.checked = preserveView; updateBookmarks(); refresh();
-  return {
-    get preserveView() { return preserveView; }, capture, restore, refresh,
-    destroy() {
-      disposed = true; if (frame !== null) win.cancelAnimationFrame(frame);
-      for (const [viewer, {original, wrapped}] of watches) if (viewer.render === wrapped) viewer.render = original;
-      win.removeEventListener?.('storage', onStorage);
-      win.removeEventListener?.('pointerup', finishDragging); win.removeEventListener?.('pointercancel', finishDragging);
-      panel.remove(); if (separateBookmarks) bookPanel.remove(); watches.clear(); dragging.clear();
-    },
-  };
-}
-
-
 // Source: src/shared/palette-controls.js
 
 
@@ -4126,8 +4432,12 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
 
 
 
+
+
+
 initializeLocale();
 const $ = (id) => document.getElementById(id);
+let animationControls=null;
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
@@ -4221,7 +4531,7 @@ async function loadSelection() {
   if (!ids.length) {
     currentModels = [];
     viewer?.setModels([]);
-    cameraControls?.refresh(); updateHeightLegend();
+    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
     renderLabels([]);
     $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
     $('scene-stats').textContent = catalog.length ? t('未选择模型') : t('请先在项目栏添加文件或文件夹');
@@ -4262,7 +4572,7 @@ async function loadSelection() {
   try {
     viewer?.setModels(currentModels);
     if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
-    cameraControls?.refresh(); updateHeightLegend();
+    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
     const triangles = currentModels.reduce((sum, m) => sum + m.faces.length, 0);
     const vertices = currentModels.reduce((sum, m) => sum + m.vertices.length, 0);
     $('scene-stats').textContent = currentModels.length ? t("已显示 {0} / {1} 个 · {2} 三角面 · {3} 顶点", [currentModels.length, ids.length, number(triangles), number(vertices)]) : t('未显示模型');
@@ -4291,7 +4601,7 @@ function updateOptions() {
   viewer?.setOptions(options);
   if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
   paletteControls?.setScalarEnabled(options.colors === 'height');
-  cameraControls?.refresh(); updateHeightLegend();
+  cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
   $('layout-title').textContent = options.scale === 'real' ? t('等比例陈列') : t('统一展示大小');
   $('layout-note').textContent = options.scale === 'real' ? t('独立模型重新排列 · 非实际地理位置') : t('各模型独立等比缩放 · 不可比较实际大小');
   $('legend').hidden = options.colors !== 'surface' || options.mode === 'wire';
@@ -4378,6 +4688,7 @@ function init() {
   try {
     ensureViewer();
     mountViewerLayout({getViewers: () => viewer ? [viewer] : []});
+    if(!isMobileApp()&&!animationControls)animationControls=mountCameraAnimation({adapter:createMeshAnimationAdapter({getViewer:()=>viewer,getModels:()=>currentModels,getScene:()=>({ids:currentModels.map(m=>String(m.id)),scale:options.scale})}),toolbar:document.querySelector('.viewer-toolbar'),anchor:$('viewport')});
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
       getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),

@@ -55,3 +55,5 @@ python3 scripts/check.py  # Node 18+
 ```
 
 Android 构建另需 Node 22+、JDK 与 Android SDK。详见 [开发约定](docs/DEVELOPMENT.md)、[更新日志](CHANGELOG.md) 和 [发布流程](docs/RELEASING.md)。
+
+桌面版[相机动画时间轴](docs/CAMERA-ANIMATION.md)：在网格工具中打关键帧、预览并导出视频。模块划分见[架构说明](docs/ARCHITECTURE.md)。

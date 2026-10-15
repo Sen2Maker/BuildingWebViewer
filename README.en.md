@@ -55,3 +55,5 @@ python3 scripts/check.py  # Node 18+
 ```
 
 Android builds additionally need Node 22+, a JDK and Android SDK. See [development](docs/DEVELOPMENT.md), [changelog](CHANGELOG.md) and [releases](docs/RELEASING.md).
+
+Desktop [camera animation timeline](docs/CAMERA-ANIMATION.md) in the Mesh Viewer, with keyframes, playback and video export. See [module architecture](docs/ARCHITECTURE.md).

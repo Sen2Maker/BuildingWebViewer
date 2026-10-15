@@ -71,7 +71,7 @@ export function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
     camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
 }
 
-export function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback()} = {}) {
+export function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback(), render = true} = {}) {
   const value = validateCameraSnapshot(snapshot, {space, scene, checkScene});
   if (!Array.isArray(viewers) || !viewers.length || viewers.some(viewer => !viewer?.camera || typeof viewer.render !== 'function')) throw Error(t('请先加载数据，再应用相机'));
   // Validate every new local target first, so a bad panel cannot leave a partial update.
@@ -86,7 +86,7 @@ export function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space,
       viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
       viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
     });
-    viewers.forEach(viewer => viewer.render());
+    if(render)viewers.forEach(viewer => viewer.render());
   });
   return value;
 }

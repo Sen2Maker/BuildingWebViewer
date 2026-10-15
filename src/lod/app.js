@@ -1,3 +1,6 @@
+import { mountCameraAnimation } from '../shared/animation-controls.js';
+import { createMeshAnimationAdapter } from './animation-adapter.js';
+import { isMobileApp } from '../shared/mobile-project.js';
 import { mountMobileProject, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs } from '../shared/mobile-project.js';
 import { archiveImportQueue } from '../shared/zip-import.js';
 import { ViewerProject } from '../shared/project-model.js';
@@ -15,6 +18,7 @@ import { mountPaletteControls, paletteGradient } from '../shared/palette-control
 
 initializeLocale();
 const $ = (id) => document.getElementById(id);
+let animationControls=null;
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
@@ -108,7 +112,7 @@ async function loadSelection() {
   if (!ids.length) {
     currentModels = [];
     viewer?.setModels([]);
-    cameraControls?.refresh(); updateHeightLegend();
+    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
     renderLabels([]);
     $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
     $('scene-stats').textContent = catalog.length ? t('未选择模型') : t('请先在项目栏添加文件或文件夹');
@@ -149,7 +153,7 @@ async function loadSelection() {
   try {
     viewer?.setModels(currentModels);
     if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
-    cameraControls?.refresh(); updateHeightLegend();
+    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
     const triangles = currentModels.reduce((sum, m) => sum + m.faces.length, 0);
     const vertices = currentModels.reduce((sum, m) => sum + m.vertices.length, 0);
     $('scene-stats').textContent = currentModels.length ? t("已显示 {0} / {1} 个 · {2} 三角面 · {3} 顶点", [currentModels.length, ids.length, number(triangles), number(vertices)]) : t('未显示模型');
@@ -178,7 +182,7 @@ function updateOptions() {
   viewer?.setOptions(options);
   if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
   paletteControls?.setScalarEnabled(options.colors === 'height');
-  cameraControls?.refresh(); updateHeightLegend();
+  cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
   $('layout-title').textContent = options.scale === 'real' ? t('等比例陈列') : t('统一展示大小');
   $('layout-note').textContent = options.scale === 'real' ? t('独立模型重新排列 · 非实际地理位置') : t('各模型独立等比缩放 · 不可比较实际大小');
   $('legend').hidden = options.colors !== 'surface' || options.mode === 'wire';
@@ -265,6 +269,7 @@ function init() {
   try {
     ensureViewer();
     mountViewerLayout({getViewers: () => viewer ? [viewer] : []});
+    if(!isMobileApp()&&!animationControls)animationControls=mountCameraAnimation({adapter:createMeshAnimationAdapter({getViewer:()=>viewer,getModels:()=>currentModels,getScene:()=>({ids:currentModels.map(m=>String(m.id)),scale:options.scale})}),toolbar:document.querySelector('.viewer-toolbar'),anchor:$('viewport')});
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
       getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),

@@ -4,7 +4,16 @@
 
 ## [Unreleased]
 
-后续变更先在此记录，完成验证与变更汇报后再发布。Record upcoming changes here before review and publication.
+后续变更先在此记录。Record upcoming changes here.
+
+## [1.8.0] - 2026-10-15
+
+- 桌面网格工具新增相机动画时间轴：设置时长与帧率、捕获和移动关键帧、选择过渡、环绕示例、播放预览与撤销重做。
+- 时间轴和输出设置自动保存在浏览器，支持 JSON 备份；逐帧导出 MP4 / H.264、WebM / VP8 或 PNG 序列 ZIP，支持取消并恢复相机。
+- 通用动画数据、界面与导出模块独立于网格适配器；精简模式、可调整面板和固定标题减少界面拥挤。
+- Desktop Mesh Viewer adds a camera animation timeline with keyframes, transitions, playback, browser persistence and JSON backups. Export exact-frame MP4, WebM or PNG sequences; cancel safely and restore the camera. Shared modules provide a boundary for future viewer integration.
+- 验证 / Validation: web regressions, actual MP4 / WebM packet counts and timestamps, PNG ZIP CRCs/dimensions, cancellation and Android unit tests. Native API 12 remains compatible; includes a matching complete APK and signed web update.
+- 范围 / Scope: desktop Mesh Viewer only. Mobile web and App do not enable the timeline yet. Encoding support depends on the browser; PNG sequence is the fallback. Large-scene long-video stress testing and direct-to-disk end-to-end testing remain pending.
 
 ## [1.7.2] - 2026-10-14
 

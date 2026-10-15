@@ -1,11 +1,11 @@
 {
-  "version": "1.7.2",
+  "version": "1.8.0",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 19,
-  "issuedAt": 1791970350,
-  "expiresAt": 1807522350,
+  "sequence": 20,
+  "issuedAt": 1792062948,
+  "expiresAt": 1807614948,
   "notes": {
-    "zh": "点云创作画笔支持暂停调整视角、保留草稿并继续绘制；Esc 暂停，工具与草稿操作分组，优化手机与桌面排布。",
-    "en": "Pause drawing to adjust the view without losing the draft, then resume. Escape pauses. Grouped drawing tools and draft actions with compact desktop and mobile layouts."
+    "zh": "桌面网格模型新增相机动画时间轴：关键帧、平滑过渡、预览、JSON 保存与 MP4 / WebM / PNG 序列导出。本版仍提供完整 APK 和兼容热更新；手机网页与 App 暂未启用时间轴。",
+    "en": "Desktop Mesh Viewer adds camera keyframes, smooth transitions, playback, JSON backups and MP4 / WebM / PNG sequence export. Includes a complete APK and compatible web update; the timeline is not yet enabled on mobile web or App."
   }
 }
