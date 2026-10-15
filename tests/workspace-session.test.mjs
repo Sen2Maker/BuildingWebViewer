@@ -17,3 +17,9 @@ const unchanged=await openWorkspaceSession({tool:'generate',restore:async()=>({s
 revision={};blobText='new imported points';value='new source';
 const imported=await openWorkspaceSession({tool:'generate',restore:async()=>({snapshotUnchanged:false}),capture:restoredCapture,onStatus:()=>{}});await imported.flush();assert.deepEqual(writes.at(-1),['new imported points','new source']);
 console.log('PASS unchanged snapshot reuse and newly imported data snapshot commit');
+
+// Metadata must describe the same revision as the binary snapshot even while UI state changes.
+let finishSnapshot;hold=new Promise(r=>finishSnapshot=r);const nested={value:'captured'};
+const stable=await openWorkspaceSession({tool:'generate',restore:async()=>{},capture:()=>({revision:{},state:nested,blob:()=>new Blob(['stable'])}),onStatus:()=>{}});
+const stableSave=stable.flush();await new Promise(r=>setImmediate(r));nested.value='later';finishSnapshot();hold=null;await stableSave;
+assert.equal(project.states.generate.value,'captured');console.log('PASS snapshot metadata is frozen before asynchronous binary writes');

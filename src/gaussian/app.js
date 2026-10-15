@@ -1,3 +1,4 @@
+import { mountGaussianCameraControls } from './camera-controls.js';
 import { openNativeGaussianPage } from './native-view.js';
 import { mountRenderDiagnostics } from '../shared/render-diagnostics.js';
 import { openWorkspaceSession } from '../shared/workspace-session.js';
@@ -45,7 +46,7 @@ async function gsBoot() {
   const gsProject = new ViewerProject();
   const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
   let nativeSession=null,preservedWebCamera=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
-  let gsEditor = null, gsViewer = null, gsSerial = 0, gsMode = 'multiple';
+  let gsEditor = null, gsViewer = null, gsCameraControls = null, gsSerial = 0, gsMode = 'multiple';
   const gsAccept = name => /\.(ply|json|zip)$/i.test(name);
   const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   const gsSay = message => { const note = gs$('data-notes'); note.textContent = message || ''; };
@@ -112,7 +113,7 @@ async function gsBoot() {
       : t('把 cameras.json 和 point_cloud.ply 一起导入后，可以跳到训练机位。');
   }
 
-  async function gsApply({preserveView = false} = {}) {
+  async function gsApply({preserveView = gsCameraControls?.preserveView ?? true} = {}) {
     const serial = ++gsSerial;
     const selected = [...gsSelected];
     if (!selected.length) {
@@ -171,7 +172,7 @@ async function gsBoot() {
     if (gsMode === 'single') {
       if (gsSelected.has(entry)) gsSelected.delete(entry); else { gsSelected.clear(); gsSelected.add(entry); }
     } else if (gsSelected.has(entry)) gsSelected.delete(entry); else gsSelected.add(entry);
-    gsApply({preserveView: true});
+    gsApply();
   }
 
   const gsTree = mountProjectTree({
@@ -263,6 +264,7 @@ async function gsBoot() {
     mountRenderDiagnostics(gsViewer, gs$('settings-panel-display').querySelector('.render-controls'));
     const quickDiagnostic=document.createElement('button');quickDiagnostic.type='button';quickDiagnostic.textContent=label('诊断','Diagnostics');quickDiagnostic.onclick=()=>gs$('gs-diagnostics').click();document.querySelector('.inspector-shortcuts').append(quickDiagnostic);
     gsEditor = mountGaussianEditor({loadFull:async()=>{profileSelect.value='full';await gsApply({preserveView:true});},viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
+    gsCameraControls = mountGaussianCameraControls({viewer:gsViewer,onError:gsError});
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }
   window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>gsEntryFlags(e)?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });

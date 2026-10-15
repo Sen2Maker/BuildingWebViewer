@@ -1,6 +1,4 @@
 import { saveLocalBlob } from '../shared/file-save.js';
-import { mountFlyCameraControls } from '../shared/fly-controls.js';
-import { mountCameraNavigationControls } from '../shared/camera-navigation-controls.js';
 import { GaussianEdits, gsEditStats, gsExportPly } from './edit-state.js';
 import { gsProjectPosition, gsViewSpec } from '../shared/camera-geometry.js';
 
@@ -71,37 +69,5 @@ export function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=
   panel.append(make('p',text('按原始数据导出，不受显示抽样影响。每次导出一个源文件，保留全部原始属性。','Export full-resolution source records, independent of viewport sampling. One source file per export; all original properties are retained.'),'presentation-help'));
   button(panel,'导出高斯 PLY','Export Gaussian PLY',()=>exportData());
   async function exportData(){try{const models=getModels(),m=models[Number(exportTarget.value)||0];if(!m)throw Error(text('请先勾选文件','Select a file first'));const blob=gsExportPly(m,{selectedOnly:scope.value==='selected',includeHidden:scope.value==='all'});await saveLocalBlob(blob,(m.name||'gaussians').replace(/\.ply$/i,'')+'-edited.ply');onStatus(text('已导出高斯 PLY，原文件未修改。','Gaussian PLY exported; source file unchanged.'));}catch(e){onError(e.message);}}
-  // Gaussian cameras use their own versioned snapshots; old orthographic bookmarks remain untouched.
-  const cameraPanel=document.getElementById('camera-controls');
-  cameraPanel.append(make('h3',text('相机','Camera')));
-  mountFlyCameraControls(viewer, cameraPanel);
-  mountCameraNavigationControls(cameraPanel, viewer);
-  const projection=make('select');projection.setAttribute('aria-label',text('投影模式','Projection'));
-  for(const [v,z,e]of[['perspective','透视','Perspective'],['orthographic','正交','Orthographic']]){const o=make('option',text(z,e));o.value=v;projection.append(o);}cameraPanel.append(projection);
-  projection.onchange=()=>{viewer.stopNavigation();viewer.leaveTraining();viewer.projection=projection.value;viewer.requestRender();};
-  const sliders=[];
-  for(const [name,zh,eng,min,max,step]of[['fov','视野角','Field of view',10,120,1],['elevation','俯仰角','Elevation',-89,89,.1],['azimuth','方位角','Azimuth',-180,180,.1]]){
-    const label=make('label',text(zh,eng),'gs-camera-field'),range=make('input'),number=make('input');range.type='range';number.type='number';for(const input of[range,number]){input.min=min;input.max=max;input.step=step;input.setAttribute('aria-label',text(zh,eng)+(input===range?' slider':' number'));}range.value=number.value=name==='fov'?viewer.fov:viewer.camera[name];
-    const change=input=>{const value=Number(input.value);if(!input.value||!Number.isFinite(value)||value<min||value>max)return;viewer.stopNavigation();viewer.leaveTraining();if(name==='fov'){viewer.orbitLens=null;viewer.fov=value;}else viewer.camera[name]=value;range.value=number.value=value;viewer.requestRender();};range.oninput=()=>change(range);number.onchange=()=>change(number);label.append(range,number);cameraPanel.append(label);sliders.push({name,range,number});
-  }
-  const nearLabel=make('label',text('近裁剪距离（坐标单位）','Near clip (coordinate units)'),'gs-camera-field'),nearInput=make('input');
-  nearInput.type='number';nearInput.min=.00001;nearInput.step=.01;nearInput.value=viewer.near;nearInput.setAttribute('aria-label',text('近裁剪距离','Near clip'));
-  nearInput.onchange=()=>{const n=Number(nearInput.value);if(Number.isFinite(n)&&n>=.00001){viewer.near=n;viewer.requestRender();}};nearLabel.append(nearInput);cameraPanel.append(nearLabel);
-  cameraPanel.append(make('p',text('训练相机使用原始旋转、位置和焦距，并按图像比例适配视口。开始手动浏览时保留当前倾斜角和垂直视野，再进行环绕调整。','Training views preserve rotation, position and focal lengths, fitted to the viewport. Manual navigation preserves the current roll and vertical field of view before orbiting.'),'presentation-help'));
-  const poseInfo=make('p',null,'presentation-help');cameraPanel.append(poseInfo);
-  let lastCameraUI='',lastCameraAt=-Infinity,cameraUITimer;
-  const setValue=(el,value)=>{if(el.value!==String(value))el.value=value;};
-  viewer.onViewChange=()=>{
-    if(cameraPanel.closest('[hidden]'))return;
-    const now=performance.now();if(now-lastCameraAt<80){clearTimeout(cameraUITimer);cameraUITimer=setTimeout(()=>viewer.onViewChange?.(),85);return;}lastCameraAt=now;
-    const state=JSON.stringify([viewer.near,viewer.projection,viewer.fov,viewer.distance,viewer.baseHeight,viewer.orbitLens,viewer.camera,viewer.target,viewer.flyPose,viewer.trainingPose,viewer.origin]);
-    if(state===lastCameraUI)return;lastCameraUI=state;
-    if(document.activeElement!==nearInput)setValue(nearInput,viewer.near);setValue(projection,viewer.projection);for(const s of sliders){const back=(viewer.flyPose||viewer.trainingPose)?.basis[2];const v=s.name==='fov'?viewer.fov:back?(s.name==='elevation'?Math.asin(Math.max(-1,Math.min(1,back[2])))*180/Math.PI:Math.atan2(back[1],back[0])*180/Math.PI):viewer.camera[s.name];if(document.activeElement!==s.number)setValue(s.number,Number(v.toFixed(2)));if(document.activeElement!==s.range)setValue(s.range,v);}const size=viewer.viewportSize||viewer.canvas;const spec=gsViewSpec(viewer,size.width||size.clientWidth,size.height||size.clientHeight);poseInfo.textContent='XYZ: '+spec.eye.map((v,i)=>(v+viewer.origin[i]).toFixed(3)).join(' / ');};
-  const bookPanel=document.getElementById('bookmark-controls'),bookName=make('input'),bookList=make('select');bookName.placeholder=text('视角名称','View name');bookName.setAttribute('aria-label',text('视角名称','View name'));bookList.setAttribute('aria-label',text('高斯视角书签','Gaussian bookmarks'));bookPanel.append(bookName,bookList);
-  let bookmarks=[];const key='BuildingWebViewer.gaussian.camera.v1';try{const saved=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(saved))bookmarks=saved.slice(0,50);}catch{}
-  function listBooks(){bookList.replaceChildren();for(let i=0;i<bookmarks.length;i++){const o=make('option',bookmarks[i].name);o.value=i;bookList.append(o);}}
-  button(bookPanel,'保存当前视角','Save view',()=>{if(bookmarks.length>=50)throw Error('最多 50 个书签 / At most 50 bookmarks');bookmarks.push({name:bookName.value.trim()||text('视角 ','View ')+(bookmarks.length+1),camera:JSON.parse(JSON.stringify(viewer.camera)),projection:viewer.projection,orbitLens:viewer.orbitLens?{...viewer.orbitLens}:null,fov:viewer.fov,distance:viewer.distance,baseHeight:viewer.baseHeight,near:viewer.near,origin:[...viewer.origin],target:[...viewer.target],trainingPose:viewer.trainingPose?JSON.parse(JSON.stringify(viewer.trainingPose)):null});localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();bookList.value=bookmarks.length-1;});
-  button(bookPanel,'加载视角','Load view',()=>{const b=bookmarks[Number(bookList.value)];if(!b)return;viewer.stopNavigation();const delta=b.origin.map((v,i)=>v-viewer.origin[i]);viewer.camera=JSON.parse(JSON.stringify(b.camera));viewer.orbitLens=b.orbitLens||null;viewer.projection=b.projection;viewer.fov=b.fov;viewer.distance=b.distance;viewer.baseHeight=b.baseHeight;viewer.near=b.near||.001;viewer.target=b.target.map((v,i)=>v+delta[i]);viewer.trainingPose=b.trainingPose?{...b.trainingPose,eye:b.trainingPose.eye.map((v,i)=>v+delta[i])}:null;viewer.sortDirty=true;viewer.requestRender();});
-  button(bookPanel,'删除书签','Delete bookmark',()=>{bookmarks.splice(Number(bookList.value),1);localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();});listBooks();
   refresh();return {edits,refresh,setLoading(value){loading=value;if(value)stopEditing();refresh();},sceneChanged(){revision++;gesture=null;paint();const value=exportTarget.value;exportTarget.replaceChildren();getModels().forEach((m,i)=>{edits.attach(m);const o=make('option',m.name||`PLY ${i+1}`);o.value=i;exportTarget.append(o);});exportTarget.value=value!==''&&Number(value)<getModels().length?value:'0';refresh();},get busy(){return busy;}};
 }

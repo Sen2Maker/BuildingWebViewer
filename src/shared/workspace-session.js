@@ -1,9 +1,10 @@
 import { createAutosave } from './autosave.js';
 import { mobileProjects, NativeProjectFile, nativeExportWriter } from './mobile-project.js';
 import { createMobileHomeNavigation } from './mobile-navigation.js';
+import { mountMobileLifecycle } from './mobile-lifecycle.js';
 
 /** Native project lifecycle for editors with binary snapshots. Browser sessions remain local. */
-export async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
+export async function openWorkspaceSession({tool, restore, capture, onStatus=()=>{}, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
   const api=mobileProjects();if(!api)return null;
   const id=new URL(location.href).searchParams.get('project');
   if(!id){location.replace('/assets/mobile/index.html');return {redirecting:true};}
@@ -20,13 +21,13 @@ export async function openWorkspaceSession({tool, restore, capture, onStatus, be
   if(snapshotKey&&restored?.snapshotUnchanged){savedRevision=capture().revision;const {snapshotKey:ignored,...previous}=state;lastState=JSON.stringify(previous);}
   async function flush(){
     queued=true;if(draining)return draining;
-    draining=Promise.resolve().then(async()=>{try{while(queued){queued=false;const current=capture(),stateText=JSON.stringify(current.state);
+    draining=Promise.resolve().then(async()=>{try{while(queued){queued=false;const current=capture(),stateText=JSON.stringify(current.state),savedState=JSON.parse(stateText);
       if(current.revision!==savedRevision||!snapshotKey){
         report('saving');const blob=current.blob();const writer=await nativeExportWriter(`${tool}.snapshot`);
         try{for(let i=0;i<blob.size;i+=262144)await writer.write(await blob.slice(i,i+262144).arrayBuffer());
-          const saved=await api.commitSnapshot({token:writer.token,id,tool,state:current.state});snapshotKey=saved.snapshotKey;savedRevision=current.revision;lastState=stateText;
+          const saved=await api.commitSnapshot({token:writer.token,id,tool,state:savedState});snapshotKey=saved.snapshotKey;savedRevision=current.revision;lastState=stateText;
         }catch(error){await writer.abort().catch(()=>{});throw error;}
-      }else if(stateText!==lastState){report('saving');await api.saveState({id,tool,state:{...current.state,snapshotKey}});lastState=stateText;}
+      }else if(stateText!==lastState){report('saving');await api.saveState({id,tool,state:{...savedState,snapshotKey}});lastState=stateText;}
     }report('saved');}catch(error){report('error',error);throw error;}finally{draining=null;}});return draining;
   }
   const autosave=createAutosave({save:flush,onDirty:()=>report('dirty')});
@@ -35,10 +36,7 @@ export async function openWorkspaceSession({tool, restore, capture, onStatus, be
   const link=document.querySelector('.back-home');if(link){link.href='/assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
   globalThis.bwvNavigateProjectHome=()=>home().catch(()=>{});
   globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});else saveNow().catch(()=>{});};
-  const background=()=>{autosave.pause().catch(()=>{});onBackground();};
-  const foreground=()=>{autosave.resume();onForeground();};
-  document.addEventListener('visibilitychange',()=>document.hidden?background():foreground());
-  globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
+  mountMobileLifecycle({autosave,onBackground,onForeground});
   for(const event of ['pointerdown','pointerup','keydown','keyup','input','change','wheel'])document.addEventListener(event,schedule,{passive:true});
   return {id,records,flush:saveNow,schedule,async pick(){await saveNow();const result=await api.pickFiles({id});if(!result.cancelled)location.reload();},async home(){return home();}};
 }

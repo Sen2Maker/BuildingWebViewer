@@ -5,11 +5,12 @@
 // Source: src/shared/autosave.js
 /** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
 function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
-  let timer=null, suspended=false;
+  let timer=null, suspended=false, dirty=false, generation=0;
   const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
-  const flush=()=>{cancel();return Promise.resolve().then(save).then(result=>{if(timer!==null)onDirty();return result;});};
-  const schedule=()=>{if(suspended||timer!==null)return;onDirty();timer=setTimer(()=>{timer=null;flush().catch(()=>schedule());},delay);};
-  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;},dispose:cancel};
+  const arm=()=>{if(suspended||!dirty||timer!==null)return;timer=setTimer(()=>{timer=null;flush().catch(()=>arm());},delay);};
+  const flush=()=>{cancel();const savingGeneration=generation;return Promise.resolve().then(save).then(result=>{if(generation===savingGeneration)dirty=false;if(dirty){onDirty();arm();}return result;},error=>{dirty=true;arm();throw error;});};
+  const schedule=()=>{dirty=true;generation++;if(timer!==null)return;onDirty();arm();};
+  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;arm();},dispose(){cancel();suspended=true;}};
 }
 
 
@@ -1323,7 +1324,27 @@ function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
 }
 
 
+// Source: src/shared/mobile-lifecycle.js
+/** Visibility and native events describe the same lifecycle; each transition runs once. */
+function mountMobileLifecycle({root=document, host=globalThis, autosave, onBackground=()=>{}, onForeground=()=>{}}) {
+  let nativePaused=false, paused=false;
+  const reconcile=()=>{
+    const next=Boolean(root.hidden)||nativePaused;if(next===paused)return;
+    paused=next;
+    if(paused){autosave.pause().catch(()=>{});onBackground();}
+    else{autosave.resume();onForeground();}
+  };
+  const pause=()=>{nativePaused=true;reconcile();},resume=()=>{nativePaused=false;reconcile();};
+  root.addEventListener('visibilitychange',reconcile);
+  host.addEventListener('bwvPause',pause);host.addEventListener('bwvResume',resume);
+  host.addEventListener('bwvMemoryPressure',onBackground);
+  reconcile();
+  return ()=>{root.removeEventListener('visibilitychange',reconcile);host.removeEventListener('bwvPause',pause);host.removeEventListener('bwvResume',resume);host.removeEventListener('bwvMemoryPressure',onBackground);};
+}
+
+
 // Source: src/shared/mobile-project.js
+
 
 
 
@@ -1366,7 +1387,8 @@ function createMobileSaver({read,write,status=()=>{}}){
   return {flush(){
     let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
     if(!draining&&text===last){status('saved');return Promise.resolve();}
-    pending={state,text};
+    // Freeze the exact JSON snapshot represented by text before an asynchronous disk write.
+    pending={state:JSON.parse(text),text};
     if(draining)return draining;
     draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
     return draining;
@@ -1401,10 +1423,7 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
-    const background=()=>{autosave.pause().catch(()=>{});onBackground();};
-    const foreground=()=>{autosave.resume();onForeground();};
-    root.addEventListener('visibilitychange',()=>root.hidden?background():foreground());
-    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    mountMobileLifecycle({root,autosave,onBackground,onForeground});
     await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
     // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
     const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});

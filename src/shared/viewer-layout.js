@@ -5,6 +5,7 @@ import { mountPresentationControls } from './presentation-controls.js';
 import { t } from './i18n.js';
 import { mountProjectSidebar } from './sidebar.js';
 import { mountResourceMonitor } from './resource-monitor.js';
+import { setViewerProjection } from './viewer-projection.js';
 
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 export function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
@@ -17,7 +18,8 @@ export function mountViewerLayout({root = document, getViewers = () => [], pause
     const label=root.createElement('label'),select=root.createElement('select'),en=document.documentElement.lang==='en';
     label.textContent=en?'Projection':'投影模式';select.setAttribute('aria-label',label.textContent);
     for(const[value,zh,english]of [['orthographic','正交','Orthographic'],['perspective','透视','Perspective']]){const option=root.createElement('option');option.value=value;option.textContent=en?english:zh;select.append(option);}
-    select.onchange=()=>{for(const viewer of getViewers()){viewer.stopNavigation();if(select.value==='perspective')viewer.prepareFly();else viewer.baseHeight=2*viewer.distance*Math.tan(viewer.fov*Math.PI/360);viewer.projection=select.value;viewer.requestRender();}};
+    select.value=primary.projection;
+    select.onchange=()=>setViewerProjection(getViewers(),select.value,pauseSync);
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }

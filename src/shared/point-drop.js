@@ -50,11 +50,11 @@ export async function scanPointDrop(roots, accepts, onProgress = () => {}) {
 }
 
 export function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
-  let depth = 0, queue = Promise.resolve();
+  let depth = 0, queue = Promise.resolve(), disposed = false;
   const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files') ||
     Array.from(event.dataTransfer?.items || []).some(item => item.kind === 'file');
   const reset = () => { depth = 0; zone.classList.remove('drop-active'); };
-  const say = message => { status.hidden = false; status.textContent = message; };
+  const say = message => { if (disposed) return; status.hidden = false; status.textContent = message; };
   const inside = event => zone.contains(event.target);
   const onEnter = event => {
     if (!hasFiles(event)) return;
@@ -77,8 +77,10 @@ export function mountPointDrop({ zone, status, accepts, onFiles, host = window }
     say(t('正在整理拖入的文件…'));
     // A second drop can arrive during directory scanning; handles are already captured.
     queue = queue.then(async () => {
+      if (disposed) return;
       const result = await scanPointDrop(roots, accepts, progress =>
         say(t("正在查找数据… 已找到 {0} 个文件", [progress.files.length.toLocaleString('zh-CN')])));
+      if (disposed) return;
       const received = result.files.length ? await onFiles(result.files) : { added: 0, duplicates: 0 };
       const parts = [t("新增 {0} 个数据", [received.added])];
       if (received.duplicates) parts.push(t("{0} 个已存在", [received.duplicates]));
@@ -95,6 +97,7 @@ export function mountPointDrop({ zone, status, accepts, onFiles, host = window }
   host.addEventListener('drop', onDrop);
   host.addEventListener('dragend', reset);
   return () => {
+    disposed = true;
     zone.removeEventListener('dragenter', onEnter);
     zone.removeEventListener('dragleave', onLeave);
     host.removeEventListener('dragover', onOver);

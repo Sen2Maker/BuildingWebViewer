@@ -2,110 +2,6 @@
 (() => {
 'use strict';
 
-// Source: src/shared/camera-geometry.js
-// Gaussian camera conventions: right/up/back form an orthonormal world basis.
-// Inria cameras.json stores camera-to-world columns right/down/forward.
-const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
-function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
-function gsTrainingPose(camera, origin=[0,0,0]) {
-  const r=camera.rotation;
-  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
-  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
-  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
-  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
-}
-function gsViewSpec(viewer, width, height) {
-  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
-  const training=viewer.trainingPose;
-  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
-  const fit=training?Math.min(width/training.width,height/training.height):1;
-  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
-  const distance=viewer.distance/viewer.camera.zoom;
-  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
-  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
-  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
-}
-function gsProjectPosition(point, spec) {
-  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
-  const depth=-gsDot3(delta,back);
-  if (spec.perspective && depth<=spec.near) return null;
-  const x=gsDot3(delta,right), y=gsDot3(delta,up);
-  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
-}
-
-
-// Source: src/shared/orbit-camera.js
-
-function gsOrbitRotate(v, axis, angle) {
-  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
-  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
-  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
-}
-function gsSetOrbitBasis(viewer, basis) {
-  const [right,,back]=basis, deg=180/Math.PI;
-  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
-  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
-  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
-  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
-}
-/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
- * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
- */
-function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
-  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
-  if(!viewer.packed)return null;
-  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
-  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
-  let limit=radius*radius;
-  for(let i=0;i<viewer.count;i++) {
-    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
-    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
-    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
-    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
-    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
-    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
-    const d=px*px+py*py;if(d>limit)continue;
-    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
-    if(candidates.length===32)limit=candidates[31].d;
-  }
-  if(!candidates.length)return null;
-  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
-  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
-}
-function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
-  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
-  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
-  if(!model&&x!==null&&picked===null)return false;
-  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
-  let depth=picked??fallback;
-  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
-  if(!model&&x!==null) {
-    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
-    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
-    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
-  }
-  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
-  if(depth<=spec.near)return false;
-  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
-  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
-  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
-  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
-  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
-}
-
-
-// Source: src/shared/autosave.js
-/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
-function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
-  let timer=null, suspended=false;
-  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
-  const flush=()=>{cancel();return Promise.resolve().then(save).then(result=>{if(timer!==null)onDirty();return result;});};
-  const schedule=()=>{if(suspended||timer!==null)return;onDirty();timer=setTimer(()=>{timer=null;flush().catch(()=>schedule());},delay);};
-  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;},dispose:cancel};
-}
-
-
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
@@ -1404,6 +1300,179 @@ function initializeLocale(doc = document) {
 }
 
 
+// Source: src/shared/palettes.js
+
+/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
+const PALETTE_DEFINITIONS = Object.freeze({
+  current: {label: t('当前色带'), stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
+  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
+  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
+  grayscale: {label: t('灰度'), stops: [[.08,.08,.08],[.95,.95,.95]]},
+  'blue-white-red': {label: t('蓝—白—红'), stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
+});
+
+function samplePalette(t, palette = 'current', reverse = false) {
+  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
+  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
+  if (reverse) value = 1 - value;
+  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
+  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
+}
+
+function paletteUniforms(palette = 'current', reverse = false) {
+  const values = new Float32Array(27);
+  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
+  return values;
+}
+
+const PALETTE_STORAGE_KEY = 'BuildingWebViewer.palette.v1';
+/** Copy the small scalar-color contract; numeric limits belong to the current dataset, never a global preference. */
+function normalizePaletteOptions(options = {}) {
+  validatePaletteOptions(options);
+  return {palette:options.palette || 'current',reverse:!!options.reverse,range:options.range?{min:options.range.min,max:options.range.max}:null};
+}
+function currentPalettePreferences() {
+  try {
+    const stored=JSON.parse(globalThis.localStorage?.getItem(PALETTE_STORAGE_KEY)||'null');
+    if(stored && typeof stored==='object')return {...normalizePaletteOptions({palette:stored.palette,reverse:stored.reverse}),range:null};
+  } catch {}
+  return {palette:'current',reverse:false,range:null};
+}
+function rememberPalettePreferences(options) {
+  const {palette,reverse}=normalizePaletteOptions(options);
+  try { globalThis.localStorage?.setItem(PALETTE_STORAGE_KEY,JSON.stringify({palette,reverse})); } catch {}
+}
+
+function validatePaletteOptions(options) {
+  if(!options || typeof options!=='object' || Array.isArray(options))throw new Error('Invalid palette options');
+  if(options.reverse!==undefined && typeof options.reverse!=='boolean')throw new Error('Invalid palette reversal flag');
+  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
+  if (options.range !== null && options.range !== undefined) {
+    const {min, max} = options.range;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error(t('手动色域需要有限数值，且最小值必须小于最大值。'));
+  }
+}
+
+const PALETTE_GLSL = `
+uniform vec3 colorStops[9];
+vec3 paletteColor(float value) {
+  float t = clamp(value, 0.0, 1.0) * 8.0;
+  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
+  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
+  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
+  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
+  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
+  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
+  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
+  return mix(colorStops[7], colorStops[8], t - 7.0);
+}`;
+
+
+// Source: src/shared/camera-geometry.js
+// Gaussian camera conventions: right/up/back form an orthonormal world basis.
+// Inria cameras.json stores camera-to-world columns right/down/forward.
+const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
+function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function gsTrainingPose(camera, origin=[0,0,0]) {
+  const r=camera.rotation;
+  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
+  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
+  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
+  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
+}
+function gsViewSpec(viewer, width, height) {
+  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
+  const training=viewer.trainingPose;
+  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
+  const fit=training?Math.min(width/training.width,height/training.height):1;
+  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
+  const distance=viewer.distance/viewer.camera.zoom;
+  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
+  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
+  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
+}
+function gsProjectPosition(point, spec) {
+  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
+  const depth=-gsDot3(delta,back);
+  if (spec.perspective && depth<=spec.near) return null;
+  const x=gsDot3(delta,right), y=gsDot3(delta,up);
+  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
+}
+
+
+// Source: src/shared/orbit-camera.js
+
+function gsOrbitRotate(v, axis, angle) {
+  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
+  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
+  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
+}
+function gsSetOrbitBasis(viewer, basis) {
+  const [right,,back]=basis, deg=180/Math.PI;
+  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
+  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
+  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
+  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
+}
+/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
+ * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
+ */
+function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
+  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
+  if(!viewer.packed)return null;
+  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
+  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
+  let limit=radius*radius;
+  for(let i=0;i<viewer.count;i++) {
+    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
+    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
+    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
+    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
+    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
+    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
+    const d=px*px+py*py;if(d>limit)continue;
+    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
+    if(candidates.length===32)limit=candidates[31].d;
+  }
+  if(!candidates.length)return null;
+  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
+  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
+}
+function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
+  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
+  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
+  if(!model&&x!==null&&picked===null)return false;
+  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
+  let depth=picked??fallback;
+  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
+  if(!model&&x!==null) {
+    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
+    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
+    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
+  }
+  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
+  if(depth<=spec.near)return false;
+  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
+  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
+  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
+  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
+  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
+}
+
+
+// Source: src/shared/autosave.js
+/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
+function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
+  let timer=null, suspended=false, dirty=false, generation=0;
+  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
+  const arm=()=>{if(suspended||!dirty||timer!==null)return;timer=setTimer(()=>{timer=null;flush().catch(()=>arm());},delay);};
+  const flush=()=>{cancel();const savingGeneration=generation;return Promise.resolve().then(save).then(result=>{if(generation===savingGeneration)dirty=false;if(dirty){onDirty();arm();}return result;},error=>{dirty=true;arm();throw error;});};
+  const schedule=()=>{dirty=true;generation++;if(timer!==null)return;onDirty();arm();};
+  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;arm();},dispose(){cancel();suspended=true;}};
+}
+
+
 // Source: src/shared/mobile-navigation.js
 /** One save-aware route home, shared by the toolbar and Android system Back. */
 function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
@@ -1416,7 +1485,27 @@ function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
 }
 
 
+// Source: src/shared/mobile-lifecycle.js
+/** Visibility and native events describe the same lifecycle; each transition runs once. */
+function mountMobileLifecycle({root=document, host=globalThis, autosave, onBackground=()=>{}, onForeground=()=>{}}) {
+  let nativePaused=false, paused=false;
+  const reconcile=()=>{
+    const next=Boolean(root.hidden)||nativePaused;if(next===paused)return;
+    paused=next;
+    if(paused){autosave.pause().catch(()=>{});onBackground();}
+    else{autosave.resume();onForeground();}
+  };
+  const pause=()=>{nativePaused=true;reconcile();},resume=()=>{nativePaused=false;reconcile();};
+  root.addEventListener('visibilitychange',reconcile);
+  host.addEventListener('bwvPause',pause);host.addEventListener('bwvResume',resume);
+  host.addEventListener('bwvMemoryPressure',onBackground);
+  reconcile();
+  return ()=>{root.removeEventListener('visibilitychange',reconcile);host.removeEventListener('bwvPause',pause);host.removeEventListener('bwvResume',resume);host.removeEventListener('bwvMemoryPressure',onBackground);};
+}
+
+
 // Source: src/shared/mobile-project.js
+
 
 
 
@@ -1459,7 +1548,8 @@ function createMobileSaver({read,write,status=()=>{}}){
   return {flush(){
     let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
     if(!draining&&text===last){status('saved');return Promise.resolve();}
-    pending={state,text};
+    // Freeze the exact JSON snapshot represented by text before an asynchronous disk write.
+    pending={state:JSON.parse(text),text};
     if(draining)return draining;
     draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
     return draining;
@@ -1494,10 +1584,7 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
-    const background=()=>{autosave.pause().catch(()=>{});onBackground();};
-    const foreground=()=>{autosave.resume();onForeground();};
-    root.addEventListener('visibilitychange',()=>root.hidden?background():foreground());
-    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    mountMobileLifecycle({root,autosave,onBackground,onForeground});
     await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
     // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
     const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});
@@ -1516,6 +1603,18 @@ function restoreMobileInputs(values,root=document){
 async function nativeExportWriter(name){
   const api=mobileProjects(),{token}=await api.beginExport({name});
   return {token,async write(chunk){const bytes=typeof chunk==='string'?new TextEncoder().encode(chunk):new Uint8Array(chunk.buffer||chunk,chunk.byteOffset||0,chunk.byteLength);for(let start=0;start<bytes.length;start+=262144){let binary='';const part=bytes.subarray(start,start+262144);for(let i=0;i<part.length;i+=8192)binary+=String.fromCharCode(...part.subarray(i,i+8192));await api.appendExport({token,data:btoa(binary)});}},async share(type){await api.finishExport({token,type});},async commit(id,path){return api.commitExport({token,id,path});},async abort(){await api.cancelExport({token});}};
+}
+
+
+// Source: src/shared/file-save.js
+
+/** One download/share path for browser and native WebView. Resolve DOM/URL in the caller's document. */
+async function saveLocalBlob(blob,name,{document:doc=globalThis.document,window:host=doc?.defaultView||globalThis}={}){
+  if(await mobileShareBlob(blob,name))return;
+  const urls=host.URL||globalThis.URL,url=urls.createObjectURL(blob),link=doc.createElement('a');
+  try{link.href=url;link.download=name;link.click();}
+  catch(error){urls.revokeObjectURL(url);throw error;}
+  (host.setTimeout?.bind(host)||globalThis.setTimeout)(()=>urls.revokeObjectURL(url),60000);
 }
 
 
@@ -1572,7 +1671,7 @@ function validateCameraSnapshot(value, {space = value?.space, scene = null, chec
   if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(t("缩放倍率需在 {0} 至 {1} 之间", [limits.minZoom, limits.maxZoom]));
   if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error(t('基准视野高度必须为有效正数'));
   let extended={};
-  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
+  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};if(source.lens!=null){if(!cameraObject(source.lens)||!['fx','fy'].every(k=>typeof source.lens[k]==='number'&&Number.isFinite(source.lens[k])&&source.lens[k]>0&&source.lens[k]<=1e6))throw Error('Invalid camera lens');extended.lens={fx:source.lens.fx,fy:source.lens.fy};}}
   const savedScene = cameraScene(value.scene, space);
   if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
   return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
@@ -1586,11 +1685,15 @@ function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
   const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
   const camera={...viewer.camera,pan:[...viewer.camera.pan]},projection=viewer.projection||'orthographic';
   let localTarget=[...viewer.target],distance=viewer.distance||viewer.baseHeight*2;
-  if(viewer.flyPose){gsSetOrbitBasis({camera},viewer.flyPose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=viewer.flyPose.eye.map((v,i)=>v-viewer.flyPose.basis[2][i]*distance);}
-  const version=projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
+  const pose=viewer.flyPose||viewer.trainingPose;
+  if(pose){gsSetOrbitBasis({camera},pose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=pose.eye.map((v,i)=>v-pose.basis[2][i]*distance);}
+  let lens=viewer.orbitLens?{fx:viewer.orbitLens.fx,fy:viewer.orbitLens.fy}:null;
+  if(viewer.trainingPose){const p=viewer.trainingPose,w=viewer.canvas?.clientWidth,h=viewer.canvas?.clientHeight;if(w>0&&h>0){const fit=Math.min(w/p.width,h/p.height);lens={fx:p.fx*fit/h,fy:p.fy*fit/h};}}
+
+  const version=lens||projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
   const target = cameraVector(localTarget,3,t('目标点')).map((value,axis)=>value+origin[axis]);
   return validateCameraSnapshot({format:CAMERA_FORMAT,version,space,projection,scene,
-    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
+    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001,...(lens?{lens}:{})}:{})}}, {space,scene,checkScene:false});
 }
 
 function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback(), render = true} = {}) {
@@ -1603,7 +1706,7 @@ function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene 
   });
   pauseSync(() => {
     viewers.forEach((viewer, index) => {
-      viewer.stopNavigation?.();viewer.flyPose=null;viewer.projection=value.projection;
+      viewer.stopNavigation?.();if(viewer.fly?.active)viewer.fly.leave();viewer.flyPose=null;viewer.trainingPose=null;viewer.orbitLens=value.camera.lens?{...value.camera.lens}:null;viewer.projection=value.projection;
       if(value.version===2){viewer.distance=value.camera.distance;viewer.fov=value.camera.fov;viewer.near=value.camera.near;}
       viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
       viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
@@ -1846,7 +1949,7 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
         if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
         slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? t(' 倍') : t(' 度')}`);
       }
-      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? 2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
+      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? (snapshot.camera.lens?snapshot.camera.distance/snapshot.camera.lens.fy:2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360)) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
     } else {
       dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
       heightLabel.textContent = t('加载数据后可调整');
@@ -1912,9 +2015,8 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
   exportButton.addEventListener('click', async () => { try {
     syncStored();
     const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
-    if (isMobileApp()) { await mobileShareBlob(blob, `BuildingWebViewer-camera-${space}.json`); message(t('相机书签 JSON 已导出，不含模型数据。')); return; }
-    const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
-    win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message(t('相机书签 JSON 已导出，不含模型数据。'));
+    await saveLocalBlob(blob, `BuildingWebViewer-camera-${space}.json`, {document:doc,window:win});
+    message(t('相机书签 JSON 已导出，不含模型数据。'));
   } catch(error) { message(error.message, true); } });
   importButton.addEventListener('click', () => importInput.click());
   importInput.addEventListener('change', async () => {
@@ -2011,7 +2113,8 @@ function caBasis([x,y,z,w]){return [[1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w)],[2*(
 function caInterpolate(a,b,t){
  if(t<=0)return caClone(a);if(t>=1)return caClone(b);if(a.projection!==b.projection)return caClone(a);
  const x=caNormalizeSnapshot(a),y=caNormalizeSnapshot(b),c=x.camera,d=y.camera,rot={camera:{}};gsSetOrbitBasis(rot,caBasis(caSlerp(caQuat(c),caQuat(d),t)));
- return {...x,camera:{...c,...rot.camera,zoom:caLogMix(c.zoom,d.zoom,t),baseHeight:caLogMix(c.baseHeight,d.baseHeight,t),distance:caLogMix(c.distance,d.distance,t),fov:caMix(c.fov,d.fov,t),near:caLogMix(c.near,d.near,t),pan:c.pan.map((v,i)=>caMix(v,d.pan[i],t)),target:c.target.map((v,i)=>caMix(v,d.target[i],t))}};
+ const lens=c.lens||d.lens?{fx:caLogMix(c.lens?.fx||.5/Math.tan(c.fov*Math.PI/360),d.lens?.fx||.5/Math.tan(d.fov*Math.PI/360),t),fy:caLogMix(c.lens?.fy||.5/Math.tan(c.fov*Math.PI/360),d.lens?.fy||.5/Math.tan(d.fov*Math.PI/360),t)}:null;
+ return {...x,camera:{...c,...rot.camera,...(lens?{lens}:{}),zoom:caLogMix(c.zoom,d.zoom,t),baseHeight:caLogMix(c.baseHeight,d.baseHeight,t),distance:caLogMix(c.distance,d.distance,t),fov:caMix(c.fov,d.fov,t),near:caLogMix(c.near,d.near,t),pan:c.pan.map((v,i)=>caMix(v,d.pan[i],t)),target:c.target.map((v,i)=>caMix(v,d.target[i],t))}};
 }
 /** Project is validated on edits, not once per rendered frame. End regions hold nearest key. */
 function caSample(project,frame){
@@ -2207,60 +2310,34 @@ function mountCameraAnimation({adapter,toolbar,anchor,storageKey='BWV.camera-ani
 }
 
 
-// Source: src/shared/palettes.js
-
-/** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
-const PALETTE_DEFINITIONS = Object.freeze({
-  current: {label: t('当前色带'), stops: [[.20,.32,.65],[.13,.59,.70],[.35,.75,.55],[.90,.80,.32],[.88,.33,.23]]},
-  viridis: {label: 'Viridis', stops: [[.267,.005,.329],[.279,.175,.483],[.230,.322,.546],[.173,.449,.558],[.128,.567,.551],[.158,.684,.502],[.369,.789,.383],[.678,.864,.190],[.993,.906,.144]]},
-  inferno: {label: 'Inferno', stops: [[.001,.000,.014],[.129,.047,.291],[.342,.062,.429],[.541,.135,.415],[.735,.216,.330],[.894,.353,.194],[.978,.558,.035],[.974,.798,.206],[.988,.998,.645]]},
-  grayscale: {label: t('灰度'), stops: [[.08,.08,.08],[.95,.95,.95]]},
-  'blue-white-red': {label: t('蓝—白—红'), stops: [[.17,.35,.75],[.97,.97,.97],[.78,.16,.20]]},
-});
-
-function samplePalette(t, palette = 'current', reverse = false) {
-  const stops = (PALETTE_DEFINITIONS[palette] || PALETTE_DEFINITIONS.current).stops;
-  let value = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : .5;
-  if (reverse) value = 1 - value;
-  const at = value * (stops.length - 1), low = Math.min(stops.length - 2, Math.floor(at)), fraction = at - low;
-  return stops[low].map((channel, i) => channel * (1 - fraction) + stops[low + 1][i] * fraction);
-}
-
-function paletteUniforms(palette = 'current', reverse = false) {
-  const values = new Float32Array(27);
-  for (let i = 0; i < 9; i++) values.set(samplePalette(i / 8, palette, reverse), i * 3);
-  return values;
-}
-
-function validatePaletteOptions(options) {
-  if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
-  if (options.range !== null && options.range !== undefined) {
-    const {min, max} = options.range;
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) throw new Error(t('手动色域需要有限数值，且最小值必须小于最大值。'));
-  }
-}
-
-const PALETTE_GLSL = `
-uniform vec3 colorStops[9];
-vec3 paletteColor(float value) {
-  float t = clamp(value, 0.0, 1.0) * 8.0;
-  if (t <= 1.0) return mix(colorStops[0], colorStops[1], t);
-  if (t <= 2.0) return mix(colorStops[1], colorStops[2], t - 1.0);
-  if (t <= 3.0) return mix(colorStops[2], colorStops[3], t - 2.0);
-  if (t <= 4.0) return mix(colorStops[3], colorStops[4], t - 3.0);
-  if (t <= 5.0) return mix(colorStops[4], colorStops[5], t - 4.0);
-  if (t <= 6.0) return mix(colorStops[5], colorStops[6], t - 5.0);
-  if (t <= 7.0) return mix(colorStops[6], colorStops[7], t - 6.0);
-  return mix(colorStops[7], colorStops[8], t - 7.0);
-}`;
-
-
 // Source: src/shared/render-style.js
 /** Shared display-only options. Geometry and exported point attributes stay unchanged. */
-const PRESENTATION_DEFAULTS = {pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true};
+const PRESENTATION_DEFAULTS = Object.freeze({pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true});
+const PRESENTATION_STORAGE_KEY = 'BuildingWebViewer.presentation.v1';
+const presentationEnums = {pointStyle:['disc','square','sphere'],lineStyle:['native','cylinder','box'],surfaceStyle:['matte','unlit','gloss']};
+/** Only capability-independent visual preferences travel between tools. Sampling is always explicit. */
+function normalizePresentation(options = {}) {
+  const clean = {};
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return clean;
+  for (const [key, fallback] of Object.entries(PRESENTATION_DEFAULTS)) {
+    const value=options[key];
+    if (presentationEnums[key]?.includes(value) || typeof fallback==='boolean'&&typeof value==='boolean' || key==='pointRatio'&&Number.isFinite(value)&&value>=1&&value<=100 || key==='lineWidth'&&Number.isFinite(value)&&value>=.5&&value<=24 || key==='lineEndColor'&&typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)) clean[key]=value;
+  }
+  return clean;
+}
+function portablePresentation(options) {
+  const clean=normalizePresentation(options);
+  // A saved cylinder style may be unsupported by a new renderer. Never silently sample another dataset.
+  delete clean.lineStyle; delete clean.pointRatio;
+  return clean;
+}
 let presentationPreferences = {...PRESENTATION_DEFAULTS};
+try { Object.assign(presentationPreferences,portablePresentation(JSON.parse(globalThis.localStorage?.getItem(PRESENTATION_STORAGE_KEY)||'null'))); } catch {}
 function currentPresentation() { return {...presentationPreferences}; }
-function rememberPresentation(options) { presentationPreferences = {...presentationPreferences, ...options}; }
+function rememberPresentation(options) {
+  presentationPreferences = {...presentationPreferences, ...normalizePresentation(options)};
+  try { globalThis.localStorage?.setItem(PRESENTATION_STORAGE_KEY,JSON.stringify(portablePresentation(presentationPreferences))); } catch {}
+}
 function displaySampleIndices(total, ratio) {
   if (!Number.isSafeInteger(total) || total < 0 || total > 0xffffffff || !Number.isFinite(ratio) || ratio < 1 || ratio > 100) throw Error('Invalid display sampling size or percentage');
   const count = Math.floor(total * ratio / 100);
@@ -2409,9 +2486,9 @@ function wireframeSVG(viewer,width,height,{transparent=false}={}) {
   parts.push('</g></svg>');return parts.join('\n');
 }
 async function downloadImageBlob(blob,filename,doc=document) {
-  if(isMobileApp()){await mobileShareBlob(blob,filename);return;}
-  const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  return saveLocalBlob(blob,filename,{document:doc});
 }
+
 function canvasImageBlob(canvas,format,quality=.92) {
   const mime={png:'image/png',jpeg:'image/jpeg',webp:'image/webp'}[format];
   if(!mime)throw Error(t('不支持的图片格式'));
@@ -2707,6 +2784,12 @@ function projectBoxIntersects(a, b) {
 // Source: src/shared/project-tree.js
 
 
+// Touch and pen drags belong to native scrolling; box selection is a mouse gesture.
+function projectCanStartBox(event) {
+  return event.button === 0 && (!event.pointerType || event.pointerType === 'mouse') &&
+    !event.target.closest('button,input,label,select,textarea,a,.project-drag-handle');
+}
+
 function mountProjectTree({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
   onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail = () => '', selectionHint = '勾选后显示数据'}) {
   const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
@@ -2854,7 +2937,7 @@ function mountProjectTree({project, container, root, controls, getEntries, getSe
   window.addEventListener('resize', () => closeMenu());
   container.tabIndex = 0;
   container.addEventListener('keydown', event => {
-    if (event.target.closest('input')) return;
+    if (event.target.closest('input,select,textarea,[contenteditable=true]')) return;
     if (event.key === 'Delete' && management.items.size) { event.preventDefault(); openEditor('remove'); }
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (band) finishBand(true); else selectTarget(null); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); management.box(visible); focused = visible.at(-1) || null; closeEditor(); paintSelection(); }
@@ -2885,7 +2968,7 @@ function mountProjectTree({project, container, root, controls, getEntries, getSe
     setTimeout(() => { suppressClick = false; }, 0);
   }
   container.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || event.target.closest('button,input,label,.project-drag-handle')) return;
+    if (!projectCanStartBox(event)) return;
     closeMenu(); closeEditor();
     const rect = container.getBoundingClientRect();
     band = {pointer:event.pointerId,startX:event.clientX,startY:event.clientY-rect.top+container.scrollTop,x:event.clientX,y:event.clientY,originY:event.clientY,before:[...management.items],additive:event.ctrlKey||event.metaKey,active:false};
@@ -2906,6 +2989,11 @@ function mountProjectTree({project, container, root, controls, getEntries, getSe
   container.addEventListener('lostpointercapture', () => finishBand(true));
   container.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); } }, true);
   function render() {
+    // Selection changes rebuild rows. Preserve the focused row control so repeated
+    // Space toggles and keyboard folder navigation do not jump back to the page.
+    const active = document.activeElement, oldRow = active?.closest?.('.project-row');
+    const focusTarget = rowTargets.get(oldRow);
+    const focusKind = oldRow && oldRow.contains(active) ? ['input', '.project-name', 'button.project-chevron'].find(selector => oldRow.querySelector(selector) === active) : null;
     const entries = getEntries(), selected = getSelected(), query = getQuery().trim().toLowerCase();
     for (const target of management.items) if (!exists(target)) management.items.delete(target);
     if (focused && !exists(focused)) focused = null;
@@ -2957,7 +3045,12 @@ function mountProjectTree({project, container, root, controls, getEntries, getSe
     if (flat.length > limit) fragment.append(button(t("显示更多（剩余 {0} 项）", [flat.length - limit]), t('显示更多项目条目'), () => { limit += 200; render(); }));
     if (!flat.length) fragment.append(make('p', query ? t('没有匹配的数据') : t('拖入文件或文件夹\n开始整理你的项目'), 'empty-list'));
     const blank = make('div', null, 'project-selection-space'); blank.setAttribute('aria-hidden','true'); fragment.append(blank);
-    const scroll = container.scrollTop; container.replaceChildren(fragment); container.scrollTop = scroll; paintSelection();
+    const scroll = container.scrollTop; container.replaceChildren(fragment); paintSelection();
+    if (focusKind) {
+      const replacement = [...rowTargets].find(([, target]) => target === focusTarget)?.[0];
+      (replacement?.querySelector(focusKind) || container).focus({preventScroll:true});
+    }
+    container.scrollTop = scroll;
   }
   return {render};
 }
@@ -3067,11 +3160,11 @@ async function scanPointDrop(roots, accepts, onProgress = () => {}) {
 }
 
 function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
-  let depth = 0, queue = Promise.resolve();
+  let depth = 0, queue = Promise.resolve(), disposed = false;
   const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files') ||
     Array.from(event.dataTransfer?.items || []).some(item => item.kind === 'file');
   const reset = () => { depth = 0; zone.classList.remove('drop-active'); };
-  const say = message => { status.hidden = false; status.textContent = message; };
+  const say = message => { if (disposed) return; status.hidden = false; status.textContent = message; };
   const inside = event => zone.contains(event.target);
   const onEnter = event => {
     if (!hasFiles(event)) return;
@@ -3094,8 +3187,10 @@ function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
     say(t('正在整理拖入的文件…'));
     // A second drop can arrive during directory scanning; handles are already captured.
     queue = queue.then(async () => {
+      if (disposed) return;
       const result = await scanPointDrop(roots, accepts, progress =>
         say(t("正在查找数据… 已找到 {0} 个文件", [progress.files.length.toLocaleString('zh-CN')])));
+      if (disposed) return;
       const received = result.files.length ? await onFiles(result.files) : { added: 0, duplicates: 0 };
       const parts = [t("新增 {0} 个数据", [received.added])];
       if (received.duplicates) parts.push(t("{0} 个已存在", [received.duplicates]));
@@ -3112,6 +3207,7 @@ function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
   host.addEventListener('drop', onDrop);
   host.addEventListener('dragend', reset);
   return () => {
+    disposed = true;
     zone.removeEventListener('dragenter', onEnter);
     zone.removeEventListener('dragleave', onLeave);
     host.removeEventListener('dragover', onOver);
@@ -3373,7 +3469,7 @@ function mountCameraNavigationControls(container, viewer) {
 
 
 function mountPresentationControls({root=document,getViewers,pauseSync=callback=>callback()}) {
-  const container=root.querySelector('#settings-panel-display');if(!container)return;
+  const container=root.querySelector('#settings-panel-display');if(!container||container.querySelector('.presentation-controls'))return;
   const doc=container.ownerDocument,section=doc.createElement('section');section.className='inspector-section presentation-controls';
   const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
   section.append(el('h3','渲染样式'));const status=el('p');status.className='presentation-help';status.setAttribute('role','status');
@@ -3388,9 +3484,9 @@ function mountPresentationControls({root=document,getViewers,pauseSync=callback=
     input.onchange=()=>{
       const value=kind==='checkbox'?input.checked:['select','color'].includes(kind)?input.value:Number(input.value);
       if(kind==='number'&&(!Number.isFinite(value)||value<Number(input.min)||value>Number(input.max))){status.textContent=t('请输入范围内的数值。');return;}
-      const prior=currentPresentation()[name];
-      try{pauseSync(()=>{for(const viewer of getViewers())viewer.setOptions({[name]:value});});rememberPresentation({[name]:value});status.textContent=name==='pointRatio'?t('仅抽样当前显示点；原始数据与计算、文件导出不变。'):'';}
-      catch(error){pauseSync(()=>{for(const viewer of getViewers())try{viewer.setOptions({[name]:prior});}catch{}});if(kind==='checkbox')input.checked=prior;else input.value=prior;status.textContent=error.message;}
+      const prior=currentPresentation()[name], viewers=Array.from(getViewers()), previous=viewers.map(viewer=>viewer.options?.[name]??prior);
+      try{pauseSync(()=>{for(const viewer of viewers)viewer.setOptions({[name]:value});});rememberPresentation({[name]:value});status.textContent=name==='pointRatio'?t('仅抽样当前显示点；原始数据与计算、文件导出不变。'):'';}
+      catch(error){pauseSync(()=>{for(const [i,viewer] of viewers.entries())try{viewer.setOptions({[name]:previous[i]});}catch{}});if(kind==='checkbox')input.checked=prior;else input.value=prior;status.textContent=error.message;}
     };
     if(kind==='number')input.oninput=input.onchange;
     return input;
@@ -3430,15 +3526,30 @@ function projectSidebarWidth(value, available, inspector = false) {
   return Math.round(Math.max(240, Math.min(maximum, Number.isFinite(value) ? value : 300)));
 }
 
+const PROJECT_SIDEBAR_STORAGE = 'BWV.project-sidebar.v1';
+function projectSidebarPreferences(value) {
+  return {
+    width: Number.isFinite(value?.width) ? Math.max(240, Math.min(500, value.width)) : 300,
+    desktopCollapsed: typeof value?.desktopCollapsed === 'boolean' ? value.desktopCollapsed : false,
+    mobileCollapsed: typeof value?.mobileCollapsed === 'boolean' ? value.mobileCollapsed : true
+  };
+}
+
 function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) {
-  let width = 300, folded = false, resizing = null;
+  const win = sidebar.ownerDocument.defaultView || window;
+  const media = win.matchMedia?.('(max-width: 700px)');
+  let preferences = projectSidebarPreferences();
+  try { preferences = projectSidebarPreferences(JSON.parse(win.localStorage.getItem(PROJECT_SIDEBAR_STORAGE))); } catch {}
+  let preferredWidth = preferences.width, width = preferredWidth, folded = false, resizing = null;
+  const save = () => { try { win.localStorage.setItem(PROJECT_SIDEBAR_STORAGE, JSON.stringify(preferences)); } catch {} };
+  const foldKey = () => media?.matches ? 'mobileCollapsed' : 'desktopCollapsed';
   function apply() {
-    width = projectSidebarWidth(width, workspace.clientWidth, workspace.classList.contains('inspector-open'));
+    width = projectSidebarWidth(preferredWidth, workspace.clientWidth, workspace.classList.contains('inspector-open'));
     workspace.style.setProperty('--project-width', `${width}px`);
     separator.setAttribute('aria-valuenow', String(width));
     separator.setAttribute('aria-valuemax', String(projectSidebarWidth(500, workspace.clientWidth, workspace.classList.contains('inspector-open'))));
   }
-  function fold(value) {
+  function fold(value, remember = true) {
     const hadSidebarFocus = sidebar.contains(sidebar.ownerDocument.activeElement);
     folded = value; workspace.classList.toggle('project-collapsed', value); sidebar.inert = value;
     toggle.setAttribute('aria-expanded', String(!value)); toggle.title = value ? t('展开项目栏') : t('收起项目栏');
@@ -3448,6 +3559,7 @@ function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) 
     collapse.setAttribute('aria-controls', sidebar.id);
     separator.tabIndex = value ? -1 : 0;
     if (value && hadSidebarFocus) toggle.focus();
+    if (remember) { preferences[foldKey()] = value; save(); }
   }
   toggle.onclick = () => fold(!folded); collapse.onclick = () => fold(true);
   separator.onpointerdown = event => {
@@ -3457,20 +3569,29 @@ function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) 
   };
   separator.onpointermove = event => {
     if (!resizing || event.pointerId !== resizing.pointer) return;
-    width = resizing.width + event.clientX - resizing.x; apply();
+    preferredWidth = projectSidebarWidth(resizing.width + event.clientX - resizing.x, workspace.clientWidth, workspace.classList.contains('inspector-open'));
+    preferences.width = preferredWidth; apply();
   };
-  const stop = () => { resizing = null; workspace.classList.remove('project-resizing'); };
+  const stop = () => { if (resizing) save(); resizing = null; workspace.classList.remove('project-resizing'); };
   separator.onpointerup = event => { stop(); if (separator.hasPointerCapture(event.pointerId)) separator.releasePointerCapture(event.pointerId); };
   separator.onpointercancel = stop; separator.onlostpointercapture = stop;
-  separator.ondblclick = () => { width = 300; apply(); };
+  separator.ondblclick = () => { preferredWidth = preferences.width = 300; apply(); save(); };
   separator.onkeydown = event => {
     if (!['ArrowLeft','ArrowRight','Home'].includes(event.key)) return;
-    event.preventDefault(); width = event.key === 'Home' ? 300 : width + (event.key === 'ArrowRight' ? 16 : -16); apply();
+    event.preventDefault(); preferredWidth = preferences.width = event.key === 'Home' ? 300 : projectSidebarWidth(width + (event.key === 'ArrowRight' ? 16 : -16), workspace.clientWidth, workspace.classList.contains('inspector-open')); apply(); save();
   };
   // Resizing the layout is independent of the camera and never reloads point data.
   const observer = new ResizeObserver(apply); observer.observe(workspace);
-  new MutationObserver(apply).observe(workspace, {attributes:true, attributeFilter:['class']});
-  apply(); fold(window.matchMedia?.('(max-width: 700px)').matches || false);
+  const mutation = new MutationObserver(apply); mutation.observe(workspace, {attributes:true, attributeFilter:['class']});
+  const breakpoint = () => { stop(); fold(preferences[foldKey()], false); apply(); };
+  if (media?.addEventListener) media.addEventListener('change', breakpoint); else media?.addListener?.(breakpoint);
+  apply(); fold(preferences[foldKey()], false);
+  return {destroy() {
+    stop(); observer.disconnect(); mutation.disconnect();
+    if (media?.removeEventListener) media.removeEventListener('change', breakpoint); else media?.removeListener?.(breakpoint);
+    toggle.onclick = collapse.onclick = null;
+    for (const name of ['onpointerdown','onpointermove','onpointerup','onpointercancel','onlostpointercapture','ondblclick','onkeydown']) separator[name] = null;
+  }};
 }
 
 
@@ -3552,7 +3673,32 @@ function mountResourceMonitor({root=document, getViewers=()=>[]}) {
 }
 
 
+// Source: src/shared/viewer-projection.js
+/** Change ordinary orbit-camera projection while preserving its apparent target-plane span. */
+function setViewerProjection(viewers, projection, pauseSync = callback => callback()) {
+  if (!['orthographic','perspective'].includes(projection)) throw new Error('Unsupported camera projection');
+  pauseSync(() => {
+    for (const viewer of viewers) {
+      viewer.stopNavigation?.();
+      if (viewer.projection !== projection) {
+        // Training cameras own calibrated focal lengths. Convert that pose to an
+        // orbit lens only on an actual projection change; changing a dropdown to
+        // its current value must not discard a calibrated view.
+        viewer.leaveTraining?.();
+        const fy = viewer.orbitLens?.fy;
+        const tangent = Number.isFinite(fy) && fy > 0 ? 1 / (2 * fy) : Math.tan((viewer.fov || 55) * Math.PI / 360);
+        if (projection === 'perspective') viewer.distance = viewer.baseHeight / (2 * tangent);
+        else viewer.baseHeight = 2 * viewer.distance * tangent;
+        viewer.projection = projection;
+      }
+      viewer.requestRender();
+    }
+  });
+}
+
+
 // Source: src/shared/viewer-layout.js
+
 
 
 
@@ -3571,7 +3717,8 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     const label=root.createElement('label'),select=root.createElement('select'),en=document.documentElement.lang==='en';
     label.textContent=en?'Projection':'投影模式';select.setAttribute('aria-label',label.textContent);
     for(const[value,zh,english]of [['orthographic','正交','Orthographic'],['perspective','透视','Perspective']]){const option=root.createElement('option');option.value=value;option.textContent=en?english:zh;select.append(option);}
-    select.onchange=()=>{for(const viewer of getViewers()){viewer.stopNavigation();if(select.value==='perspective')viewer.prepareFly();else viewer.baseHeight=2*viewer.distance*Math.tan(viewer.fov*Math.PI/360);viewer.projection=select.value;viewer.requestRender();}};
+    select.value=primary.projection;
+    select.onchange=()=>setViewerProjection(getViewers(),select.value,pauseSync);
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }
@@ -3900,7 +4047,7 @@ class MeshViewer {
     this.onLabels = onLabels;
     this.onError = onError;
     this.onViewChange = onViewChange;
-    this.options = { ...currentPresentation(), mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
+    this.options = { ...currentPresentation(), mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', ...currentPalettePreferences() };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.baseHeight = 30;
     this.sceneBounds = [[-5, -5, 0], [5, 5, 10]];
@@ -4377,8 +4524,9 @@ function paletteGradient(palette = 'current', reverse = false) {
 }
 
 function mountPaletteControls({container, onChange = () => {}, getOptions = () => ({})}) {
-  const initial = getOptions();
-  const details = document.createElement('details'); details.className = 'palette-panel viewer-control-panel';
+  let initial;
+  try { initial=normalizePaletteOptions({...currentPalettePreferences(),...getOptions()}); } catch { initial=currentPalettePreferences(); }
+  const details = container.ownerDocument.createElement('details'); details.className = 'palette-panel viewer-control-panel';
   details.innerHTML = localizeHTML(`<summary><span>配色方案</span><i class="palette-preview" aria-hidden="true"></i><small class="palette-caption"></small></summary>
     <div class="palette-body"><label>色带<select aria-label="色带方案"><option value="current">蓝 → 绿 → 黄 → 红</option><option value="viridis">Viridis · 蓝紫 → 绿 → 黄</option><option value="inferno">Inferno · 黑紫 → 橙 → 黄</option><option value="grayscale">灰度 · 黑 → 白</option><option value="blue-white-red">蓝 → 白 → 红</option></select></label>
     <label class="check-label"><input class="palette-reverse" type="checkbox">反转色带</label>
@@ -4389,7 +4537,7 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
   container.append(details);
   const select = details.querySelector('select'), reverse = details.querySelector('.palette-reverse'), auto = details.querySelector('.palette-auto');
   const low = details.querySelector('.palette-min'), high = details.querySelector('.palette-max'), message = details.querySelector('.palette-error');
-  let state = {palette: initial.palette || 'current', reverse: !!initial.reverse, range: initial.range || null}, enabled = true;
+  let state = initial, enabled = true;
   select.value = state.palette; reverse.checked = state.reverse;
   if (state.range) { auto.checked = false; low.value = state.range.min; high.value = state.range.max; }
   const refresh = () => {
@@ -4398,26 +4546,37 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
     select.disabled = reverse.disabled = auto.disabled = !enabled;
     low.disabled = high.disabled = !enabled || auto.checked;
   };
+  const restoreInputs=()=>{select.value=state.palette;reverse.checked=state.reverse;auto.checked=!state.range;if(state.range){low.value=state.range.min;high.value=state.range.max;}};
   const change = () => {
     low.disabled = high.disabled = auto.checked || !enabled;
     if (!auto.checked && (low.value === '' || high.value === '' || !Number.isFinite(low.valueAsNumber) || !Number.isFinite(high.valueAsNumber) || low.valueAsNumber >= high.valueAsNumber)) {
       message.textContent = t('请输入有效范围，最小值必须小于最大值。'); message.hidden = false; return;
     }
-    message.hidden = true; state = {palette: select.value, reverse: reverse.checked, range: auto.checked ? null : {min: low.valueAsNumber, max: high.valueAsNumber}};
-    refresh(); onChange({...state});
+    const previous=state;
+    try {
+      state=normalizePaletteOptions({palette:select.value,reverse:reverse.checked,range:auto.checked?null:{min:low.valueAsNumber,max:high.valueAsNumber}});
+      // Existing viewer adapters read getOptions() while applying a change.
+      onChange(normalizePaletteOptions(state));
+      rememberPalettePreferences(state);message.hidden=true;refresh();
+    } catch(error) {
+      state=previous;restoreInputs();
+      try { onChange(normalizePaletteOptions(previous)); } catch {}
+      refresh();message.textContent=error.message;message.hidden=false;
+    }
   };
   [select,reverse,auto,low,high].forEach((input,index)=>{input.dataset.mobileKey='palette:'+index;});
   for (const input of [select, reverse, auto, low, high]) input.addEventListener('change', change);
   for (const input of [low, high]) input.addEventListener('input', change);
   refresh();
-  return {getOptions: () => ({...state}), setScalarEnabled(value) {enabled = !!value; refresh();},
-    setDataRange(range) {if (auto.checked && range && Number.isFinite(range.min) && Number.isFinite(range.max)) {
+  return {getOptions: () => normalizePaletteOptions(state), setScalarEnabled(value) {enabled = !!value; refresh();},
+    setDataRange(range) {if (auto.checked && range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.min <= range.max) {
       low.value = range.min; high.value = range.max === range.min ? range.min + 1 : range.max;
     }}, destroy() {details.remove();}};
 }
 
 
 // Source: src/lod/app.js
+
 
 
 
@@ -4445,7 +4604,7 @@ const modelProject = new ViewerProject();
 let modelTree = null,mobileSession=null,mobileKnownIds=[];
 let labelElements = new Map(), latestLabels = [];
 let localFiles = new Map(), cameraControls = null, paletteControls = null;
-let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
+let options = {...currentPalettePreferences(), mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
 
 function showError(message, retry = false) {
   $('error').hidden = false;

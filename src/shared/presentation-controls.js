@@ -1,7 +1,7 @@
 import { t } from './i18n.js';
 import { currentPresentation, rememberPresentation } from './render-style.js';
 export function mountPresentationControls({root=document,getViewers,pauseSync=callback=>callback()}) {
-  const container=root.querySelector('#settings-panel-display');if(!container)return;
+  const container=root.querySelector('#settings-panel-display');if(!container||container.querySelector('.presentation-controls'))return;
   const doc=container.ownerDocument,section=doc.createElement('section');section.className='inspector-section presentation-controls';
   const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
   section.append(el('h3','渲染样式'));const status=el('p');status.className='presentation-help';status.setAttribute('role','status');
@@ -16,9 +16,9 @@ export function mountPresentationControls({root=document,getViewers,pauseSync=ca
     input.onchange=()=>{
       const value=kind==='checkbox'?input.checked:['select','color'].includes(kind)?input.value:Number(input.value);
       if(kind==='number'&&(!Number.isFinite(value)||value<Number(input.min)||value>Number(input.max))){status.textContent=t('请输入范围内的数值。');return;}
-      const prior=currentPresentation()[name];
-      try{pauseSync(()=>{for(const viewer of getViewers())viewer.setOptions({[name]:value});});rememberPresentation({[name]:value});status.textContent=name==='pointRatio'?t('仅抽样当前显示点；原始数据与计算、文件导出不变。'):'';}
-      catch(error){pauseSync(()=>{for(const viewer of getViewers())try{viewer.setOptions({[name]:prior});}catch{}});if(kind==='checkbox')input.checked=prior;else input.value=prior;status.textContent=error.message;}
+      const prior=currentPresentation()[name], viewers=Array.from(getViewers()), previous=viewers.map(viewer=>viewer.options?.[name]??prior);
+      try{pauseSync(()=>{for(const viewer of viewers)viewer.setOptions({[name]:value});});rememberPresentation({[name]:value});status.textContent=name==='pointRatio'?t('仅抽样当前显示点；原始数据与计算、文件导出不变。'):'';}
+      catch(error){pauseSync(()=>{for(const [i,viewer] of viewers.entries())try{viewer.setOptions({[name]:previous[i]});}catch{}});if(kind==='checkbox')input.checked=prior;else input.value=prior;status.textContent=error.message;}
     };
     if(kind==='number')input.oninput=input.onchange;
     return input;

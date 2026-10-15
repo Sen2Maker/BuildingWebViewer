@@ -22,7 +22,27 @@ export function paletteUniforms(palette = 'current', reverse = false) {
   return values;
 }
 
+export const PALETTE_STORAGE_KEY = 'BuildingWebViewer.palette.v1';
+/** Copy the small scalar-color contract; numeric limits belong to the current dataset, never a global preference. */
+export function normalizePaletteOptions(options = {}) {
+  validatePaletteOptions(options);
+  return {palette:options.palette || 'current',reverse:!!options.reverse,range:options.range?{min:options.range.min,max:options.range.max}:null};
+}
+export function currentPalettePreferences() {
+  try {
+    const stored=JSON.parse(globalThis.localStorage?.getItem(PALETTE_STORAGE_KEY)||'null');
+    if(stored && typeof stored==='object')return {...normalizePaletteOptions({palette:stored.palette,reverse:stored.reverse}),range:null};
+  } catch {}
+  return {palette:'current',reverse:false,range:null};
+}
+export function rememberPalettePreferences(options) {
+  const {palette,reverse}=normalizePaletteOptions(options);
+  try { globalThis.localStorage?.setItem(PALETTE_STORAGE_KEY,JSON.stringify({palette,reverse})); } catch {}
+}
+
 export function validatePaletteOptions(options) {
+  if(!options || typeof options!=='object' || Array.isArray(options))throw new Error('Invalid palette options');
+  if(options.reverse!==undefined && typeof options.reverse!=='boolean')throw new Error('Invalid palette reversal flag');
   if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
   if (options.range !== null && options.range !== undefined) {
     const {min, max} = options.range;

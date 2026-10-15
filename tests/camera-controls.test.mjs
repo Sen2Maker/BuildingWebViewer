@@ -374,3 +374,17 @@ await checkAsync('Import rereads shared storage after file reading so concurrent
 });
 
 console.log(`${checks} checks passed.`);
+
+check('Restoring a bookmark clears trained camera overrides and active fly input after validation',()=>{
+ const target=viewer(),snapshot=captureCameraSnapshot(viewer(),{space:'raw-world'});let leaves=0;
+ target.trainingPose={eye:[1,2,3]};target.orbitLens={fx:4,fy:5};target.flyPose={};target.fly={active:true,leave(){this.active=false;leaves++;}};
+ assert.throws(()=>applyCameraSnapshot([target],{...snapshot,camera:{...snapshot.camera,zoom:0}},{space:'raw-world'}));assert.equal(leaves,0);assert(target.trainingPose);
+ applyCameraSnapshot([target],snapshot,{space:'raw-world'});assert.equal(leaves,1);assert.equal(target.trainingPose,null);assert.equal(target.orbitLens,null);assert.equal(target.flyPose,null);
+});
+check('Training camera orientation, eye and unequal focal lengths survive shared snapshot restore',()=>{
+ const source=viewer([100,200,300]);source.projection='perspective';source.distance=12;source.camera.zoom=1;source.canvas={clientWidth:800,clientHeight:600};source.fov=55;
+ source.trainingPose={eye:[4,5,6],basis:[[1,0,0],[0,0,1],[0,-1,0]],fx:900,fy:800,width:1200,height:800};
+ const saved=captureCameraSnapshot(source,{space:'raw-world'});assert.equal(saved.version,2);assert.deepEqual(saved.camera.target,[104,217,306]);assert(Math.abs(saved.camera.lens.fx-1)<1e-12);assert(Math.abs(saved.camera.lens.fy-8/9)<1e-12);
+ const target=viewer([100,200,300]);applyCameraSnapshot([target],saved,{space:'raw-world'});assert.deepEqual(target.orbitLens,saved.camera.lens);assert.notEqual(target.orbitLens,saved.camera.lens);assert.equal(target.trainingPose,null);assert.equal(target.camera.azimuth,-90);
+ assert.throws(()=>validateCameraSnapshot({...saved,camera:{...saved.camera,lens:{fx:0,fy:1}}},{space:'raw-world'}),/lens/);
+});

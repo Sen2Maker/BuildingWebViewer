@@ -1,5 +1,5 @@
 import { gsViewSpec, gsProjectPosition } from './camera-geometry.js';
-import { isMobileApp, mobileShareBlob } from './mobile-project.js';
+import { saveLocalBlob } from './file-save.js';
 import { t } from './i18n.js';
 import { drawSceneGuides } from './scene-guides.js';
 export function validateImageSize(width,height,maxSide=8192) {
@@ -55,9 +55,9 @@ export function wireframeSVG(viewer,width,height,{transparent=false}={}) {
   parts.push('</g></svg>');return parts.join('\n');
 }
 export async function downloadImageBlob(blob,filename,doc=document) {
-  if(isMobileApp()){await mobileShareBlob(blob,filename);return;}
-  const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  return saveLocalBlob(blob,filename,{document:doc});
 }
+
 export function canvasImageBlob(canvas,format,quality=.92) {
   const mime={png:'image/png',jpeg:'image/jpeg',webp:'image/webp'}[format];
   if(!mime)throw Error(t('不支持的图片格式'));

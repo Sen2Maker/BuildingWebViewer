@@ -56,7 +56,8 @@ function caBasis([x,y,z,w]){return [[1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w)],[2*(
 export function caInterpolate(a,b,t){
  if(t<=0)return caClone(a);if(t>=1)return caClone(b);if(a.projection!==b.projection)return caClone(a);
  const x=caNormalizeSnapshot(a),y=caNormalizeSnapshot(b),c=x.camera,d=y.camera,rot={camera:{}};gsSetOrbitBasis(rot,caBasis(caSlerp(caQuat(c),caQuat(d),t)));
- return {...x,camera:{...c,...rot.camera,zoom:caLogMix(c.zoom,d.zoom,t),baseHeight:caLogMix(c.baseHeight,d.baseHeight,t),distance:caLogMix(c.distance,d.distance,t),fov:caMix(c.fov,d.fov,t),near:caLogMix(c.near,d.near,t),pan:c.pan.map((v,i)=>caMix(v,d.pan[i],t)),target:c.target.map((v,i)=>caMix(v,d.target[i],t))}};
+ const lens=c.lens||d.lens?{fx:caLogMix(c.lens?.fx||.5/Math.tan(c.fov*Math.PI/360),d.lens?.fx||.5/Math.tan(d.fov*Math.PI/360),t),fy:caLogMix(c.lens?.fy||.5/Math.tan(c.fov*Math.PI/360),d.lens?.fy||.5/Math.tan(d.fov*Math.PI/360),t)}:null;
+ return {...x,camera:{...c,...rot.camera,...(lens?{lens}:{}),zoom:caLogMix(c.zoom,d.zoom,t),baseHeight:caLogMix(c.baseHeight,d.baseHeight,t),distance:caLogMix(c.distance,d.distance,t),fov:caMix(c.fov,d.fov,t),near:caLogMix(c.near,d.near,t),pan:c.pan.map((v,i)=>caMix(v,d.pan[i],t)),target:c.target.map((v,i)=>caMix(v,d.target[i],t))}};
 }
 /** Project is validated on edits, not once per rendered frame. End regions hold nearest key. */
 export function caSample(project,frame){

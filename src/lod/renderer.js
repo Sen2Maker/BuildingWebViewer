@@ -4,7 +4,7 @@ import { updateSceneGuides } from '../shared/scene-guides.js';
 import { StyledLineRenderer } from '../shared/line-renderer.js';
 import { t } from '../shared/i18n.js';
 import { mountTouchCamera } from '../shared/touch-camera.js';
-import { paletteUniforms, validatePaletteOptions, PALETTE_GLSL } from '../shared/palettes.js';
+import { paletteUniforms, validatePaletteOptions, currentPalettePreferences, PALETTE_GLSL } from '../shared/palettes.js';
 /** Local, dependency-free mesh renderer. Building placement is synthetic; geometry and scale are preserved. */
 const DEG = Math.PI / 180;
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -66,7 +66,7 @@ export class MeshViewer {
     this.onLabels = onLabels;
     this.onError = onError;
     this.onViewChange = onViewChange;
-    this.options = { ...currentPresentation(), mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', palette: 'current', reverse: false, range: null };
+    this.options = { ...currentPresentation(), mode: 'solid', edges: true, colors: 'surface', grid: true, labels: true, scale: 'real', ...currentPalettePreferences() };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.baseHeight = 30;
     this.sceneBounds = [[-5, -5, 0], [5, 5, 10]];

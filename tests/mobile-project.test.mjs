@@ -14,3 +14,9 @@ test('autosave retains a quick revert while a prior write is in flight',async()=
  await saver.flush();value='B';const saving=saver.flush();value='A';saver.flush();release();await saving;assert.deepEqual(written,['A','B','A']);
 });
 test('an unchanged autosave does not block subsequent edits',async()=>{const {createMobileSaver}=await import('../src/shared/mobile-project.js');let value=1;const values=[];const saver=createMobileSaver({read:()=>({value}),write:async state=>values.push(state.value)});await saver.flush();await saver.flush();value=2;await saver.flush();assert.deepEqual(values,[1,2]);});
+
+test('queued native state saves preserve the captured JSON rather than live mutable references',async()=>{
+ const {createMobileSaver}=await import('../src/shared/mobile-project.js');let release;const state={camera:{yaw:1}},saved=[];
+ const saver=createMobileSaver({read:()=>state,write:async value=>{await new Promise(r=>release=r);saved.push(value.camera.yaw);}});
+ const pending=saver.flush();state.camera.yaw=2;release();await pending;assert.deepEqual(saved,[1]);
+});

@@ -1,3 +1,4 @@
+import { currentPalettePreferences } from '../shared/palettes.js';
 import { mountCameraAnimation } from '../shared/animation-controls.js';
 import { createMeshAnimationAdapter } from './animation-adapter.js';
 import { isMobileApp } from '../shared/mobile-project.js';
@@ -26,7 +27,7 @@ const modelProject = new ViewerProject();
 let modelTree = null,mobileSession=null,mobileKnownIds=[];
 let labelElements = new Map(), latestLabels = [];
 let localFiles = new Map(), cameraControls = null, paletteControls = null;
-let options = {mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
+let options = {...currentPalettePreferences(), mode: 'solid', edges: true, colors: 'surface', scale: 'real', labels: true, grid: true};
 
 function showError(message, retry = false) {
   $('error').hidden = false;

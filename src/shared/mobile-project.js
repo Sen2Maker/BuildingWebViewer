@@ -1,6 +1,7 @@
 import { createAutosave } from './autosave.js';
 import { t } from './i18n.js';
 import { createMobileHomeNavigation } from './mobile-navigation.js';
+import { mountMobileLifecycle } from './mobile-lifecycle.js';
 let mobileProjectPlugin;
 export function isMobileApp(){return Boolean(globalThis.Capacitor?.isNativePlatform?.());}
 export function mobileProjects(){if(!isMobileApp())return null;return mobileProjectPlugin ||= globalThis.Capacitor.registerPlugin('BWVProjects');}
@@ -40,7 +41,8 @@ export function createMobileSaver({read,write,status=()=>{}}){
   return {flush(){
     let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
     if(!draining&&text===last){status('saved');return Promise.resolve();}
-    pending={state,text};
+    // Freeze the exact JSON snapshot represented by text before an asynchronous disk write.
+    pending={state:JSON.parse(text),text};
     if(draining)return draining;
     draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
     return draining;
@@ -75,10 +77,7 @@ export async function mountMobileProject({receive,getState,restoreState,onBackgr
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
-    const background=()=>{autosave.pause().catch(()=>{});onBackground();};
-    const foreground=()=>{autosave.resume();onForeground();};
-    root.addEventListener('visibilitychange',()=>root.hidden?background():foreground());
-    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    mountMobileLifecycle({root,autosave,onBackground,onForeground});
     await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
     // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
     const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});

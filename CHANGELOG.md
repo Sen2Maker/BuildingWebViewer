@@ -6,6 +6,14 @@
 
 后续变更先在此记录。Record upcoming changes here.
 
+## [1.8.1] - 2026-10-16
+
+- 统一跨工具显示偏好、配色、相机、书签、投影切换和文件下载 / App 分享；高斯工具保留专用镜头控件，并兼容迁移旧书签。
+- 修复触屏项目树框选抢滚动、重绘丢失键盘焦点、销毁后文件夹仍导入、切换投影跳动，以及后台自动保存失败和异步快照状态不一致的问题。
+- 分别记住电脑与手机项目栏折叠状态；改善触屏控件、原生高斯显示设置提交和横屏漫游控件排布。
+- Unify portable display preferences, camera/bookmark controls, projection and file saving. Retain calibrated Gaussian lenses and migrate legacy bookmarks. Fix project-tree interactions, background save retries and snapshot consistency; improve mobile controls and native landscape layout.
+- 验证：134 项网页测试、28 项原生单元测试、移动兼容检查与完整 APK 构建通过；真机触屏手感和强杀恢复仍需实测。详见 `docs/validation/MODULE-AUDIT-2026-10-15.md`。
+
 ## [1.8.0] - 2026-10-15
 
 - 桌面网格工具新增相机动画时间轴：设置时长与帧率、捕获和移动关键帧、选择过渡、环绕示例、播放预览与撤销重做。

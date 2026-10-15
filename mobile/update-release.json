@@ -1,11 +1,11 @@
 {
-  "version": "1.8.0",
+  "version": "1.8.1",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 20,
-  "issuedAt": 1792062948,
-  "expiresAt": 1807614948,
+  "sequence": 21,
+  "issuedAt": 1792081556,
+  "expiresAt": 1807633556,
   "notes": {
-    "zh": "桌面网格模型新增相机动画时间轴：关键帧、平滑过渡、预览、JSON 保存与 MP4 / WebM / PNG 序列导出。本版仍提供完整 APK 和兼容热更新；手机网页与 App 暂未启用时间轴。",
-    "en": "Desktop Mesh Viewer adds camera keyframes, smooth transitions, playback, JSON backups and MP4 / WebM / PNG sequence export. Includes a complete APK and compatible web update; the timeline is not yet enabled on mobile web or App."
+    "zh": "统一跨工具显示、相机、书签及文件出口；修复触屏项目树、投影切换和后台保存问题。改善手机排布、原生高斯参数提交与横屏漫游。已有 App 可热更新网页部分；原生界面修复请安装本版完整 APK。",
+    "en": "Unify shared display, camera, bookmarks and file saving. Fix touch project-tree interactions, projection switching and background saves. Improve mobile layouts and native Gaussian controls. Web changes support hot updates; native UI fixes require this complete APK."
   }
 }

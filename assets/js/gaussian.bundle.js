@@ -2,14 +2,108 @@
 (() => {
 'use strict';
 
+// Source: src/shared/camera-geometry.js
+// Gaussian camera conventions: right/up/back form an orthonormal world basis.
+// Inria cameras.json stores camera-to-world columns right/down/forward.
+const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
+function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function gsTrainingPose(camera, origin=[0,0,0]) {
+  const r=camera.rotation;
+  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
+  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
+  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
+  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
+}
+function gsViewSpec(viewer, width, height) {
+  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
+  const training=viewer.trainingPose;
+  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
+  const fit=training?Math.min(width/training.width,height/training.height):1;
+  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
+  const distance=viewer.distance/viewer.camera.zoom;
+  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
+  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
+  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
+}
+function gsProjectPosition(point, spec) {
+  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
+  const depth=-gsDot3(delta,back);
+  if (spec.perspective && depth<=spec.near) return null;
+  const x=gsDot3(delta,right), y=gsDot3(delta,up);
+  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
+}
+
+
+// Source: src/shared/orbit-camera.js
+
+function gsOrbitRotate(v, axis, angle) {
+  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
+  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
+  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
+}
+function gsSetOrbitBasis(viewer, basis) {
+  const [right,,back]=basis, deg=180/Math.PI;
+  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
+  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
+  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
+  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
+}
+/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
+ * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
+ */
+function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
+  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
+  if(!viewer.packed)return null;
+  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
+  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
+  let limit=radius*radius;
+  for(let i=0;i<viewer.count;i++) {
+    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
+    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
+    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
+    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
+    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
+    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
+    const d=px*px+py*py;if(d>limit)continue;
+    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
+    if(candidates.length===32)limit=candidates[31].d;
+  }
+  if(!candidates.length)return null;
+  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
+  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
+}
+function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
+  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
+  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
+  if(!model&&x!==null&&picked===null)return false;
+  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
+  let depth=picked??fallback;
+  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
+  if(!model&&x!==null) {
+    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
+    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
+    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
+  }
+  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
+  if(depth<=spec.near)return false;
+  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
+  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
+  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
+  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
+  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
+}
+
+
 // Source: src/shared/autosave.js
 /** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
 function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
-  let timer=null, suspended=false;
+  let timer=null, suspended=false, dirty=false, generation=0;
   const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
-  const flush=()=>{cancel();return Promise.resolve().then(save).then(result=>{if(timer!==null)onDirty();return result;});};
-  const schedule=()=>{if(suspended||timer!==null)return;onDirty();timer=setTimer(()=>{timer=null;flush().catch(()=>schedule());},delay);};
-  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;},dispose:cancel};
+  const arm=()=>{if(suspended||!dirty||timer!==null)return;timer=setTimer(()=>{timer=null;flush().catch(()=>arm());},delay);};
+  const flush=()=>{cancel();const savingGeneration=generation;return Promise.resolve().then(save).then(result=>{if(generation===savingGeneration)dirty=false;if(dirty){onDirty();arm();}return result;},error=>{dirty=true;arm();throw error;});};
+  const schedule=()=>{dirty=true;generation++;if(timer!==null)return;onDirty();arm();};
+  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;arm();},dispose(){cancel();suspended=true;}};
 }
 
 
@@ -1323,7 +1417,27 @@ function createMobileHomeNavigation({flush, navigate, language=()=> 'zh'}) {
 }
 
 
+// Source: src/shared/mobile-lifecycle.js
+/** Visibility and native events describe the same lifecycle; each transition runs once. */
+function mountMobileLifecycle({root=document, host=globalThis, autosave, onBackground=()=>{}, onForeground=()=>{}}) {
+  let nativePaused=false, paused=false;
+  const reconcile=()=>{
+    const next=Boolean(root.hidden)||nativePaused;if(next===paused)return;
+    paused=next;
+    if(paused){autosave.pause().catch(()=>{});onBackground();}
+    else{autosave.resume();onForeground();}
+  };
+  const pause=()=>{nativePaused=true;reconcile();},resume=()=>{nativePaused=false;reconcile();};
+  root.addEventListener('visibilitychange',reconcile);
+  host.addEventListener('bwvPause',pause);host.addEventListener('bwvResume',resume);
+  host.addEventListener('bwvMemoryPressure',onBackground);
+  reconcile();
+  return ()=>{root.removeEventListener('visibilitychange',reconcile);host.removeEventListener('bwvPause',pause);host.removeEventListener('bwvResume',resume);host.removeEventListener('bwvMemoryPressure',onBackground);};
+}
+
+
 // Source: src/shared/mobile-project.js
+
 
 
 
@@ -1366,7 +1480,8 @@ function createMobileSaver({read,write,status=()=>{}}){
   return {flush(){
     let state,text;try{state=read();text=JSON.stringify(state);}catch(error){status('error',error);return Promise.reject(error);}
     if(!draining&&text===last){status('saved');return Promise.resolve();}
-    pending={state,text};
+    // Freeze the exact JSON snapshot represented by text before an asynchronous disk write.
+    pending={state:JSON.parse(text),text};
     if(draining)return draining;
     draining=(async()=>{try{while(pending){const next=pending;pending=null;if(next.text===last)continue;status('saving');await write(next.state);last=next.text;}status('saved');}catch(error){status('error',error);throw error;}finally{draining=null;}})();
     return draining;
@@ -1401,10 +1516,7 @@ async function mountMobileProject({receive,getState,restoreState,onBackground=()
     root.getElementById('choose-file').onclick=pick;root.getElementById('choose-folder').onclick=pick;root.getElementById('choose-folder').textContent=t('导入压缩包');
     const overlay=root.getElementById('attach-cloud');if(overlay){overlay.onclick=pick;overlay.title=t('请将线框与点云放在同一压缩包目录内导入');}
     for(const name of ['input','change','click','pointerup','touchend','wheel','keyup'])root.addEventListener(name,schedule,{passive:true});
-    const background=()=>{autosave.pause().catch(()=>{});onBackground();};
-    const foreground=()=>{autosave.resume();onForeground();};
-    root.addEventListener('visibilitychange',()=>root.hidden?background():foreground());
-    globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
+    mountMobileLifecycle({root,autosave,onBackground,onForeground});
     await api.addListener('projectsChanged',()=>{status.textContent=t('收到新项目，返回首页查看');});
     // Processing finishes after its initiating click; observe only project/tree changes, never the render canvas.
     const observer=new MutationObserver(schedule);for(const node of root.querySelectorAll('#data-list,#model-list'))observer.observe(node,{childList:true,subtree:true});
@@ -1426,242 +1538,15 @@ async function nativeExportWriter(name){
 }
 
 
-// Source: src/gaussian/native-view.js
+// Source: src/shared/file-save.js
 
-/** Only project IDs/keys cross the bridge; native code revalidates membership. */
-function nativeGaussianRequest(entries,lang='zh'){
- if(!entries.length)throw Error(lang==='en'?'Select Gaussian files first':'请先勾选高斯文件');
- const id=entries[0].file?.projectId;
- if(!id||entries.some(e=>e.file?.projectId!==id||!e.file?.nativeKey))throw Error('Native viewer requires local project files');
- return {id,keys:entries.map(e=>e.file.nativeKey),lang};
-}
-async function openNativeGaussianPage(){
- if(!isMobileApp())return false;
- const api=mobileProjects(),info=await api.runtimeInfo();
- if(!info.nativeGaussianWorkspace)return false;
- const id=new URL(location.href).searchParams.get('project');
- if(!id){location.replace('assets/mobile/index.html');return true;}
- await api.openNativeGaussian({id,keys:[],lang:document.documentElement.lang==='en'?'en':'zh'});
- location.replace('assets/mobile/index.html?lang='+document.documentElement.lang);return true;
-}
-
-
-// Source: src/shared/render-diagnostics.js
-
-const diagnosticSamples=()=>Object.fromEntries(['gpu','submit','sort','roundTrip','upload','frameCpu','frameInterval','interactionInterval','inputInterval','inputToDraw','eventDelivery','rafQueue','cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,[]]));
-const RENDER_DIAGNOSTIC_KEY='bwv-render-diagnostic-v1';
-function classifyRenderer(name) {
-  if(!name)return 'unknown (renderer identity unavailable)';
-  if(/swiftshader|llvmpipe|softpipe|software|lavapipe/i.test(name))return 'software renderer reported';
-  if(/adreno|mali|powervr|apple|nvidia|radeon|intel|geforce|vivante|tegra/i.test(name))return 'hardware renderer reported (not a utilization measurement)';
-  return 'unknown (unrecognized renderer)';
-}
-function diagnosticSummary(values) {
-  const sorted=values.filter(Number.isFinite).sort((a,b)=>a-b);
-  return sorted.length?{samples:sorted.length,medianMs:+sorted[Math.floor(sorted.length*.5)].toFixed(2),p95Ms:+sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))].toFixed(2)}:null;
-}
-/** Queries run asynchronously only while a user-requested sample is active. */
-class RenderDiagnosticProbe {
-  constructor(viewer){this.viewer=viewer;this.active=false;this.queries=[];this.samples=diagnosticSamples();this.contextLosses=0;this.onLost=()=>{this.contextLosses++;this.active=false;this.queries=[];};viewer.canvas.addEventListener('webglcontextlost',this.onLost);}
-  start(autoRotate=false){this.stop();this.samples=diagnosticSamples();this.lastFrame=0;this.lastMoving=false;this.lastInput=0;this.pendingInput=0;this.resizeCount=0;this.frameCount=0;this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.sampleMode=autoRotate?'automatic-orbit':'manual';
-    if(autoRotate){const v=this.viewer;v.stopNavigation();this.savedPose=JSON.parse(JSON.stringify({generation:v.generation,camera:v.camera,target:v.target,trainingPose:v.trainingPose,orbitLens:v.orbitLens,distance:v.distance,flyPose:v.flyPose}));v.leaveTraining();this.orbitStart=v.camera.azimuth;v.requestRender();}
-    this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
-  poll(){const gl=this.viewer.gl,ext=this.ext;if(!ext||gl.isContextLost())return;const disjoint=gl.getParameter(ext.GPU_DISJOINT_EXT);if(disjoint)this.disjoint=true;while(this.queries.length&&(disjoint||gl.getQueryParameter(this.queries[0],gl.QUERY_RESULT_AVAILABLE))){const q=this.queries.shift();if(!disjoint)this.add('gpu',gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6);gl.deleteQuery(q);}}
-  add(key,value){if(Number.isFinite(value)&&this.samples[key].length<600)this.samples[key].push(value);}
-  begin(){if(!this.active)return;this.poll();this.cpuStart=performance.now();const gl=this.viewer.gl;if(this.ext&&this.queries.length<3){this.query=gl.createQuery();gl.beginQuery(this.ext.TIME_ELAPSED_EXT,this.query);}}
-  end(){if(this.cpuStart==null)return;const gl=this.viewer.gl;if(this.query){gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queries.push(this.query);this.query=null;}this.add('submit',performance.now()-this.cpuStart);this.cpuStart=null;}
-  sort(ms,roundTrip){if(this.active){this.add('sort',ms);this.add('roundTrip',roundTrip);}}
-  upload(ms){if(this.active)this.add('upload',ms);}
-  input(at,eventTime){if(!this.active)return;if(Number.isFinite(eventTime)&&eventTime>0&&at>=eventTime&&at-eventTime<60000)this.add('eventDelivery',at-eventTime);if(this.lastInput)this.add('inputInterval',at-this.lastInput);this.lastInput=at;if(!this.pendingInput)this.pendingInput=at;}
-  raf(ms){if(this.active)this.add('rafQueue',ms);}
-  resize(){if(this.active)this.resizeCount++;}
-  frame(started,cpuMs,moving,phases={}){
-    if(!this.active)return;
-    this.frameCount++;
-    if(this.pendingInput&&started>=this.pendingInput){this.add('inputToDraw',started-this.pendingInput);this.pendingInput=0;}
-    for(const [key,ms]of Object.entries(phases))if(this.samples[key])this.add(key,ms);
-    this.add('frameCpu',cpuMs);
-    if(this.lastFrame){const interval=started-this.lastFrame;this.add('frameInterval',interval);if(moving&&this.lastMoving)this.add('interactionInterval',interval);}
-    this.lastFrame=started;this.lastMoving=moving;
-  }
-  motion(now){if(!this.active||!this.savedPose)return;if(this.viewer.generation!==this.savedPose.generation){this.stop();return;}this.viewer.camera.azimuth=this.orbitStart+(now-this.started)*.02;this.viewer.requestRender();}
-  stop(){if(this.savedPose){const v=this.viewer,s=this.savedPose;this.savedPose=null;if(v.generation===s.generation){for(const key of ['camera','target','trainingPose','orbitLens','distance','flyPose'])v[key]=s[key];v.requestRender();}}if(this.active)this.duration=performance.now()-this.started;this.active=false;clearTimeout(this.timer);clearInterval(this.pollTimer);this.poll();for(const q of this.queries)this.viewer.gl.deleteQuery(q);this.queries=[];}
-  snapshot(){const v=this.viewer,gl=v.gl;let info={contextLost:gl.isContextLost(),contextLosses:this.contextLosses};if(!gl.isContextLost()){const ext=gl.getExtension('WEBGL_debug_renderer_info');const renderer=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null;info={...info,renderer,classification:classifyRenderer(renderer),vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,maskedRenderer:gl.getParameter(gl.RENDERER),webgl:gl.getParameter(gl.VERSION),shadingLanguage:gl.getParameter(gl.SHADING_LANGUAGE_VERSION),attributes:gl.getContextAttributes(),maxTextureSize:gl.getParameter(gl.MAX_TEXTURE_SIZE),gpuTimerSupported:Boolean(gl.getExtension('EXT_disjoint_timer_query_webgl2'))};}
-    return {schema:4,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),projectionPipeline:v.activePipeline||'direct',projectionBufferBytes:v.projectionPass?.allocatedBytes||0,projectionFallback:v.projectionFallback||null,shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy,effectiveQuality:v.effectiveQuality||null,interactionScale:v.interactionScale??1,interactionDegree:v.interactionDegree??3},measurement:{sampleMode:this.sampleMode||'manual',startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint),drawnFrames:this.frameCount||0,orderUploadCpu:diagnosticSummary(this.samples.upload),frameCpu:diagnosticSummary(this.samples.frameCpu),drawInterval:diagnosticSummary(this.samples.frameInterval),interactionDrawInterval:diagnosticSummary(this.samples.interactionInterval),inputEventInterval:diagnosticSummary(this.samples.inputInterval),inputToDrawStart:diagnosticSummary(this.samples.inputToDraw),eventTimestampToHandler:diagnosticSummary(this.samples.eventDelivery),animationCallbackWait:diagnosticSummary(this.samples.rafQueue),canvasResizes:this.resizeCount||0,framePhases:Object.fromEntries(['cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,diagnosticSummary(this.samples[k])]))},limits:'CPU draw submission, frame CPU and upload CPU are not GPU completion times. Draw intervals include on-demand idle gaps; interaction intervals are consecutive motion frames, not presentation FPS. Input-to-draw is event-handler-to-frame-start latency, not presentation latency. Event delivery uses browser event timestamps, not hardware touch sampling. Animation wait includes browser/GPU scheduling. GPU timing, when available, includes both projection and drawing. Phase timings are CPU elapsed times and can include driver waits. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
-}
-function saveRenderDiagnostic(report){try{localStorage.setItem(RENDER_DIAGNOSTIC_KEY,JSON.stringify(report));}catch{}}
-function readRenderDiagnostic(){try{return JSON.parse(localStorage.getItem(RENDER_DIAGNOSTIC_KEY)||'null');}catch{return null;}}
-function showRenderDiagnostics(probe=null){
-  if(document.getElementById('render-diagnostic-dialog'))return;
-  const en=document.documentElement.lang==='en',word=(zh,eng)=>en?eng:zh;
-  const overlay=document.createElement('div');overlay.id='render-diagnostic-dialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',word('渲染诊断','Rendering diagnostics'));overlay.style.cssText='position:fixed;inset:0;z-index:100000;background:#173b3688;display:flex;align-items:center;justify-content:center;padding:12px';
-  const box=document.createElement('section');box.style.cssText='background:#f6faf8;color:#203c38;border-radius:16px;padding:18px;width:680px;max-width:100%;max-height:90vh;overflow:auto;box-sizing:border-box;box-shadow:0 16px 70px #0004';
-  const title=document.createElement('h2');title.textContent=word('渲染诊断','Rendering diagnostics');title.style.margin='0 0 12px';
-  const help=document.createElement('p');help.textContent=word('加载模型后，点击“采集 10 秒”，关闭面板并像平时一样转动视角。完成后重新打开并复制报告。报告仅保存在本机，不含文件名或点坐标。','Load a model, start a 10-second sample, then move the camera as usual. Reopen and copy the report afterward. Reports stay local and exclude filenames and coordinates.');
-  const status=document.createElement('p'),text=document.createElement('textarea');text.readOnly=true;text.setAttribute('aria-label',word('诊断报告','Diagnostic report'));text.style.cssText='width:100%;height:36vh;box-sizing:border-box;font:12px monospace;white-space:pre';
-  let report=probe?.snapshot()||readRenderDiagnostic();
-  const update=()=>{text.value=report?JSON.stringify(report,null,2):word('暂无渲染报告。请进入高斯查看器，加载模型后采集。','No rendering report. Open the Gaussian viewer and collect a sample.');status.textContent=report?word('报告时间：','Captured: ')+report.capturedAt:'';};update();
-  const buttons=document.createElement('div');buttons.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:12px';
-  const button=(zh,eng,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=word(zh,eng);b.style.cssText='padding:10px 14px;border:1px solid #bfd4cb;border-radius:8px;background:white;color:#244c42;cursor:pointer';b.onclick=async()=>{try{await fn();}catch(e){status.textContent=String(e.message||e);}};buttons.append(b);return b;};
-  const previousFocus=document.activeElement;const close=()=>{overlay.remove();document.removeEventListener('keydown',key,true);previousFocus?.focus();};const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}if(e.key==='Tab'){const list=[...box.querySelectorAll('button,textarea')].filter(x=>!x.disabled);if(e.shiftKey&&document.activeElement===list[0]){e.preventDefault();list.at(-1).focus();}else if(!e.shiftKey&&document.activeElement===list.at(-1)){e.preventDefault();list[0].focus();}}};document.addEventListener('keydown',key,true);
-  if(probe){
-    button('刷新报告','Refresh report',async()=>{report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);update();});
-    const sample=auto=>{
-      if(probe.active){status.textContent=word('正在采集，请稍后再试','Sampling in progress');return;}
-      if(auto&&!probe.viewer.count){status.textContent=word('请先加载模型','Load a model first');return;}
-      probe.start(auto);close();const toast=document.createElement('div');toast.setAttribute('role','status');
-      toast.textContent=auto?word('自动旋转诊断中（10 秒），完成后恢复视角','Automatic orbit sample (10 seconds); view restored afterward'):word('诊断采集中：请转动视角（10 秒）','Sampling: move the camera (10 seconds)');
-      toast.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;padding:12px;border-radius:8px;background:#214b43;color:white;pointer-events:none';document.body.append(toast);
-      setTimeout(async()=>{probe.stop();report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);toast.textContent=word('采集完成：打开“诊断”复制报告','Sample saved: open Diagnostics to copy');setTimeout(()=>toast.remove(),4000);},10100);
-    };
-    button('采集 10 秒','Sample for 10 seconds',()=>sample(false));button('自动旋转采集 10 秒','Automatic orbit sample (10 seconds)',()=>sample(true));
-  }
-  button('复制报告','Copy report',async()=>{if(!report)return;saveRenderDiagnostic(report);try{await navigator.clipboard.writeText(text.value);}catch{text.focus();text.select();if(!document.execCommand('copy'))throw Error(word('请长按报告手动复制','Select the report and copy manually'));}status.textContent=word('已复制','Copied');});
-  button('导出报告','Export report',async()=>{if(!report)return;const blob=new Blob([text.value],{type:'text/plain'}),name='BuildingWebViewer-diagnostics.txt';if(mobileProjects())await mobileShareBlob(blob,name);else{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}});
-  if(mobileProjects())button('启动诊断','Startup diagnostics',()=>mobileProjects().showDiagnostics());
-  button('关闭','Close',close);box.append(title,help,status,text,buttons);overlay.append(box);document.body.append(overlay);buttons.lastElementChild.focus();
-  runtime().then(info=>{if(report){report.native=info;saveRenderDiagnostic(report);update();}});
-}
-async function runtime(){try{return await mobileProjects()?.runtimeInfo()||null;}catch{return {available:false};}}
-function mountRenderDiagnostics(viewer,container){const probe=new RenderDiagnosticProbe(viewer);viewer.diagnosticProbe=probe;const button=document.createElement('button');button.type='button';button.id='gs-diagnostics';button.textContent=document.documentElement.lang==='en'?'Diagnostics':'诊断';button.onclick=()=>showRenderDiagnostics(probe);container.append(button);return probe;}
-
-
-// Source: src/shared/workspace-session.js
-
-
-
-/** Native project lifecycle for editors with binary snapshots. Browser sessions remain local. */
-async function openWorkspaceSession({tool, restore, capture, onStatus, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
-  const api=mobileProjects();if(!api)return null;
-  const id=new URL(location.href).searchParams.get('project');
-  if(!id){location.replace('/assets/mobile/index.html');return {redirecting:true};}
-  const status=document.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');document.querySelector('header').append(status);
-  const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':kind==='dirty'?'Pending autosave':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':kind==='dirty'?'待自动保存':'保存失败');onStatus(kind,error);};
-  const project=await api.getProject({id});
-  const state=project.states?.[tool]||null;
-  const snapshotRecord=project.files.find(f=>f.key===state?.snapshotKey&&f.path===`.bwv/${tool}.snapshot`);
-  if(state?.snapshotKey&&!snapshotRecord)throw Error('项目快照丢失 / Project snapshot is missing');
-  const records=project.files.filter(f=>!f.path.startsWith('.bwv/')).map(record=>({file:new NativeProjectFile(id,record),path:record.path}));
-  const restored=await restore({state,records,snapshot:snapshotRecord?new NativeProjectFile(id,snapshotRecord):null});
-  let savedRevision=null,snapshotKey=state?.snapshotKey||null,lastState='',draining=null,queued=false;
-  // Restored snapshots already match the editor; reopening does not rewrite binary data.
-  if(snapshotKey&&restored?.snapshotUnchanged){savedRevision=capture().revision;const {snapshotKey:ignored,...previous}=state;lastState=JSON.stringify(previous);}
-  async function flush(){
-    queued=true;if(draining)return draining;
-    draining=Promise.resolve().then(async()=>{try{while(queued){queued=false;const current=capture(),stateText=JSON.stringify(current.state);
-      if(current.revision!==savedRevision||!snapshotKey){
-        report('saving');const blob=current.blob();const writer=await nativeExportWriter(`${tool}.snapshot`);
-        try{for(let i=0;i<blob.size;i+=262144)await writer.write(await blob.slice(i,i+262144).arrayBuffer());
-          const saved=await api.commitSnapshot({token:writer.token,id,tool,state:current.state});snapshotKey=saved.snapshotKey;savedRevision=current.revision;lastState=stateText;
-        }catch(error){await writer.abort().catch(()=>{});throw error;}
-      }else if(stateText!==lastState){report('saving');await api.saveState({id,tool,state:{...current.state,snapshotKey}});lastState=stateText;}
-    }report('saved');}catch(error){report('error',error);throw error;}finally{draining=null;}});return draining;
-  }
-  const autosave=createAutosave({save:flush,onDirty:()=>report('dirty')});
-  const schedule=autosave.schedule, saveNow=autosave.flush;
-  const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await saveNow();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
-  const link=document.querySelector('.back-home');if(link){link.href='/assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
-  globalThis.bwvNavigateProjectHome=()=>home().catch(()=>{});
-  globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});else saveNow().catch(()=>{});};
-  const background=()=>{autosave.pause().catch(()=>{});onBackground();};
-  const foreground=()=>{autosave.resume();onForeground();};
-  document.addEventListener('visibilitychange',()=>document.hidden?background():foreground());
-  globalThis.addEventListener('bwvPause',background);globalThis.addEventListener('bwvResume',foreground);globalThis.addEventListener('bwvMemoryPressure',onBackground);
-  for(const event of ['pointerdown','pointerup','keydown','keyup','input','change','wheel'])document.addEventListener(event,schedule,{passive:true});
-  return {id,records,flush:saveNow,schedule,async pick(){await saveNow();const result=await api.pickFiles({id});if(!result.cancelled)location.reload();},async home(){return home();}};
-}
-
-
-// Source: src/shared/camera-geometry.js
-// Gaussian camera conventions: right/up/back form an orthonormal world basis.
-// Inria cameras.json stores camera-to-world columns right/down/forward.
-const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
-function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
-function gsTrainingPose(camera, origin=[0,0,0]) {
-  const r=camera.rotation;
-  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
-  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
-  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
-  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
-}
-function gsViewSpec(viewer, width, height) {
-  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
-  const training=viewer.trainingPose;
-  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
-  const fit=training?Math.min(width/training.width,height/training.height):1;
-  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
-  const distance=viewer.distance/viewer.camera.zoom;
-  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
-  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
-  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
-}
-function gsProjectPosition(point, spec) {
-  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
-  const depth=-gsDot3(delta,back);
-  if (spec.perspective && depth<=spec.near) return null;
-  const x=gsDot3(delta,right), y=gsDot3(delta,up);
-  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
-}
-
-
-// Source: src/shared/orbit-camera.js
-
-function gsOrbitRotate(v, axis, angle) {
-  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
-  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
-  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
-}
-function gsSetOrbitBasis(viewer, basis) {
-  const [right,,back]=basis, deg=180/Math.PI;
-  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
-  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
-  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
-  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
-}
-/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
- * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
- */
-function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
-  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
-  if(!viewer.packed)return null;
-  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
-  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
-  let limit=radius*radius;
-  for(let i=0;i<viewer.count;i++) {
-    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
-    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
-    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
-    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
-    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
-    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
-    const d=px*px+py*py;if(d>limit)continue;
-    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
-    if(candidates.length===32)limit=candidates[31].d;
-  }
-  if(!candidates.length)return null;
-  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
-  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
-}
-function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
-  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
-  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
-  if(!model&&x!==null&&picked===null)return false;
-  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
-  let depth=picked??fallback;
-  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
-  if(!model&&x!==null) {
-    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
-    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
-    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
-  }
-  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
-  if(depth<=spec.near)return false;
-  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
-  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
-  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
-  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
-  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
+/** One download/share path for browser and native WebView. Resolve DOM/URL in the caller's document. */
+async function saveLocalBlob(blob,name,{document:doc=globalThis.document,window:host=doc?.defaultView||globalThis}={}){
+  if(await mobileShareBlob(blob,name))return;
+  const urls=host.URL||globalThis.URL,url=urls.createObjectURL(blob),link=doc.createElement('a');
+  try{link.href=url;link.download=name;link.click();}
+  catch(error){urls.revokeObjectURL(url);throw error;}
+  (host.setTimeout?.bind(host)||globalThis.setTimeout)(()=>urls.revokeObjectURL(url),60000);
 }
 
 
@@ -1718,7 +1603,7 @@ function validateCameraSnapshot(value, {space = value?.space, scene = null, chec
   if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(t("缩放倍率需在 {0} 至 {1} 之间", [limits.minZoom, limits.maxZoom]));
   if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error(t('基准视野高度必须为有效正数'));
   let extended={};
-  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
+  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};if(source.lens!=null){if(!cameraObject(source.lens)||!['fx','fy'].every(k=>typeof source.lens[k]==='number'&&Number.isFinite(source.lens[k])&&source.lens[k]>0&&source.lens[k]<=1e6))throw Error('Invalid camera lens');extended.lens={fx:source.lens.fx,fy:source.lens.fy};}}
   const savedScene = cameraScene(value.scene, space);
   if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
   return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
@@ -1732,11 +1617,15 @@ function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
   const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
   const camera={...viewer.camera,pan:[...viewer.camera.pan]},projection=viewer.projection||'orthographic';
   let localTarget=[...viewer.target],distance=viewer.distance||viewer.baseHeight*2;
-  if(viewer.flyPose){gsSetOrbitBasis({camera},viewer.flyPose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=viewer.flyPose.eye.map((v,i)=>v-viewer.flyPose.basis[2][i]*distance);}
-  const version=projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
+  const pose=viewer.flyPose||viewer.trainingPose;
+  if(pose){gsSetOrbitBasis({camera},pose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=pose.eye.map((v,i)=>v-pose.basis[2][i]*distance);}
+  let lens=viewer.orbitLens?{fx:viewer.orbitLens.fx,fy:viewer.orbitLens.fy}:null;
+  if(viewer.trainingPose){const p=viewer.trainingPose,w=viewer.canvas?.clientWidth,h=viewer.canvas?.clientHeight;if(w>0&&h>0){const fit=Math.min(w/p.width,h/p.height);lens={fx:p.fx*fit/h,fy:p.fy*fit/h};}}
+
+  const version=lens||projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
   const target = cameraVector(localTarget,3,t('目标点')).map((value,axis)=>value+origin[axis]);
   return validateCameraSnapshot({format:CAMERA_FORMAT,version,space,projection,scene,
-    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
+    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001,...(lens?{lens}:{})}:{})}}, {space,scene,checkScene:false});
 }
 
 function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback(), render = true} = {}) {
@@ -1749,7 +1638,7 @@ function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene 
   });
   pauseSync(() => {
     viewers.forEach((viewer, index) => {
-      viewer.stopNavigation?.();viewer.flyPose=null;viewer.projection=value.projection;
+      viewer.stopNavigation?.();if(viewer.fly?.active)viewer.fly.leave();viewer.flyPose=null;viewer.trainingPose=null;viewer.orbitLens=value.camera.lens?{...value.camera.lens}:null;viewer.projection=value.projection;
       if(value.version===2){viewer.distance=value.camera.distance;viewer.fov=value.camera.fov;viewer.near=value.camera.near;}
       viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
       viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
@@ -1992,7 +1881,7 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
         if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
         slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? t(' 倍') : t(' 度')}`);
       }
-      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? 2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
+      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? (snapshot.camera.lens?snapshot.camera.distance/snapshot.camera.lens.fy:2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360)) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
     } else {
       dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
       heightLabel.textContent = t('加载数据后可调整');
@@ -2058,9 +1947,8 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
   exportButton.addEventListener('click', async () => { try {
     syncStored();
     const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
-    if (isMobileApp()) { await mobileShareBlob(blob, `BuildingWebViewer-camera-${space}.json`); message(t('相机书签 JSON 已导出，不含模型数据。')); return; }
-    const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
-    win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message(t('相机书签 JSON 已导出，不含模型数据。'));
+    await saveLocalBlob(blob, `BuildingWebViewer-camera-${space}.json`, {document:doc,window:win});
+    message(t('相机书签 JSON 已导出，不含模型数据。'));
   } catch(error) { message(error.message, true); } });
   importButton.addEventListener('click', () => importInput.click());
   importInput.addEventListener('change', async () => {
@@ -2096,631 +1984,6 @@ function mountCameraControls({container, bookmarkContainer = null, getViewers, s
       panel.remove(); if (separateBookmarks) bookPanel.remove(); watches.clear(); dragging.clear();
     },
   };
-}
-
-
-// Source: src/gaussian/project-state.js
-function gsEntryFlags(entry){return entry.parsed?.preview?entry.savedFlags:(entry.parsed?.editFlags||entry.savedFlags);}
-/** Native Gaussian edits reference immutable original PLY files; only one flag byte per point is saved. */
-function gsProjectBlob(entries){
-  const records=[],blocks=[];let offset=0;
-  for(const e of entries){const flags=gsEntryFlags(e);if(!flags)continue;records.push({id:e.id,count:flags.length,offset});blocks.push(flags.slice());offset+=flags.length;}
-  const header=new TextEncoder().encode(JSON.stringify({format:'BuildingWebViewer.gaussian-edits',version:1,records}));const length=new Uint8Array(4);new DataView(length.buffer).setUint32(0,header.length,true);return new Blob([length,header,...blocks]);
-}
-async function gsReadProjectBlob(file){
-  if(file.size<4||file.size>512*1024*1024)throw Error('Invalid Gaussian snapshot size');const n=new DataView(await file.slice(0,4).arrayBuffer()).getUint32(0,true);if(n>4*1024*1024||n+4>file.size)throw Error('Invalid Gaussian snapshot header');
-  const data=JSON.parse(await file.slice(4,4+n).text());if(data.format!=='BuildingWebViewer.gaussian-edits'||data.version!==1||!Array.isArray(data.records))throw Error('Invalid Gaussian snapshot');let offset=0;const result=new Map();
-  for(const r of data.records){if(typeof r.id!=='string'||result.has(r.id)||!Number.isSafeInteger(r.count)||r.count<0||r.offset!==offset||4+n+offset+r.count>file.size)throw Error('Invalid Gaussian flags');const flags=new Uint8Array(await file.slice(4+n+offset,4+n+offset+r.count).arrayBuffer());if(flags.some(v=>v>7))throw Error('Invalid Gaussian edit flag');result.set(r.id,flags);offset+=r.count;}
-  if(n+4+offset!==file.size)throw Error('Unexpected Gaussian snapshot bytes');return result;
-}
-
-
-// Source: src/shared/project-model.js
-
-// Project groups are virtual: source identity and disk paths never change on a move.
-class ViewerProject {
-  constructor() { this.groups = new Map(); this.serial = 0; }
-  create(name, parent = '') {
-    name = name.trim();
-    if (!name || /[/\\\x00-\x1f]/.test(name)) throw Error(t('请输入文件夹名称，不含斜线或控制字符'));
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    if ([...this.groups.values()].some(group => group.parent === parent && group.name === name)) throw Error(t('此位置已有同名文件夹'));
-    const group = {id: `group:${++this.serial}`, name, parent, collapsed: false};
-    this.groups.set(group.id, group); return group.id;
-  }
-  assign(entry, path) {
-    const parts = path.split('/').filter(Boolean); entry.treeName = parts.pop() || entry.id;
-    let parent = '';
-    for (const name of parts) {
-      parent = [...this.groups.values()].find(group => group.parent === parent && group.name === name)?.id || this.create(name, parent);
-    }
-    entry.group = parent;
-  }
-  within(groupId, ancestor) {
-    if (!ancestor) return true;
-    for (let group = this.groups.get(groupId); group; group = this.groups.get(group.parent)) if (group.id === ancestor) return true;
-    return false;
-  }
-  path(id) {
-    const parts = [];
-    for (let group = this.groups.get(id); group; group = this.groups.get(group.parent)) parts.unshift(group.name);
-    return parts.join('/');
-  }
-  members(id, entries) { return entries.filter(entry => this.within(entry.group, id)); }
-  move(target, parent) {
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    if (typeof target === 'string') {
-      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
-      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
-      if ([...this.groups.values()].some(other => other.id !== target && other.parent === parent && other.name === group.name)) throw Error(t('目标位置已有同名文件夹'));
-      group.parent = parent;
-    } else target.group = parent;
-    if (parent) this.groups.get(parent).collapsed = false;
-  }
-  roots(targets) {
-    const unique = [...new Set(targets)], groups = unique.filter(target => typeof target === 'string');
-    return unique.filter(target => !groups.some(group => group !== target && this.within(
-      typeof target === 'string' ? this.groups.get(target)?.parent : target.group, group)));
-  }
-  files(targets, entries) {
-    const selected = new Set();
-    for (const target of this.roots(targets)) {
-      for (const entry of typeof target === 'string' ? this.members(target, entries) : [target]) if (entries.includes(entry)) selected.add(entry);
-    }
-    return [...selected];
-  }
-  moveMany(targets, parent) {
-    const roots = this.roots(targets);
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    const movingGroups = new Set(roots.filter(target => typeof target === 'string'));
-    const names = new Set([...this.groups.values()].filter(group => group.parent === parent && !movingGroups.has(group.id)).map(group => group.name));
-    // Validate the whole batch before moving anything, so a conflict cannot leave half a move.
-    for (const target of movingGroups) {
-      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
-      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
-      if (names.has(group.name)) throw Error(t('目标位置存在同名文件夹，本次移动未执行'));
-      names.add(group.name);
-    }
-    for (const target of roots) this.move(target, parent);
-    return roots;
-  }
-  removeGroup(id) {
-    const removed = [...this.groups.keys()].filter(key => this.within(key, id));
-    for (const key of removed) this.groups.delete(key);
-  }
-  matches(entry, query) {
-    return `${this.path(entry.group)}/${entry.treeName || entry.id} ${entry.id}`.toLowerCase().includes(query.toLowerCase().trim());
-  }
-}
-
-class ProjectSelection {
-  constructor() { this.items = new Set(); this.anchor = null; }
-  select(target, {toggle = false, range = false, ordered = []} = {}) {
-    const from = ordered.indexOf(this.anchor), to = ordered.indexOf(target);
-    if (range && from >= 0 && to >= 0) {
-      if (!toggle) this.items.clear();
-      ordered.slice(Math.min(from,to), Math.max(from,to)+1).forEach(item => this.items.add(item));
-    } else {
-      if (!toggle) this.items.clear();
-      if (toggle && this.items.has(target)) this.items.delete(target); else this.items.add(target);
-      this.anchor = target;
-    }
-  }
-  box(hits, base = []) { this.items = new Set([...base, ...hits]); }
-  clear() { this.items.clear(); this.anchor = null; }
-}
-
-function projectBoxIntersects(a, b) {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-}
-
-
-
-// Source: src/shared/project-tree.js
-
-
-function mountProjectTree({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
-  onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail = () => '', selectionHint = '勾选后显示数据'}) {
-  const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
-  const button = (text, label, fn) => { const node = make('button', text); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label); node.onclick = fn; return node; };
-  const dragType = 'application/x-buildingwebviewer-node', management = new ProjectSelection();
-  let focused = null, dragged = null, limit = 200, lastQuery = '', editorMode = null, editorTargets = [], rowTargets = new Map(), visible = [];
-  const tools = make('div', null, 'project-tools');
-  const createButton = button(t('+ 文件夹'), t('新建项目内文件夹'), () => openEditor('create'));
-  const moveButton = button(t('移动'), t('移动选中条目'), () => openEditor('move'));
-  const deleteButton = button(t('移除'), t('移除选中条目'), () => openEditor('remove'));
-  tools.append(createButton, moveButton, deleteButton);
-  const focusNote = make('p', '', 'project-focus');
-  const editor = make('form', null, 'project-editor'); editor.hidden = true;
-  const editorTitle = make('strong'), nameInput = make('input'); nameInput.placeholder = t('文件夹名称'); nameInput.setAttribute('aria-label', t('新文件夹名称'));
-  const destinations = make('select'); destinations.setAttribute('aria-label', t('目标文件夹'));
-  const editorNote = make('p'), actions = make('div', null, 'project-editor-actions');
-  const submit = make('button', t('确定')); submit.type = 'submit';
-  function closeEditor() { editorMode = null; editor.hidden = true; editorTargets = []; }
-  const cancel = button(t('取消'), t('取消管理操作'), closeEditor);
-  actions.append(submit, cancel); editor.append(editorTitle, nameInput, destinations, editorNote, actions);
-  controls.append(tools, focusNote, editor);
-  const status = make('p', null, 'project-status'); status.setAttribute('role', 'status'); controls.append(status);
-  function label(target) { return typeof target === 'string' ? project.path(target) : target?.treeName || target?.id || t('项目根目录'); }
-  function exists(target) { return typeof target === 'string' ? project.groups.has(target) : getEntries().includes(target); }
-  function paintSelection() {
-    for (const [row, target] of rowTargets) {
-      const selected = management.items.has(target); row.dataset.focused = String(selected);
-      row.querySelector('.project-name').setAttribute('aria-pressed', String(selected));
-    }
-    moveButton.disabled = deleteButton.disabled = !management.items.size;
-    focusNote.textContent = management.items.size ? t("已选 {0} 项管理 · {1} 个数据条目", [management.items.size, project.files(management.items, getEntries()).length]) : t('Ctrl 多选 · 空白处框选 · 右键管理');
-    focusNote.title = [...management.items].map(label).join('\n') || focusNote.textContent;
-  }
-  function selectTarget(target, event = {}) {
-    closeEditor(); closeMenu();
-    if (target === null) { focused = null; management.clear(); }
-    else { focused = target; management.select(target, {toggle: event.ctrlKey || event.metaKey, range: event.shiftKey, ordered: visible}); }
-    paintSelection();
-  }
-  function fillDestinations() {
-    destinations.replaceChildren();
-    const add = (value, text) => { const option = make('option', text); option.value = value; destinations.append(option); };
-    add('', t('项目根目录'));
-    for (const group of [...project.groups.values()].sort((a,b) => project.path(a.id).localeCompare(project.path(b.id), undefined, {numeric:true}))) {
-      if (editorMode === 'move' && editorTargets.some(target => typeof target === 'string' && project.within(group.id, target))) continue;
-      add(group.id, project.path(group.id));
-    }
-    const single = editorTargets.length === 1 ? editorTargets[0] : null;
-    destinations.value = typeof single === 'string' ? editorMode === 'create' ? single : project.groups.get(single)?.parent || '' : single?.group || '';
-  }
-  function openEditor(mode) {
-    if (mode !== 'create' && !management.items.size) return;
-    closeMenu(); editorTargets = project.roots(management.items); editorMode = mode; editor.hidden = false; status.textContent = ''; nameInput.value = '';
-    const title = editorTargets.length === 1 ? label(editorTargets[0]) : t("{0} 个条目", [editorTargets.length]);
-    editorTitle.textContent = {create:t('新建项目文件夹'),move:t("移动：{0}", [title]),remove:t("移除：{0}", [title])}[mode];
-    nameInput.hidden = mode !== 'create'; destinations.hidden = mode === 'remove';
-    submit.textContent = mode === 'remove' ? t('确认移除') : mode === 'move' ? t('移动到此处') : t('创建');
-    editorNote.textContent = mode === 'remove'
-      ? t("从页面移除 {0} 个数据条目{1}。磁盘文件不变；未导出的计算结果将丢失。", [project.files(editorTargets, getEntries()).length, editorTargets.some(target => typeof target === 'string') ? t('及所选文件夹') : ''])
-      : t('仅调整当前页面的分组，不修改磁盘文件。');
-    fillDestinations(); (mode === 'create' ? nameInput : mode === 'move' ? destinations : submit).focus();
-  }
-  editor.onsubmit = event => {
-    event.preventDefault();
-    try {
-      if (editorTargets.some(target => !exists(target))) throw Error(t('部分条目已不存在，请重新选择'));
-      if (editorMode === 'create') { focused = project.create(nameInput.value, destinations.value); management.select(focused); }
-      else if (editorMode === 'move') project.moveMany(editorTargets, destinations.value);
-      else if (editorMode === 'remove') {
-        const removed = project.files(editorTargets, getEntries());
-        for (const target of editorTargets) if (typeof target === 'string') project.removeGroup(target);
-        focused = null; management.clear(); closeEditor(); onRemove(removed);
-      }
-      closeEditor(); status.textContent = ''; onChange();
-    } catch (error) { status.textContent = error.message; }
-  };
-
-  // Move gestures start only on the small grip, never on a checkbox or filename.
-  function wireDrop(row, parent) {
-    row.ondragover = event => {
-      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
-      event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; row.classList.add('project-drop-target');
-    };
-    row.ondragleave = event => { if (!row.contains(event.relatedTarget)) row.classList.remove('project-drop-target'); };
-    row.ondrop = event => {
-      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
-      event.preventDefault(); event.stopPropagation(); row.classList.remove('project-drop-target');
-      try { project.moveMany(dragged, parent); status.textContent = t("已移动 {0} 项到 {1}", [dragged.length, project.path(parent) || t('项目根目录')]); }
-      catch (error) { status.textContent = error.message; }
-      dragged = null; container.classList.remove('project-dragging'); closeEditor(); onChange();
-    };
-  }
-  function gripFor(target) {
-    const grip = make('span', '⠿', 'project-drag-handle'); grip.draggable = true;
-    grip.title = t('拖动选中条目到文件夹或项目根目录'); grip.setAttribute('aria-hidden', 'true');
-    grip.ondragstart = event => {
-      if (!management.items.has(target)) { management.select(target); focused = target; paintSelection(); }
-      closeMenu(); closeEditor(); dragged = project.roots(management.items);
-      event.dataTransfer.setData(dragType, 'project-nodes'); event.dataTransfer.setData('text/plain', dragged.map(label).join('\n')); event.dataTransfer.effectAllowed = 'move';
-      container.classList.add('project-dragging'); event.stopPropagation();
-    };
-    grip.ondragend = () => { dragged = null; container.classList.remove('project-dragging'); container.querySelectorAll('.project-drop-target').forEach(node => node.classList.remove('project-drop-target')); root.classList.remove('project-drop-target'); };
-    return grip;
-  }
-  wireDrop(root, ''); root.onclick = () => selectTarget(null);
-
-  const menu = make('div', null, 'project-context-menu'); menu.hidden = true; menu.setAttribute('role','menu'); menu.setAttribute('aria-label',t('项目管理菜单')); document.body.append(menu);
-  let menuReturnFocus = null;
-  function closeMenu(restore = false) { menu.hidden = true; if (restore) menuReturnFocus?.focus(); }
-  function showMenu(event, target) {
-    event.preventDefault(); event.stopPropagation();
-    if (target === null || !management.items.has(target)) selectTarget(target);
-    closeEditor(); menuReturnFocus = event.target.closest('button') || root;
-    const files = project.files(management.items, getEntries()), hasItems = management.items.size > 0;
-    const add = (text, action, enabled = true, cls = '') => {
-      const item = button(text, text, () => { closeMenu(); action(); }); item.setAttribute('role','menuitem'); item.disabled = !enabled; item.className = cls; menu.append(item);
-    };
-    menu.replaceChildren();
-    const caption = make('div', hasItems ? t("已选 {0} 项 · {1} 个数据条目", [management.items.size, files.length]) : t('项目管理'), 'project-menu-caption'); menu.append(caption);
-    add(t('新建文件夹…'), () => openEditor('create'));
-    add(t('显示选中数据'), () => onVisibility(files, true), files.length > 0 && (getMode() !== 'single' || files.length === 1));
-    add(t('隐藏选中数据'), () => onVisibility(files, false), files.some(entry => getSelected().has(entry)));
-    add(t('移动到…'), () => openEditor('move'), hasItems);
-    add(t('移到项目根目录'), () => { try { project.moveMany(management.items, ''); onChange(); } catch(error) { status.textContent = error.message; } }, hasItems);
-    add(t('展开全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = false; render(); }, project.groups.size > 0);
-    add(t('收起全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = true; render(); }, project.groups.size > 0);
-    add(t('移除选中条目…'), () => openEditor('remove'), hasItems, 'project-menu-danger');
-    menu.hidden = false;
-    const rect = event.target.getBoundingClientRect(), x = event.clientX || rect.left, y = event.clientY || rect.bottom;
-    menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - menu.offsetWidth - 6))}px`;
-    menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - menu.offsetHeight - 6))}px`;
-    menu.querySelector('button:not(:disabled)')?.focus();
-  }
-  container.oncontextmenu = event => showMenu(event, rowTargets.get(event.target.closest('.project-row')) ?? null);
-  root.oncontextmenu = event => showMenu(event, null);
-  menu.onkeydown = event => {
-    const items = [...menu.querySelectorAll('button:not(:disabled)')], index = items.indexOf(document.activeElement);
-    const next = event.key === 'ArrowDown' ? (index+1)%items.length : event.key === 'ArrowUp' ? (index+items.length-1)%items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length-1 : -1;
-    if (next >= 0) { event.preventDefault(); items[next].focus(); }
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeMenu(true); }
-    if (event.key === 'Tab') closeMenu();
-  };
-  document.addEventListener('pointerdown', event => { if (!menu.contains(event.target)) closeMenu(); });
-  document.addEventListener('scroll', event => { if (!menu.contains(event.target)) closeMenu(); }, true);
-  window.addEventListener('resize', () => closeMenu());
-  container.tabIndex = 0;
-  container.addEventListener('keydown', event => {
-    if (event.target.closest('input')) return;
-    if (event.key === 'Delete' && management.items.size) { event.preventDefault(); openEditor('remove'); }
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (band) finishBand(true); else selectTarget(null); }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); management.box(visible); focused = visible.at(-1) || null; closeEditor(); paintSelection(); }
-    if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') showMenu(event, focused);
-  });
-
-  // Rubber-band selection changes management selection only, never rendering/processing selection.
-  const marquee = make('div', null, 'project-marquee'); marquee.hidden = true; document.body.append(marquee);
-  let band = null, animation = null, suppressClick = false;
-  function updateBand() {
-    if (!band?.active) return;
-    const bounds = container.getBoundingClientRect();
-    if (band.y < bounds.top + 22) container.scrollTop -= 10;
-    else if (band.y > bounds.bottom - 22) container.scrollTop += 10;
-    const startY = bounds.top + band.startY - container.scrollTop;
-    const selectionArea = {left:Math.min(band.startX,band.x),right:Math.max(band.startX,band.x),top:Math.min(startY,band.y),bottom:Math.max(startY,band.y)};
-    const area = {left:Math.max(bounds.left,selectionArea.left),right:Math.min(bounds.right,selectionArea.right),top:Math.max(bounds.top,selectionArea.top),bottom:Math.min(bounds.bottom,selectionArea.bottom)};
-    Object.assign(marquee.style,{left:`${area.left}px`,top:`${area.top}px`,width:`${Math.max(0,area.right-area.left)}px`,height:`${Math.max(0,area.bottom-area.top)}px`});
-    const hits = [];
-    for (const [row,target] of rowTargets) if (typeof target !== 'string' && projectBoxIntersects(selectionArea,row.getBoundingClientRect())) hits.push(target);
-    management.box(hits, band.additive ? band.before : []); focused = [...management.items].at(-1) || null; paintSelection();
-  }
-  function tickBand() { updateBand(); if (band?.active) animation = requestAnimationFrame(tickBand); }
-  function finishBand(cancelled = false) {
-    if (!band) return;
-    if (cancelled) { management.box(band.before); paintSelection(); }
-    suppressClick = band.active; band = null; marquee.hidden = true; cancelAnimationFrame(animation); animation = null;
-    setTimeout(() => { suppressClick = false; }, 0);
-  }
-  container.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || event.target.closest('button,input,label,.project-drag-handle')) return;
-    closeMenu(); closeEditor();
-    const rect = container.getBoundingClientRect();
-    band = {pointer:event.pointerId,startX:event.clientX,startY:event.clientY-rect.top+container.scrollTop,x:event.clientX,y:event.clientY,originY:event.clientY,before:[...management.items],additive:event.ctrlKey||event.metaKey,active:false};
-    container.setPointerCapture(event.pointerId); event.preventDefault();
-  });
-  container.addEventListener('pointermove', event => {
-    if (!band || band.pointer !== event.pointerId) return;
-    band.x = event.clientX; band.y = event.clientY;
-    if (!band.active && Math.hypot(band.x-band.startX,band.y-band.originY) >= 4) { band.active = true; marquee.hidden = false; tickBand(); }
-    else updateBand();
-  });
-  container.addEventListener('pointerup', event => {
-    if (!band || band.pointer !== event.pointerId) return;
-    if (!band.active && !band.additive) selectTarget(null);
-    finishBand(); if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
-  });
-  container.addEventListener('pointercancel', () => finishBand(true));
-  container.addEventListener('lostpointercapture', () => finishBand(true));
-  container.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); } }, true);
-  function render() {
-    const entries = getEntries(), selected = getSelected(), query = getQuery().trim().toLowerCase();
-    for (const target of management.items) if (!exists(target)) management.items.delete(target);
-    if (focused && !exists(focused)) focused = null;
-    if (editorTargets.some(target => !exists(target))) closeEditor();
-    if (query !== lastQuery) { limit = 200; lastQuery = query; management.clear(); focused = null; closeEditor(); closeMenu(); }
-    const groupsByParent = new Map(), entriesByGroup = new Map(), membersByGroup = new Map();
-    const matching = entries.filter(entry => project.matches(entry, query));
-    const push = (map, key, value) => { if (!map.has(key)) map.set(key, []); map.get(key).push(value); };
-    for (const entry of matching) {
-      push(entriesByGroup, entry.group || '', entry);
-      for (let group = project.groups.get(entry.group); group; group = project.groups.get(group.parent)) push(membersByGroup, group.id, entry);
-    }
-    const visibleGroups = new Set(membersByGroup.keys());
-    for (const group of project.groups.values()) if (!query || project.path(group.id).toLowerCase().includes(query)) {
-      for (let current = group; current; current = project.groups.get(current.parent)) visibleGroups.add(current.id);
-    }
-    for (const group of project.groups.values()) if (visibleGroups.has(group.id)) push(groupsByParent, group.parent, group);
-    const sort = (a,b) => (a.name || a.treeName || a.id).localeCompare(b.name || b.treeName || b.id, undefined, {numeric:true});
-    for (const map of [groupsByParent, entriesByGroup]) for (const rows of map.values()) rows.sort(sort);
-    const flat = [], stack = [{id:'',depth:0}];
-    while (stack.length) {
-      const task = stack.pop();
-      if (task.entry || task.group) { flat.push(task); if (task.entry || task.group.collapsed && !query) continue; }
-      const parent = task.group?.id || task.id, depth = task.group ? task.depth + 1 : task.depth;
-      const rows = [...(groupsByParent.get(parent) || []).map(group => ({group,depth})), ...(entriesByGroup.get(parent) || []).map(entry => ({entry,depth}))];
-      stack.push(...rows.reverse());
-    }
-    const fragment = document.createDocumentFragment(); rowTargets = new Map(); visible = flat.slice(0,limit).map(item=>item.group?.id || item.entry);
-    for (const item of flat.slice(0, limit)) {
-      const target = item.group?.id || item.entry, row = make('div', null, 'project-row' + (item.group ? ' project-folder' : ''));
-      row.style.setProperty('--tree-depth', Math.min(item.depth, 8)); rowTargets.set(row,target);
-      const members = item.group ? membersByGroup.get(item.group.id) || [] : [item.entry];
-      const count = members.filter(entry => selected.has(entry)).length;
-      const check = make('input'); check.type = 'checkbox'; check.checked = members.length > 0 && count === members.length; check.indeterminate = count > 0 && count < members.length;
-      check.disabled = !!item.group && (getMode() === 'single' || !members.length);
-      check.setAttribute('aria-label', t("显示 {0}", [label(target)]));
-      const hit = make('label', null, 'project-check-hit'); hit.title = item.group && query ? t('仅选择当前搜索匹配的数据') : t(selectionHint); hit.append(check);
-      hit.onpointerdown = event => { closeMenu(); event.stopPropagation(); }; hit.onclick = event => event.stopPropagation(); hit.ondragstart = event => event.preventDefault();
-      check.onchange = () => item.group ? onGroupSelection(members, check.checked) : onToggle(item.entry);
-      if (item.group) {
-        const toggle = button(item.group.collapsed && !query ? '▸' : '▾', `${item.group.collapsed ? t('展开') : t('收起')} ${item.group.name}`, () => { item.group.collapsed = !item.group.collapsed; render(); });
-        toggle.className = 'project-chevron'; toggle.setAttribute('aria-expanded', String(!item.group.collapsed || !!query)); row.append(toggle);
-      } else row.append(make('span', '', 'project-chevron'));
-      const name = button((item.group ? '▱ ' : '') + (item.group?.name || item.entry.treeName || item.entry.id), t("管理 {0}", [label(target)]), event => selectTarget(target,event));
-      name.className = 'project-name'; name.title = item.group ? project.path(target) : t("{0} / {1}\n来源：{2}", [project.path(item.entry.group) || t('项目根目录'), item.entry.treeName || item.entry.id, item.entry.id]);
-      const meta = make('span', item.group ? String(project.members(target, entries).length) : detail(item.entry), 'project-meta');
-      row.append(hit, name, meta, gripFor(target)); wireDrop(row, item.group ? item.group.id : item.entry.group || ''); fragment.append(row);
-    }
-    if (flat.length > limit) fragment.append(button(t("显示更多（剩余 {0} 项）", [flat.length - limit]), t('显示更多项目条目'), () => { limit += 200; render(); }));
-    if (!flat.length) fragment.append(make('p', query ? t('没有匹配的数据') : t('拖入文件或文件夹\n开始整理你的项目'), 'empty-list'));
-    const blank = make('div', null, 'project-selection-space'); blank.setAttribute('aria-hidden','true'); fragment.append(blank);
-    const scroll = container.scrollTop; container.replaceChildren(fragment); container.scrollTop = scroll; paintSelection();
-  }
-  return {render};
-}
-
-
-// Source: src/shared/project-import.js
-/** Import adapters preserve entry/File identity so tree edits do not invalidate render caches. */
-function projectFilePath(file, paths) {
-  return (paths?.get(file) || file.webkitRelativePath || file.name).replaceAll('\\', '/');
-}
-function projectFileKey(file, path) { return `${path}\0${file.size}\0${file.lastModified}`; }
-function projectUniqueId(base, names) {
-  let id = base, suffix = 2;
-  while (names.has(id)) id = `${base}_${suffix++}`;
-  names.add(id); return id;
-}
-function appendLodFiles(entries, project, files, paths) {
-  const keys = new Set(entries.map(entry => entry.key)), names = new Set(entries.map(entry => entry.id));
-  let added = 0, duplicates = 0;
-  for (const file of files) {
-    if (!/\.obj$/i.test(file.name)) continue;
-    const path = projectFilePath(file, paths), key = projectFileKey(file,path);
-    if (keys.has(key)) { duplicates++; continue; }
-    const base = file.name.replace(/\.obj$/i,''), id = projectUniqueId(base,names);
-    const entry = {id,key,file,bytes:file.size}; project.assign(entry,path);
-    // Keep names clear when separate folders contain the same model number.
-    if (id !== base) entry.treeName += ` [${id}]`;
-    entries.push(entry); keys.add(key); added++;
-  }
-  return {added,duplicates};
-}
-function appendWireFiles(entries, project, files, paths) {
-  const groups = new Map(entries.map(entry => [entry.sourceGroup,entry]));
-  const names = new Set(entries.map(entry => entry.id));
-  let added = 0, duplicates = 0;
-  for (const file of files) {
-    if (!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name)) continue;
-    const path = projectFilePath(file,paths), parts = path.split('/');
-    const sourceGroup = parts.slice(0,-1).join('/');
-    let entry = groups.get(sourceGroup);
-    if (!entry) {
-      const base = parts.length > 2 ? parts.slice(1,-1).join('/') : parts.length === 2 ? parts[0] : 'Files';
-      entry = {id:projectUniqueId(base,names),sourceGroup,wires:[],clouds:[],fileKeys:new Set()};
-      // A leaf is a building set; its parent folders remain independently manageable.
-      project.assign(entry,sourceGroup || 'Files');
-      entries.push(entry); groups.set(sourceGroup,entry);
-    }
-    const key = projectFileKey(file,path);
-    if (entry.fileKeys.has(key)) { duplicates++; continue; }
-    entry.fileKeys.add(key); entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file); added++;
-  }
-  // Keep file ordering stable while adding files: selected dropdown indices remain valid.
-  return {added,duplicates};
-}
-
-
-// Source: src/shared/point-drop.js
-
-// Capture drag handles synchronously: browsers protect the data store after drop returns.
-function capturePointDrop(dataTransfer) {
-  const roots = [];
-  for (const item of Array.from(dataTransfer?.items || [])) {
-    if (item.kind !== 'file') continue;
-    let entry = null, file = null;
-    try { entry = (item.getAsEntry || item.webkitGetAsEntry)?.call(item); } catch {}
-    try { file = item.getAsFile?.(); } catch {}
-    if (entry || file) roots.push({ entry, file });
-  }
-  if (!roots.length) for (const file of Array.from(dataTransfer?.files || [])) roots.push({ file });
-  return roots;
-}
-
-async function scanPointDrop(roots, accepts, onProgress = () => {}) {
-  const result = { files: [], skipped: 0, errors: [], directories: 0 };
-  const pending = roots.map(root => ({ ...root, parent: '' })).reverse();
-  let visited = 0;
-  while (pending.length) {
-    const { entry, file, parent } = pending.pop();
-    const path = parent + (entry?.name || file?.webkitRelativePath || file?.name || t('未知文件'));
-    try {
-      if (entry?.isDirectory) {
-        result.directories++;
-        const reader = entry.createReader();
-        // Chromium returns directory entries in batches (often 100 at a time).
-        while (true) {
-          const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
-          if (!batch.length) break;
-          for (const child of batch) pending.push({ entry: child, parent: path + '/' });
-        }
-      } else if (!accepts(entry?.name || file?.name || '')) {
-        result.skipped++;
-      } else {
-        const resolved = entry?.isFile
-          ? await new Promise((resolve, reject) => entry.file(resolve, reject)) : file;
-        if (!resolved) throw new Error(t('无法读取文件'));
-        result.files.push({ file: resolved, path });
-      }
-    } catch (err) {
-      result.errors.push({ path, message: err?.message || t('无法读取') });
-    }
-    if (++visited % 100 === 0) {
-      onProgress(result);
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-  }
-  return result;
-}
-
-function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
-  let depth = 0, queue = Promise.resolve();
-  const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files') ||
-    Array.from(event.dataTransfer?.items || []).some(item => item.kind === 'file');
-  const reset = () => { depth = 0; zone.classList.remove('drop-active'); };
-  const say = message => { status.hidden = false; status.textContent = message; };
-  const inside = event => zone.contains(event.target);
-  const onEnter = event => {
-    if (!hasFiles(event)) return;
-    event.preventDefault(); depth++; zone.classList.add('drop-active');
-  };
-  const onLeave = event => {
-    if (depth && --depth === 0) reset();
-  };
-  const onOver = event => {
-    if (!hasFiles(event)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = inside(event) ? 'copy' : 'none';
-    if (inside(event)) zone.classList.add('drop-active'); else reset();
-  };
-  const onDrop = event => {
-    if (!hasFiles(event)) return;
-    event.preventDefault(); reset();
-    if (!inside(event)) { say(t('请将数据文件或文件夹拖到左侧文件区域。')); return; }
-    const roots = capturePointDrop(event.dataTransfer);
-    say(t('正在整理拖入的文件…'));
-    // A second drop can arrive during directory scanning; handles are already captured.
-    queue = queue.then(async () => {
-      const result = await scanPointDrop(roots, accepts, progress =>
-        say(t("正在查找数据… 已找到 {0} 个文件", [progress.files.length.toLocaleString('zh-CN')])));
-      const received = result.files.length ? await onFiles(result.files) : { added: 0, duplicates: 0 };
-      const parts = [t("新增 {0} 个数据", [received.added])];
-      if (received.duplicates) parts.push(t("{0} 个已存在", [received.duplicates]));
-      if (result.skipped) parts.push(t("跳过 {0} 个其他格式文件", [result.skipped]));
-      if (result.errors.length) parts.push(t("{0} 项无法读取：{1}", [result.errors.length, result.errors.slice(0, 3).map(error => error.path).join('、')]));
-      if (!result.files.length) parts.push(t('未找到支持的数据；也可使用“添加数据文件夹…”按钮'));
-      say(parts.join(' · '));
-    }).catch(err => say(t("添加失败：{0}。可改用添加文件 / 文件夹按钮。", [err?.message || t('无法读取拖入的文件')])));
-    return queue;
-  };
-  zone.addEventListener('dragenter', onEnter);
-  zone.addEventListener('dragleave', onLeave);
-  host.addEventListener('dragover', onOver);
-  host.addEventListener('drop', onDrop);
-  host.addEventListener('dragend', reset);
-  return () => {
-    zone.removeEventListener('dragenter', onEnter);
-    zone.removeEventListener('dragleave', onLeave);
-    host.removeEventListener('dragover', onOver);
-    host.removeEventListener('drop', onDrop);
-    host.removeEventListener('dragend', reset);
-    reset();
-  };
-}
-
-
-// Source: src/shared/zip-import.js
-
-/** Bounded local ZIP reader. File slices avoid retaining a second complete archive buffer. */
-function safeArchivePath(name) {
-  const path=String(name).replaceAll('\\','/');
-  if(!path || path.startsWith('/') || /^[a-z]:/i.test(path) || path.split('/').some(part=>part==='..'||part==='.') || /[\x00-\x1f]/.test(path))throw Error(t('压缩包包含不安全的文件路径。'));
-  return path;
-}
-function zipCRC32(bytes,previous=0) {
-  let crc=(previous^0xffffffff)>>>0;
-  for(const byte of bytes){crc^=byte;for(let b=0;b<8;b++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
-  return (crc^0xffffffff)>>>0;
-}
-async function readZipDirectory(file,{maxEntries=10000,maxBytes=512*1024*1024}={}) {
-  const tailStart=Math.max(0,file.size-65557),tail=new Uint8Array(await file.slice(tailStart).arrayBuffer()),dv=new DataView(tail.buffer);
-  let end=-1;
-  for(let i=tail.length-22;i>=0;i--)if(dv.getUint32(i,true)===0x06054b50 && i+22+dv.getUint16(i+20,true)===tail.length){end=i;break;}
-  if(end<0)throw Error(t('无法读取 ZIP 目录，文件可能损坏。'));
-  const count=dv.getUint16(end+10,true),size=dv.getUint32(end+12,true),offset=dv.getUint32(end+16,true);
-  if(dv.getUint16(end+4,true)||dv.getUint16(end+6,true)||count!==dv.getUint16(end+8,true)||count===65535||size===0xffffffff||offset===0xffffffff)throw Error(t('暂不支持分卷或 ZIP64 压缩包。'));
-  if(count>maxEntries || size>8*1024*1024 || offset+size>tailStart+end)throw Error(t('压缩包目录过大或无效。'));
-  const bytes=new Uint8Array(await file.slice(offset,offset+size).arrayBuffer()),view=new DataView(bytes.buffer),entries=[],seen=new Set();let at=0,total=0;
-  for(let i=0;i<count;i++){
-    if(at+46>size||view.getUint32(at,true)!==0x02014b50)throw Error(t('压缩包目录无效。'));
-    const flags=view.getUint16(at+8,true),method=view.getUint16(at+10,true),crc=view.getUint32(at+16,true),compressed=view.getUint32(at+20,true),length=view.getUint32(at+24,true);
-    const nameSize=view.getUint16(at+28,true),extra=view.getUint16(at+30,true),comment=view.getUint16(at+32,true),local=view.getUint32(at+42,true);
-    if(at+46+nameSize+extra+comment>size || local+30>offset || view.getUint16(at+34,true))throw Error(t('压缩包目录无效。'));
-    const rawName=bytes.subarray(at+46,at+46+nameSize);
-    // UTF-8 names are standard. Older non-UTF ZIPs remain best effort via GB18030.
-    let name;try{name=new TextDecoder('utf-8',{fatal:true}).decode(rawName);}catch{ name=new TextDecoder('gb18030').decode(rawName); }
-    const path=safeArchivePath(name);
-    if(seen.has(path))throw Error(t('压缩包包含重复路径。'));seen.add(path);
-    if(length===0xffffffff||compressed===0xffffffff||(total+=length)>maxBytes)throw Error(t('压缩包解压后超过 512 MB，请先解压后选择所需文件。'));
-    entries.push({path,flags,method,crc,compressed,length,local,directory:offset});at+=46+nameSize+extra+comment;
-  }
-  return entries;
-}
-async function extractZipEntry(archive,entry) {
-  if(entry.flags&1)throw Error(t('暂不支持加密压缩包，请先解压。'));
-  if(![0,8].includes(entry.method))throw Error(t('仅支持 ZIP 的 Store / Deflate 压缩方式。'));
-  const header=new DataView(await archive.slice(entry.local,entry.local+30).arrayBuffer());
-  if(header.getUint32(0,true)!==0x04034b50 || header.getUint16(8,true)!==entry.method || header.getUint16(6,true)!==entry.flags)throw Error(t('压缩包文件头无效。'));
-  const start=entry.local+30+header.getUint16(26,true)+header.getUint16(28,true);
-  if(start+entry.compressed>entry.directory)throw Error(t('压缩包文件范围无效。'));
-  let stream=archive.slice(start,start+entry.compressed).stream();
-  if(entry.method===8){
-    let decoder;try{decoder=new DecompressionStream('deflate-raw');}catch{throw Error(t('当前浏览器不支持 ZIP 解压，请先在系统中解压。'));}
-    stream=stream.pipeThrough(decoder);
-  }
-  const reader=stream.getReader(),chunks=[];let size=0,crc=0;
-  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>entry.length)throw Error(t('解压大小与目录不符。'));crc=zipCRC32(value,crc);chunks.push(value);}}
-  finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
-  if(size!==entry.length||crc!==entry.crc)throw Error(t('压缩包校验失败，文件可能损坏。'));
-  return new File(chunks,entry.path.split('/').at(-1),{lastModified:archive.lastModified||0});
-}
-async function expandProjectArchives(records,accepts,onProgress=()=>{}) {
-  const result=[];let total=0;
-  for(const record of records){
-    if(!/\.zip$/i.test(record.file.name)){result.push(record);continue;}
-    onProgress(t('正在读取压缩包…'));
-    const entries=await readZipDirectory(record.file),base=safeArchivePath(record.path||record.file.name).replace(/\.zip$/i,'');
-    for(const entry of entries){
-      if(entry.path.endsWith('/')||!accepts(entry.path)||entry.path.startsWith('__MACOSX/'))continue;
-      if((total+=entry.length)>512*1024*1024)throw Error(t('压缩包解压后超过 512 MB，请先解压后选择所需文件。'));
-      onProgress(t('正在解压 {0}',[entry.path]));
-      result.push({file:await extractZipEntry(record.file,entry),path:base+'/'+entry.path});
-      await new Promise(resolve=>setTimeout(resolve,0));
-    }
-  }
-  return result;
-}
-/** Serializes import batches; failures never insert a partially extracted archive. */
-function archiveImportQueue({accepts,receive,onProgress=()=>{},onError=()=>{}}) {
-  let pending=Promise.resolve();
-  return records=>{
-    const job=pending.then(async()=>{const expanded=await expandProjectArchives(records,accepts,onProgress);const result=await receive(expanded);onProgress(t('导入完成'));return result;});
-    pending=job.catch(()=>{});return job.catch(error=>{onError(error.message);throw error;});
-  };
-}
-
-
-// Source: src/shared/file-save.js
-
-/** One download/share path for browser and native WebView (which cannot download blob URLs). */
-async function saveLocalBlob(blob,name){
-  if(await mobileShareBlob(blob,name))return;
-  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
 
@@ -2971,6 +2234,894 @@ function mountCameraNavigationControls(container, viewer) {
 }
 
 
+// Source: src/shared/viewer-projection.js
+/** Change ordinary orbit-camera projection while preserving its apparent target-plane span. */
+function setViewerProjection(viewers, projection, pauseSync = callback => callback()) {
+  if (!['orthographic','perspective'].includes(projection)) throw new Error('Unsupported camera projection');
+  pauseSync(() => {
+    for (const viewer of viewers) {
+      viewer.stopNavigation?.();
+      if (viewer.projection !== projection) {
+        // Training cameras own calibrated focal lengths. Convert that pose to an
+        // orbit lens only on an actual projection change; changing a dropdown to
+        // its current value must not discard a calibrated view.
+        viewer.leaveTraining?.();
+        const fy = viewer.orbitLens?.fy;
+        const tangent = Number.isFinite(fy) && fy > 0 ? 1 / (2 * fy) : Math.tan((viewer.fov || 55) * Math.PI / 360);
+        if (projection === 'perspective') viewer.distance = viewer.baseHeight / (2 * tangent);
+        else viewer.baseHeight = 2 * viewer.distance * tangent;
+        viewer.projection = projection;
+      }
+      viewer.requestRender();
+    }
+  });
+}
+
+
+// Source: src/gaussian/camera-controls.js
+
+
+
+
+
+
+const LEGACY_GAUSSIAN_BOOKMARK_KEY='BuildingWebViewer.gaussian.camera.v1';
+const GAUSSIAN_MIGRATION_KEY='BuildingWebViewer.gaussian.camera.migrated.v1';
+const SHARED_BOOKMARK_KEY='BuildingWebViewer.camera-bookmarks.v1.raw-world';
+const mounted=new WeakMap();
+/** Convert the saved local origin and calibrated pose into the common world-coordinate format. */
+function legacyGaussianBookmark(record,index=0,canvas=null) {
+  if(!record||typeof record!=='object')throw Error('Invalid Gaussian bookmark');
+  const snapshot=captureCameraSnapshot({...record,canvas:canvas||{clientWidth:record.trainingPose?.width||640,clientHeight:record.trainingPose?.height||480}}, {space:'raw-world'});
+  const source=JSON.stringify(record);let hash=2166136261;for(let i=0;i<source.length;i++)hash=Math.imul(hash^source.charCodeAt(i),16777619)>>>0;
+  return {id:`gaussian-legacy-${index}-${hash.toString(16)}`,name:(typeof record.name==='string'&&record.name.trim()?record.name.trim():`Gaussian ${index+1}`).slice(0,80),snapshot};
+}
+/** Keep the original key as a backup. A receipt prevents deleted migrated views from reappearing. */
+function migrateGaussianBookmarks(storage,canvas=null) {
+  const result={records:[],migrated:0,remaining:0,invalid:0,error:null};
+  try {
+    const raw=JSON.parse(storage?.getItem(LEGACY_GAUSSIAN_BOOKMARK_KEY)||'[]');
+    if(!Array.isArray(raw)||raw.length>50)throw Error('Invalid legacy Gaussian bookmarks');
+    raw.forEach((record,index)=>{try{result.records.push(legacyGaussianBookmark(record,index,canvas));}catch{result.invalid++;}});
+    if(!result.records.length)return result;
+    const text=storage?.getItem(SHARED_BOOKMARK_KEY),saved=text?parseCameraBookmarks(text,'raw-world'):{preserveView:true,bookmarks:[]};
+    const receipt=JSON.parse(storage?.getItem(GAUSSIAN_MIGRATION_KEY)||'[]');
+    const known=new Set(Array.isArray(receipt)?receipt.filter(value=>typeof value==='string'):[]),ids=new Set(saved.bookmarks.map(record=>record.id));
+    for(const record of result.records){
+      if(known.has(record.id))continue;
+      if(ids.has(record.id)){known.add(record.id);continue;}
+      if(saved.bookmarks.length>=100){result.remaining++;continue;}
+      let name=record.name,suffix=2;while(saved.bookmarks.some(value=>value.name===name)){const end=` (${suffix++})`;name=record.name.slice(0,80-end.length)+end;}
+      saved.bookmarks.push({...record,name});ids.add(record.id);known.add(record.id);result.migrated++;
+    }
+    if(!storage?.setItem)throw Error('Browser storage unavailable');
+    if(result.migrated)storage.setItem(SHARED_BOOKMARK_KEY,serializeCameraBookmarks(saved.bookmarks,'raw-world',saved.preserveView));
+    storage.setItem(GAUSSIAN_MIGRATION_KEY,JSON.stringify([...known]));
+  } catch(error) {result.error=error;}
+  return result;
+}
+
+/** Compose shared camera, bookmarks and navigation with only Gaussian-specific lens controls. */
+function mountGaussianCameraControls({viewer,root=document,onError=()=>{}}) {
+  const cameraPanel=root.getElementById('camera-controls'),bookPanel=root.getElementById('bookmark-controls');
+  if(!cameraPanel||!bookPanel)return null;
+  if(mounted.has(cameraPanel))return mounted.get(cameraPanel);
+  const en=root.documentElement.lang==='en',text=(zh,english)=>en?english:zh;
+  const make=(tag,label,cls)=>{const node=root.createElement(tag);if(label)node.textContent=label;if(cls)node.className=cls;return node;};
+  const sharedCamera=make('div',null,'gaussian-shared-camera'),sharedBookmarks=make('div',null,'gaussian-shared-bookmarks');
+  cameraPanel.append(sharedCamera);bookPanel.append(sharedBookmarks);
+  let storage;try{storage=root.defaultView?.localStorage||globalThis.localStorage;}catch{}
+  const migration=migrateGaussianBookmarks(storage,viewer.canvas);
+  const shared=mountCameraControls({container:sharedCamera,bookmarkContainer:sharedBookmarks,getViewers:()=>[viewer],space:'raw-world'});
+  mountFlyCameraControls(viewer,cameraPanel);mountCameraNavigationControls(cameraPanel,viewer);
+  const lensPanel=make('section',null,'inspector-section gaussian-lens-controls');lensPanel.append(make('h3',text('镜头与投影','Lens and projection')));cameraPanel.append(lensPanel);
+  const projectionLabel=make('label',text('投影模式','Projection')),projection=make('select');projection.setAttribute('aria-label',text('投影模式','Projection'));
+  for(const[value,zh,english]of [['perspective','透视','Perspective'],['orthographic','正交','Orthographic']]){const option=make('option',text(zh,english));option.value=value;projection.append(option);}
+  projection.value=viewer.projection;projection.onchange=()=>{try{setViewerProjection([viewer],projection.value);}catch(error){projection.value=viewer.projection;onError(error.message);}};projectionLabel.append(projection);lensPanel.append(projectionLabel);
+  const fovLabel=make('label',text('视野角（°）','Field of view (°)'),'gs-camera-field'),range=make('input'),number=make('input');range.type='range';number.type='number';
+  for(const input of [range,number]){input.min=10;input.max=120;input.step=1;input.value=viewer.fov;input.setAttribute('aria-label',text('视野角','Field of view')+(input===range?' slider':' number'));}
+  const changeFov=input=>{const value=Number(input.value);if(input.value===''||!Number.isFinite(value)||value<10||value>120)return;viewer.stopNavigation();viewer.leaveTraining();viewer.orbitLens=null;viewer.fov=value;range.value=number.value=value;viewer.requestRender();};
+  range.oninput=()=>changeFov(range);number.onchange=()=>{changeFov(number);number.value=viewer.fov;};fovLabel.append(range,number);lensPanel.append(fovLabel);
+  const nearLabel=make('label',text('近裁剪距离（坐标单位）','Near clip (coordinate units)'),'gs-camera-field'),near=make('input');near.type='number';near.min=.00001;near.step=.01;near.value=viewer.near;near.setAttribute('aria-label',text('近裁剪距离','Near clip'));
+  near.onchange=()=>{const value=Number(near.value);if(near.value!==''&&Number.isFinite(value)&&value>=.00001){viewer.near=value;viewer.requestRender();}else near.value=viewer.near;};nearLabel.append(near);lensPanel.append(nearLabel);
+  lensPanel.append(make('p',text('训练机位保留原始姿态和焦距。调整视野角时改用普通镜头；其他相机、书签与漫游设置在各工具间共用。','Training views retain their pose and calibrated lens. Changing field of view switches to an ordinary lens; camera, bookmark and navigation modules are shared across tools.'),'presentation-help'));
+  const poseInfo=make('p',null,'presentation-help');lensPanel.append(poseInfo);
+  const previous=viewer.onViewChange;let lastUpdate=-Infinity;
+  viewer.onViewChange=(...args)=>{
+    previous?.(...args);if(cameraPanel.closest('[hidden]')||performance.now()-lastUpdate<80)return;lastUpdate=performance.now();
+    projection.value=viewer.projection;if(root.activeElement!==number)number.value=viewer.fov;if(root.activeElement!==range)range.value=viewer.fov;if(root.activeElement!==near)near.value=viewer.near;
+    const width=viewer.canvas.clientWidth,height=viewer.canvas.clientHeight;if(width>0&&height>0){const spec=gsViewSpec(viewer,width,height);poseInfo.textContent='XYZ: '+spec.eye.map((v,i)=>(v+(viewer.origin?.[i]||0)).toFixed(3)).join(' / ');}
+  };
+  if(migration.records.length){
+    const legacy=make('details',null,'gaussian-legacy-bookmarks');legacy.append(make('summary',text('旧版高斯书签备份','Legacy Gaussian bookmark backup')));
+    legacy.append(make('p',text(migration.error||migration.remaining?'原书签仍保留，可直接加载或导出；浏览器存储可用后会继续合并到共享书签。':'旧书签已合并到共享书签，原始备份保留。','Original views remain available for loading and export. Shared bookmarks use world coordinates.'),'presentation-help'));
+    const select=make('select');select.setAttribute('aria-label',text('旧版高斯书签','Legacy Gaussian bookmarks'));migration.records.forEach((record,index)=>{const option=make('option',record.name);option.value=String(index);select.append(option);});select.value='0';legacy.append(select);
+    const load=make('button',text('加载旧书签','Load legacy view'));load.type='button';load.onclick=()=>{try{shared.restore(migration.records[Number(select.value)||0].snapshot,{checkScene:false});}catch(error){onError(error.message);}};
+    const backup=make('button',text('导出旧书签 JSON','Export legacy JSON'));backup.type='button';backup.onclick=()=>saveLocalBlob(new Blob([serializeCameraBookmarks(migration.records,'raw-world')],{type:'application/json'}),'BWV-Gaussian-legacy-bookmarks.json').catch(error=>onError(error.message));legacy.append(load,backup);bookPanel.append(legacy);
+  }
+  const result=Object.assign(shared,{migration});mounted.set(cameraPanel,result);return result;
+}
+
+
+// Source: src/gaussian/native-view.js
+
+/** Only project IDs/keys cross the bridge; native code revalidates membership. */
+function nativeGaussianRequest(entries,lang='zh'){
+ if(!entries.length)throw Error(lang==='en'?'Select Gaussian files first':'请先勾选高斯文件');
+ const id=entries[0].file?.projectId;
+ if(!id||entries.some(e=>e.file?.projectId!==id||!e.file?.nativeKey))throw Error('Native viewer requires local project files');
+ return {id,keys:entries.map(e=>e.file.nativeKey),lang};
+}
+async function openNativeGaussianPage(){
+ if(!isMobileApp())return false;
+ const api=mobileProjects(),info=await api.runtimeInfo();
+ if(!info.nativeGaussianWorkspace)return false;
+ const id=new URL(location.href).searchParams.get('project');
+ if(!id){location.replace('assets/mobile/index.html');return true;}
+ await api.openNativeGaussian({id,keys:[],lang:document.documentElement.lang==='en'?'en':'zh'});
+ location.replace('assets/mobile/index.html?lang='+document.documentElement.lang);return true;
+}
+
+
+// Source: src/shared/render-diagnostics.js
+
+const diagnosticSamples=()=>Object.fromEntries(['gpu','submit','sort','roundTrip','upload','frameCpu','frameInterval','interactionInterval','inputInterval','inputToDraw','eventDelivery','rafQueue','cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,[]]));
+const RENDER_DIAGNOSTIC_KEY='bwv-render-diagnostic-v1';
+function classifyRenderer(name) {
+  if(!name)return 'unknown (renderer identity unavailable)';
+  if(/swiftshader|llvmpipe|softpipe|software|lavapipe/i.test(name))return 'software renderer reported';
+  if(/adreno|mali|powervr|apple|nvidia|radeon|intel|geforce|vivante|tegra/i.test(name))return 'hardware renderer reported (not a utilization measurement)';
+  return 'unknown (unrecognized renderer)';
+}
+function diagnosticSummary(values) {
+  const sorted=values.filter(Number.isFinite).sort((a,b)=>a-b);
+  return sorted.length?{samples:sorted.length,medianMs:+sorted[Math.floor(sorted.length*.5)].toFixed(2),p95Ms:+sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))].toFixed(2)}:null;
+}
+/** Queries run asynchronously only while a user-requested sample is active. */
+class RenderDiagnosticProbe {
+  constructor(viewer){this.viewer=viewer;this.active=false;this.queries=[];this.samples=diagnosticSamples();this.contextLosses=0;this.onLost=()=>{this.contextLosses++;this.active=false;this.queries=[];};viewer.canvas.addEventListener('webglcontextlost',this.onLost);}
+  start(autoRotate=false){this.stop();this.samples=diagnosticSamples();this.lastFrame=0;this.lastMoving=false;this.lastInput=0;this.pendingInput=0;this.resizeCount=0;this.frameCount=0;this.disjoint=false;this.startedAt=new Date().toISOString();this.started=performance.now();this.active=true;this.sampleMode=autoRotate?'automatic-orbit':'manual';
+    if(autoRotate){const v=this.viewer;v.stopNavigation();this.savedPose=JSON.parse(JSON.stringify({generation:v.generation,camera:v.camera,target:v.target,trainingPose:v.trainingPose,orbitLens:v.orbitLens,distance:v.distance,flyPose:v.flyPose}));v.leaveTraining();this.orbitStart=v.camera.azimuth;v.requestRender();}
+    this.ext=this.viewer.gl.getExtension('EXT_disjoint_timer_query_webgl2');this.timer=setTimeout(()=>this.stop(),10000);this.pollTimer=setInterval(()=>this.poll(),200);}
+  poll(){const gl=this.viewer.gl,ext=this.ext;if(!ext||gl.isContextLost())return;const disjoint=gl.getParameter(ext.GPU_DISJOINT_EXT);if(disjoint)this.disjoint=true;while(this.queries.length&&(disjoint||gl.getQueryParameter(this.queries[0],gl.QUERY_RESULT_AVAILABLE))){const q=this.queries.shift();if(!disjoint)this.add('gpu',gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6);gl.deleteQuery(q);}}
+  add(key,value){if(Number.isFinite(value)&&this.samples[key].length<600)this.samples[key].push(value);}
+  begin(){if(!this.active)return;this.poll();this.cpuStart=performance.now();const gl=this.viewer.gl;if(this.ext&&this.queries.length<3){this.query=gl.createQuery();gl.beginQuery(this.ext.TIME_ELAPSED_EXT,this.query);}}
+  end(){if(this.cpuStart==null)return;const gl=this.viewer.gl;if(this.query){gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queries.push(this.query);this.query=null;}this.add('submit',performance.now()-this.cpuStart);this.cpuStart=null;}
+  sort(ms,roundTrip){if(this.active){this.add('sort',ms);this.add('roundTrip',roundTrip);}}
+  upload(ms){if(this.active)this.add('upload',ms);}
+  input(at,eventTime){if(!this.active)return;if(Number.isFinite(eventTime)&&eventTime>0&&at>=eventTime&&at-eventTime<60000)this.add('eventDelivery',at-eventTime);if(this.lastInput)this.add('inputInterval',at-this.lastInput);this.lastInput=at;if(!this.pendingInput)this.pendingInput=at;}
+  raf(ms){if(this.active)this.add('rafQueue',ms);}
+  resize(){if(this.active)this.resizeCount++;}
+  frame(started,cpuMs,moving,phases={}){
+    if(!this.active)return;
+    this.frameCount++;
+    if(this.pendingInput&&started>=this.pendingInput){this.add('inputToDraw',started-this.pendingInput);this.pendingInput=0;}
+    for(const [key,ms]of Object.entries(phases))if(this.samples[key])this.add(key,ms);
+    this.add('frameCpu',cpuMs);
+    if(this.lastFrame){const interval=started-this.lastFrame;this.add('frameInterval',interval);if(moving&&this.lastMoving)this.add('interactionInterval',interval);}
+    this.lastFrame=started;this.lastMoving=moving;
+  }
+  motion(now){if(!this.active||!this.savedPose)return;if(this.viewer.generation!==this.savedPose.generation){this.stop();return;}this.viewer.camera.azimuth=this.orbitStart+(now-this.started)*.02;this.viewer.requestRender();}
+  stop(){if(this.savedPose){const v=this.viewer,s=this.savedPose;this.savedPose=null;if(v.generation===s.generation){for(const key of ['camera','target','trainingPose','orbitLens','distance','flyPose'])v[key]=s[key];v.requestRender();}}if(this.active)this.duration=performance.now()-this.started;this.active=false;clearTimeout(this.timer);clearInterval(this.pollTimer);this.poll();for(const q of this.queries)this.viewer.gl.deleteQuery(q);this.queries=[];}
+  snapshot(){const v=this.viewer,gl=v.gl;let info={contextLost:gl.isContextLost(),contextLosses:this.contextLosses};if(!gl.isContextLost()){const ext=gl.getExtension('WEBGL_debug_renderer_info');const renderer=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null;info={...info,renderer,classification:classifyRenderer(renderer),vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,maskedRenderer:gl.getParameter(gl.RENDERER),webgl:gl.getParameter(gl.VERSION),shadingLanguage:gl.getParameter(gl.SHADING_LANGUAGE_VERSION),attributes:gl.getContextAttributes(),maxTextureSize:gl.getParameter(gl.MAX_TEXTURE_SIZE),gpuTimerSupported:Boolean(gl.getExtension('EXT_disjoint_timer_query_webgl2'))};}
+    return {schema:4,capturedAt:new Date().toISOString(),webVersion:document.querySelector('meta[name="bwv-version"]')?.content||document.querySelector('meta[name="application-version"]')?.content||'unknown',build:document.querySelector('meta[name="application-build"]')?.content||null,tool:'gaussian',userAgent:navigator.userAgent,devicePixelRatio:globalThis.devicePixelRatio||1,logicalCores:navigator.hardwareConcurrency||null,approxDeviceMemoryGB:navigator.deviceMemory||null,graphics:info,scene:{sourceSplats:v.pointCount,submittedSplats:v.count,modelCount:v.models.length,profile:document.getElementById('gs-profile')?.value,pointPreview:Boolean(v.pointPreview),projectionPipeline:v.activePipeline||'direct',projectionBufferBytes:v.projectionPass?.allocatedBytes||0,projectionFallback:v.projectionFallback||null,shDegree:v.packed?.rest?v.gauss.shDegree:0,viewDistance:v.viewDistance||0,opacityCutoff:v.gauss.opacityCutoff,renderPixels:[v.canvas.width,v.canvas.height],cssPixels:[v.canvas.clientWidth,v.canvas.clientHeight],workerSort:Boolean(v.sortWorker),sortBusy:v.sortBusy,effectiveQuality:v.effectiveQuality||null,interactionScale:v.interactionScale??1,interactionDegree:v.interactionDegree??3},measurement:{sampleMode:this.sampleMode||'manual',startedAt:this.startedAt||null,durationMs:Math.round(this.duration||0),gpuDraw:diagnosticSummary(this.samples.gpu),cpuDrawSubmission:diagnosticSummary(this.samples.submit),workerSort:diagnosticSummary(this.samples.sort),workerRoundTrip:diagnosticSummary(this.samples.roundTrip),gpuDisjoint:Boolean(this.disjoint),drawnFrames:this.frameCount||0,orderUploadCpu:diagnosticSummary(this.samples.upload),frameCpu:diagnosticSummary(this.samples.frameCpu),drawInterval:diagnosticSummary(this.samples.frameInterval),interactionDrawInterval:diagnosticSummary(this.samples.interactionInterval),inputEventInterval:diagnosticSummary(this.samples.inputInterval),inputToDrawStart:diagnosticSummary(this.samples.inputToDraw),eventTimestampToHandler:diagnosticSummary(this.samples.eventDelivery),animationCallbackWait:diagnosticSummary(this.samples.rafQueue),canvasResizes:this.resizeCount||0,framePhases:Object.fromEntries(['cameraAndLayout','resize','glPrepare','guides','controls'].map(k=>[k,diagnosticSummary(this.samples[k])]))},limits:'CPU draw submission, frame CPU and upload CPU are not GPU completion times. Draw intervals include on-demand idle gaps; interaction intervals are consecutive motion frames, not presentation FPS. Input-to-draw is event-handler-to-frame-start latency, not presentation latency. Event delivery uses browser event timestamps, not hardware touch sampling. Animation wait includes browser/GPU scheduling. GPU timing, when available, includes both projection and drawing. Phase timings are CPU elapsed times and can include driver waits. Unknown GPU data does not mean no GPU. Hardware renderer identity is not GPU utilization. No filenames, coordinates or project contents included.'};}
+}
+function saveRenderDiagnostic(report){try{localStorage.setItem(RENDER_DIAGNOSTIC_KEY,JSON.stringify(report));}catch{}}
+function readRenderDiagnostic(){try{return JSON.parse(localStorage.getItem(RENDER_DIAGNOSTIC_KEY)||'null');}catch{return null;}}
+function showRenderDiagnostics(probe=null){
+  if(document.getElementById('render-diagnostic-dialog'))return;
+  const en=document.documentElement.lang==='en',word=(zh,eng)=>en?eng:zh;
+  const overlay=document.createElement('div');overlay.id='render-diagnostic-dialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',word('渲染诊断','Rendering diagnostics'));overlay.style.cssText='position:fixed;inset:0;z-index:100000;background:#173b3688;display:flex;align-items:center;justify-content:center;padding:12px';
+  const box=document.createElement('section');box.style.cssText='background:#f6faf8;color:#203c38;border-radius:16px;padding:18px;width:680px;max-width:100%;max-height:90vh;overflow:auto;box-sizing:border-box;box-shadow:0 16px 70px #0004';
+  const title=document.createElement('h2');title.textContent=word('渲染诊断','Rendering diagnostics');title.style.margin='0 0 12px';
+  const help=document.createElement('p');help.textContent=word('加载模型后，点击“采集 10 秒”，关闭面板并像平时一样转动视角。完成后重新打开并复制报告。报告仅保存在本机，不含文件名或点坐标。','Load a model, start a 10-second sample, then move the camera as usual. Reopen and copy the report afterward. Reports stay local and exclude filenames and coordinates.');
+  const status=document.createElement('p'),text=document.createElement('textarea');text.readOnly=true;text.setAttribute('aria-label',word('诊断报告','Diagnostic report'));text.style.cssText='width:100%;height:36vh;box-sizing:border-box;font:12px monospace;white-space:pre';
+  let report=probe?.snapshot()||readRenderDiagnostic();
+  const update=()=>{text.value=report?JSON.stringify(report,null,2):word('暂无渲染报告。请进入高斯查看器，加载模型后采集。','No rendering report. Open the Gaussian viewer and collect a sample.');status.textContent=report?word('报告时间：','Captured: ')+report.capturedAt:'';};update();
+  const buttons=document.createElement('div');buttons.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:12px';
+  const button=(zh,eng,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=word(zh,eng);b.style.cssText='padding:10px 14px;border:1px solid #bfd4cb;border-radius:8px;background:white;color:#244c42;cursor:pointer';b.onclick=async()=>{try{await fn();}catch(e){status.textContent=String(e.message||e);}};buttons.append(b);return b;};
+  const previousFocus=document.activeElement;const close=()=>{overlay.remove();document.removeEventListener('keydown',key,true);previousFocus?.focus();};const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}if(e.key==='Tab'){const list=[...box.querySelectorAll('button,textarea')].filter(x=>!x.disabled);if(e.shiftKey&&document.activeElement===list[0]){e.preventDefault();list.at(-1).focus();}else if(!e.shiftKey&&document.activeElement===list.at(-1)){e.preventDefault();list[0].focus();}}};document.addEventListener('keydown',key,true);
+  if(probe){
+    button('刷新报告','Refresh report',async()=>{report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);update();});
+    const sample=auto=>{
+      if(probe.active){status.textContent=word('正在采集，请稍后再试','Sampling in progress');return;}
+      if(auto&&!probe.viewer.count){status.textContent=word('请先加载模型','Load a model first');return;}
+      probe.start(auto);close();const toast=document.createElement('div');toast.setAttribute('role','status');
+      toast.textContent=auto?word('自动旋转诊断中（10 秒），完成后恢复视角','Automatic orbit sample (10 seconds); view restored afterward'):word('诊断采集中：请转动视角（10 秒）','Sampling: move the camera (10 seconds)');
+      toast.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;padding:12px;border-radius:8px;background:#214b43;color:white;pointer-events:none';document.body.append(toast);
+      setTimeout(async()=>{probe.stop();report=probe.snapshot();report.native=await runtime();saveRenderDiagnostic(report);toast.textContent=word('采集完成：打开“诊断”复制报告','Sample saved: open Diagnostics to copy');setTimeout(()=>toast.remove(),4000);},10100);
+    };
+    button('采集 10 秒','Sample for 10 seconds',()=>sample(false));button('自动旋转采集 10 秒','Automatic orbit sample (10 seconds)',()=>sample(true));
+  }
+  button('复制报告','Copy report',async()=>{if(!report)return;saveRenderDiagnostic(report);try{await navigator.clipboard.writeText(text.value);}catch{text.focus();text.select();if(!document.execCommand('copy'))throw Error(word('请长按报告手动复制','Select the report and copy manually'));}status.textContent=word('已复制','Copied');});
+  button('导出报告','Export report',async()=>{if(!report)return;const blob=new Blob([text.value],{type:'text/plain'}),name='BuildingWebViewer-diagnostics.txt';if(mobileProjects())await mobileShareBlob(blob,name);else{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}});
+  if(mobileProjects())button('启动诊断','Startup diagnostics',()=>mobileProjects().showDiagnostics());
+  button('关闭','Close',close);box.append(title,help,status,text,buttons);overlay.append(box);document.body.append(overlay);buttons.lastElementChild.focus();
+  runtime().then(info=>{if(report){report.native=info;saveRenderDiagnostic(report);update();}});
+}
+async function runtime(){try{return await mobileProjects()?.runtimeInfo()||null;}catch{return {available:false};}}
+function mountRenderDiagnostics(viewer,container){const probe=new RenderDiagnosticProbe(viewer);viewer.diagnosticProbe=probe;const button=document.createElement('button');button.type='button';button.id='gs-diagnostics';button.textContent=document.documentElement.lang==='en'?'Diagnostics':'诊断';button.onclick=()=>showRenderDiagnostics(probe);container.append(button);return probe;}
+
+
+// Source: src/shared/workspace-session.js
+
+
+
+
+/** Native project lifecycle for editors with binary snapshots. Browser sessions remain local. */
+async function openWorkspaceSession({tool, restore, capture, onStatus=()=>{}, beforeLeave=()=>{}, onBackground=()=>{}, onForeground=()=>{}}) {
+  const api=mobileProjects();if(!api)return null;
+  const id=new URL(location.href).searchParams.get('project');
+  if(!id){location.replace('/assets/mobile/index.html');return {redirecting:true};}
+  const status=document.createElement('span');status.className='mobile-save-status';status.setAttribute('role','status');document.querySelector('header').append(status);
+  const report=(kind,error)=>{status.textContent=document.documentElement.lang==='en'?(kind==='saved'?'Saved':kind==='saving'?'Saving…':kind==='dirty'?'Pending autosave':'Save failed'):(kind==='saved'?'已保存':kind==='saving'?'保存中…':kind==='dirty'?'待自动保存':'保存失败');onStatus(kind,error);};
+  const project=await api.getProject({id});
+  const state=project.states?.[tool]||null;
+  const snapshotRecord=project.files.find(f=>f.key===state?.snapshotKey&&f.path===`.bwv/${tool}.snapshot`);
+  if(state?.snapshotKey&&!snapshotRecord)throw Error('项目快照丢失 / Project snapshot is missing');
+  const records=project.files.filter(f=>!f.path.startsWith('.bwv/')).map(record=>({file:new NativeProjectFile(id,record),path:record.path}));
+  const restored=await restore({state,records,snapshot:snapshotRecord?new NativeProjectFile(id,snapshotRecord):null});
+  let savedRevision=null,snapshotKey=state?.snapshotKey||null,lastState='',draining=null,queued=false;
+  // Restored snapshots already match the editor; reopening does not rewrite binary data.
+  if(snapshotKey&&restored?.snapshotUnchanged){savedRevision=capture().revision;const {snapshotKey:ignored,...previous}=state;lastState=JSON.stringify(previous);}
+  async function flush(){
+    queued=true;if(draining)return draining;
+    draining=Promise.resolve().then(async()=>{try{while(queued){queued=false;const current=capture(),stateText=JSON.stringify(current.state),savedState=JSON.parse(stateText);
+      if(current.revision!==savedRevision||!snapshotKey){
+        report('saving');const blob=current.blob();const writer=await nativeExportWriter(`${tool}.snapshot`);
+        try{for(let i=0;i<blob.size;i+=262144)await writer.write(await blob.slice(i,i+262144).arrayBuffer());
+          const saved=await api.commitSnapshot({token:writer.token,id,tool,state:savedState});snapshotKey=saved.snapshotKey;savedRevision=current.revision;lastState=stateText;
+        }catch(error){await writer.abort().catch(()=>{});throw error;}
+      }else if(stateText!==lastState){report('saving');await api.saveState({id,tool,state:{...savedState,snapshotKey}});lastState=stateText;}
+    }report('saved');}catch(error){report('error',error);throw error;}finally{draining=null;}});return draining;
+  }
+  const autosave=createAutosave({save:flush,onDirty:()=>report('dirty')});
+  const schedule=autosave.schedule, saveNow=autosave.flush;
+  const home=createMobileHomeNavigation({flush:async()=>{beforeLeave();await saveNow();},navigate:url=>location.replace(url),language:()=>document.documentElement.lang});
+  const link=document.querySelector('.back-home');if(link){link.href='/assets/mobile/index.html';link.onclick=e=>{e.preventDefault();home().catch(()=>{});};}
+  globalThis.bwvNavigateProjectHome=()=>home().catch(()=>{});
+  globalThis.bwvReturnToProjectHome=()=>{const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(event);if(!event.defaultPrevented)home().catch(()=>{});else saveNow().catch(()=>{});};
+  mountMobileLifecycle({autosave,onBackground,onForeground});
+  for(const event of ['pointerdown','pointerup','keydown','keyup','input','change','wheel'])document.addEventListener(event,schedule,{passive:true});
+  return {id,records,flush:saveNow,schedule,async pick(){await saveNow();const result=await api.pickFiles({id});if(!result.cancelled)location.reload();},async home(){return home();}};
+}
+
+
+// Source: src/gaussian/project-state.js
+function gsEntryFlags(entry){return entry.parsed?.preview?entry.savedFlags:(entry.parsed?.editFlags||entry.savedFlags);}
+/** Native Gaussian edits reference immutable original PLY files; only one flag byte per point is saved. */
+function gsProjectBlob(entries){
+  const records=[],blocks=[];let offset=0;
+  for(const e of entries){const flags=gsEntryFlags(e);if(!flags)continue;records.push({id:e.id,count:flags.length,offset});blocks.push(flags.slice());offset+=flags.length;}
+  const header=new TextEncoder().encode(JSON.stringify({format:'BuildingWebViewer.gaussian-edits',version:1,records}));const length=new Uint8Array(4);new DataView(length.buffer).setUint32(0,header.length,true);return new Blob([length,header,...blocks]);
+}
+async function gsReadProjectBlob(file){
+  if(file.size<4||file.size>512*1024*1024)throw Error('Invalid Gaussian snapshot size');const n=new DataView(await file.slice(0,4).arrayBuffer()).getUint32(0,true);if(n>4*1024*1024||n+4>file.size)throw Error('Invalid Gaussian snapshot header');
+  const data=JSON.parse(await file.slice(4,4+n).text());if(data.format!=='BuildingWebViewer.gaussian-edits'||data.version!==1||!Array.isArray(data.records))throw Error('Invalid Gaussian snapshot');let offset=0;const result=new Map();
+  for(const r of data.records){if(typeof r.id!=='string'||result.has(r.id)||!Number.isSafeInteger(r.count)||r.count<0||r.offset!==offset||4+n+offset+r.count>file.size)throw Error('Invalid Gaussian flags');const flags=new Uint8Array(await file.slice(4+n+offset,4+n+offset+r.count).arrayBuffer());if(flags.some(v=>v>7))throw Error('Invalid Gaussian edit flag');result.set(r.id,flags);offset+=r.count;}
+  if(n+4+offset!==file.size)throw Error('Unexpected Gaussian snapshot bytes');return result;
+}
+
+
+// Source: src/shared/project-model.js
+
+// Project groups are virtual: source identity and disk paths never change on a move.
+class ViewerProject {
+  constructor() { this.groups = new Map(); this.serial = 0; }
+  create(name, parent = '') {
+    name = name.trim();
+    if (!name || /[/\\\x00-\x1f]/.test(name)) throw Error(t('请输入文件夹名称，不含斜线或控制字符'));
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    if ([...this.groups.values()].some(group => group.parent === parent && group.name === name)) throw Error(t('此位置已有同名文件夹'));
+    const group = {id: `group:${++this.serial}`, name, parent, collapsed: false};
+    this.groups.set(group.id, group); return group.id;
+  }
+  assign(entry, path) {
+    const parts = path.split('/').filter(Boolean); entry.treeName = parts.pop() || entry.id;
+    let parent = '';
+    for (const name of parts) {
+      parent = [...this.groups.values()].find(group => group.parent === parent && group.name === name)?.id || this.create(name, parent);
+    }
+    entry.group = parent;
+  }
+  within(groupId, ancestor) {
+    if (!ancestor) return true;
+    for (let group = this.groups.get(groupId); group; group = this.groups.get(group.parent)) if (group.id === ancestor) return true;
+    return false;
+  }
+  path(id) {
+    const parts = [];
+    for (let group = this.groups.get(id); group; group = this.groups.get(group.parent)) parts.unshift(group.name);
+    return parts.join('/');
+  }
+  members(id, entries) { return entries.filter(entry => this.within(entry.group, id)); }
+  move(target, parent) {
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    if (typeof target === 'string') {
+      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
+      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
+      if ([...this.groups.values()].some(other => other.id !== target && other.parent === parent && other.name === group.name)) throw Error(t('目标位置已有同名文件夹'));
+      group.parent = parent;
+    } else target.group = parent;
+    if (parent) this.groups.get(parent).collapsed = false;
+  }
+  roots(targets) {
+    const unique = [...new Set(targets)], groups = unique.filter(target => typeof target === 'string');
+    return unique.filter(target => !groups.some(group => group !== target && this.within(
+      typeof target === 'string' ? this.groups.get(target)?.parent : target.group, group)));
+  }
+  files(targets, entries) {
+    const selected = new Set();
+    for (const target of this.roots(targets)) {
+      for (const entry of typeof target === 'string' ? this.members(target, entries) : [target]) if (entries.includes(entry)) selected.add(entry);
+    }
+    return [...selected];
+  }
+  moveMany(targets, parent) {
+    const roots = this.roots(targets);
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    const movingGroups = new Set(roots.filter(target => typeof target === 'string'));
+    const names = new Set([...this.groups.values()].filter(group => group.parent === parent && !movingGroups.has(group.id)).map(group => group.name));
+    // Validate the whole batch before moving anything, so a conflict cannot leave half a move.
+    for (const target of movingGroups) {
+      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
+      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
+      if (names.has(group.name)) throw Error(t('目标位置存在同名文件夹，本次移动未执行'));
+      names.add(group.name);
+    }
+    for (const target of roots) this.move(target, parent);
+    return roots;
+  }
+  removeGroup(id) {
+    const removed = [...this.groups.keys()].filter(key => this.within(key, id));
+    for (const key of removed) this.groups.delete(key);
+  }
+  matches(entry, query) {
+    return `${this.path(entry.group)}/${entry.treeName || entry.id} ${entry.id}`.toLowerCase().includes(query.toLowerCase().trim());
+  }
+}
+
+class ProjectSelection {
+  constructor() { this.items = new Set(); this.anchor = null; }
+  select(target, {toggle = false, range = false, ordered = []} = {}) {
+    const from = ordered.indexOf(this.anchor), to = ordered.indexOf(target);
+    if (range && from >= 0 && to >= 0) {
+      if (!toggle) this.items.clear();
+      ordered.slice(Math.min(from,to), Math.max(from,to)+1).forEach(item => this.items.add(item));
+    } else {
+      if (!toggle) this.items.clear();
+      if (toggle && this.items.has(target)) this.items.delete(target); else this.items.add(target);
+      this.anchor = target;
+    }
+  }
+  box(hits, base = []) { this.items = new Set([...base, ...hits]); }
+  clear() { this.items.clear(); this.anchor = null; }
+}
+
+function projectBoxIntersects(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+
+
+// Source: src/shared/project-tree.js
+
+
+// Touch and pen drags belong to native scrolling; box selection is a mouse gesture.
+function projectCanStartBox(event) {
+  return event.button === 0 && (!event.pointerType || event.pointerType === 'mouse') &&
+    !event.target.closest('button,input,label,select,textarea,a,.project-drag-handle');
+}
+
+function mountProjectTree({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
+  onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail = () => '', selectionHint = '勾选后显示数据'}) {
+  const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
+  const button = (text, label, fn) => { const node = make('button', text); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label); node.onclick = fn; return node; };
+  const dragType = 'application/x-buildingwebviewer-node', management = new ProjectSelection();
+  let focused = null, dragged = null, limit = 200, lastQuery = '', editorMode = null, editorTargets = [], rowTargets = new Map(), visible = [];
+  const tools = make('div', null, 'project-tools');
+  const createButton = button(t('+ 文件夹'), t('新建项目内文件夹'), () => openEditor('create'));
+  const moveButton = button(t('移动'), t('移动选中条目'), () => openEditor('move'));
+  const deleteButton = button(t('移除'), t('移除选中条目'), () => openEditor('remove'));
+  tools.append(createButton, moveButton, deleteButton);
+  const focusNote = make('p', '', 'project-focus');
+  const editor = make('form', null, 'project-editor'); editor.hidden = true;
+  const editorTitle = make('strong'), nameInput = make('input'); nameInput.placeholder = t('文件夹名称'); nameInput.setAttribute('aria-label', t('新文件夹名称'));
+  const destinations = make('select'); destinations.setAttribute('aria-label', t('目标文件夹'));
+  const editorNote = make('p'), actions = make('div', null, 'project-editor-actions');
+  const submit = make('button', t('确定')); submit.type = 'submit';
+  function closeEditor() { editorMode = null; editor.hidden = true; editorTargets = []; }
+  const cancel = button(t('取消'), t('取消管理操作'), closeEditor);
+  actions.append(submit, cancel); editor.append(editorTitle, nameInput, destinations, editorNote, actions);
+  controls.append(tools, focusNote, editor);
+  const status = make('p', null, 'project-status'); status.setAttribute('role', 'status'); controls.append(status);
+  function label(target) { return typeof target === 'string' ? project.path(target) : target?.treeName || target?.id || t('项目根目录'); }
+  function exists(target) { return typeof target === 'string' ? project.groups.has(target) : getEntries().includes(target); }
+  function paintSelection() {
+    for (const [row, target] of rowTargets) {
+      const selected = management.items.has(target); row.dataset.focused = String(selected);
+      row.querySelector('.project-name').setAttribute('aria-pressed', String(selected));
+    }
+    moveButton.disabled = deleteButton.disabled = !management.items.size;
+    focusNote.textContent = management.items.size ? t("已选 {0} 项管理 · {1} 个数据条目", [management.items.size, project.files(management.items, getEntries()).length]) : t('Ctrl 多选 · 空白处框选 · 右键管理');
+    focusNote.title = [...management.items].map(label).join('\n') || focusNote.textContent;
+  }
+  function selectTarget(target, event = {}) {
+    closeEditor(); closeMenu();
+    if (target === null) { focused = null; management.clear(); }
+    else { focused = target; management.select(target, {toggle: event.ctrlKey || event.metaKey, range: event.shiftKey, ordered: visible}); }
+    paintSelection();
+  }
+  function fillDestinations() {
+    destinations.replaceChildren();
+    const add = (value, text) => { const option = make('option', text); option.value = value; destinations.append(option); };
+    add('', t('项目根目录'));
+    for (const group of [...project.groups.values()].sort((a,b) => project.path(a.id).localeCompare(project.path(b.id), undefined, {numeric:true}))) {
+      if (editorMode === 'move' && editorTargets.some(target => typeof target === 'string' && project.within(group.id, target))) continue;
+      add(group.id, project.path(group.id));
+    }
+    const single = editorTargets.length === 1 ? editorTargets[0] : null;
+    destinations.value = typeof single === 'string' ? editorMode === 'create' ? single : project.groups.get(single)?.parent || '' : single?.group || '';
+  }
+  function openEditor(mode) {
+    if (mode !== 'create' && !management.items.size) return;
+    closeMenu(); editorTargets = project.roots(management.items); editorMode = mode; editor.hidden = false; status.textContent = ''; nameInput.value = '';
+    const title = editorTargets.length === 1 ? label(editorTargets[0]) : t("{0} 个条目", [editorTargets.length]);
+    editorTitle.textContent = {create:t('新建项目文件夹'),move:t("移动：{0}", [title]),remove:t("移除：{0}", [title])}[mode];
+    nameInput.hidden = mode !== 'create'; destinations.hidden = mode === 'remove';
+    submit.textContent = mode === 'remove' ? t('确认移除') : mode === 'move' ? t('移动到此处') : t('创建');
+    editorNote.textContent = mode === 'remove'
+      ? t("从页面移除 {0} 个数据条目{1}。磁盘文件不变；未导出的计算结果将丢失。", [project.files(editorTargets, getEntries()).length, editorTargets.some(target => typeof target === 'string') ? t('及所选文件夹') : ''])
+      : t('仅调整当前页面的分组，不修改磁盘文件。');
+    fillDestinations(); (mode === 'create' ? nameInput : mode === 'move' ? destinations : submit).focus();
+  }
+  editor.onsubmit = event => {
+    event.preventDefault();
+    try {
+      if (editorTargets.some(target => !exists(target))) throw Error(t('部分条目已不存在，请重新选择'));
+      if (editorMode === 'create') { focused = project.create(nameInput.value, destinations.value); management.select(focused); }
+      else if (editorMode === 'move') project.moveMany(editorTargets, destinations.value);
+      else if (editorMode === 'remove') {
+        const removed = project.files(editorTargets, getEntries());
+        for (const target of editorTargets) if (typeof target === 'string') project.removeGroup(target);
+        focused = null; management.clear(); closeEditor(); onRemove(removed);
+      }
+      closeEditor(); status.textContent = ''; onChange();
+    } catch (error) { status.textContent = error.message; }
+  };
+
+  // Move gestures start only on the small grip, never on a checkbox or filename.
+  function wireDrop(row, parent) {
+    row.ondragover = event => {
+      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
+      event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; row.classList.add('project-drop-target');
+    };
+    row.ondragleave = event => { if (!row.contains(event.relatedTarget)) row.classList.remove('project-drop-target'); };
+    row.ondrop = event => {
+      if (!dragged || !Array.from(event.dataTransfer.types).includes(dragType)) return;
+      event.preventDefault(); event.stopPropagation(); row.classList.remove('project-drop-target');
+      try { project.moveMany(dragged, parent); status.textContent = t("已移动 {0} 项到 {1}", [dragged.length, project.path(parent) || t('项目根目录')]); }
+      catch (error) { status.textContent = error.message; }
+      dragged = null; container.classList.remove('project-dragging'); closeEditor(); onChange();
+    };
+  }
+  function gripFor(target) {
+    const grip = make('span', '⠿', 'project-drag-handle'); grip.draggable = true;
+    grip.title = t('拖动选中条目到文件夹或项目根目录'); grip.setAttribute('aria-hidden', 'true');
+    grip.ondragstart = event => {
+      if (!management.items.has(target)) { management.select(target); focused = target; paintSelection(); }
+      closeMenu(); closeEditor(); dragged = project.roots(management.items);
+      event.dataTransfer.setData(dragType, 'project-nodes'); event.dataTransfer.setData('text/plain', dragged.map(label).join('\n')); event.dataTransfer.effectAllowed = 'move';
+      container.classList.add('project-dragging'); event.stopPropagation();
+    };
+    grip.ondragend = () => { dragged = null; container.classList.remove('project-dragging'); container.querySelectorAll('.project-drop-target').forEach(node => node.classList.remove('project-drop-target')); root.classList.remove('project-drop-target'); };
+    return grip;
+  }
+  wireDrop(root, ''); root.onclick = () => selectTarget(null);
+
+  const menu = make('div', null, 'project-context-menu'); menu.hidden = true; menu.setAttribute('role','menu'); menu.setAttribute('aria-label',t('项目管理菜单')); document.body.append(menu);
+  let menuReturnFocus = null;
+  function closeMenu(restore = false) { menu.hidden = true; if (restore) menuReturnFocus?.focus(); }
+  function showMenu(event, target) {
+    event.preventDefault(); event.stopPropagation();
+    if (target === null || !management.items.has(target)) selectTarget(target);
+    closeEditor(); menuReturnFocus = event.target.closest('button') || root;
+    const files = project.files(management.items, getEntries()), hasItems = management.items.size > 0;
+    const add = (text, action, enabled = true, cls = '') => {
+      const item = button(text, text, () => { closeMenu(); action(); }); item.setAttribute('role','menuitem'); item.disabled = !enabled; item.className = cls; menu.append(item);
+    };
+    menu.replaceChildren();
+    const caption = make('div', hasItems ? t("已选 {0} 项 · {1} 个数据条目", [management.items.size, files.length]) : t('项目管理'), 'project-menu-caption'); menu.append(caption);
+    add(t('新建文件夹…'), () => openEditor('create'));
+    add(t('显示选中数据'), () => onVisibility(files, true), files.length > 0 && (getMode() !== 'single' || files.length === 1));
+    add(t('隐藏选中数据'), () => onVisibility(files, false), files.some(entry => getSelected().has(entry)));
+    add(t('移动到…'), () => openEditor('move'), hasItems);
+    add(t('移到项目根目录'), () => { try { project.moveMany(management.items, ''); onChange(); } catch(error) { status.textContent = error.message; } }, hasItems);
+    add(t('展开全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = false; render(); }, project.groups.size > 0);
+    add(t('收起全部文件夹'), () => { for (const group of project.groups.values()) group.collapsed = true; render(); }, project.groups.size > 0);
+    add(t('移除选中条目…'), () => openEditor('remove'), hasItems, 'project-menu-danger');
+    menu.hidden = false;
+    const rect = event.target.getBoundingClientRect(), x = event.clientX || rect.left, y = event.clientY || rect.bottom;
+    menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - menu.offsetWidth - 6))}px`;
+    menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - menu.offsetHeight - 6))}px`;
+    menu.querySelector('button:not(:disabled)')?.focus();
+  }
+  container.oncontextmenu = event => showMenu(event, rowTargets.get(event.target.closest('.project-row')) ?? null);
+  root.oncontextmenu = event => showMenu(event, null);
+  menu.onkeydown = event => {
+    const items = [...menu.querySelectorAll('button:not(:disabled)')], index = items.indexOf(document.activeElement);
+    const next = event.key === 'ArrowDown' ? (index+1)%items.length : event.key === 'ArrowUp' ? (index+items.length-1)%items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length-1 : -1;
+    if (next >= 0) { event.preventDefault(); items[next].focus(); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeMenu(true); }
+    if (event.key === 'Tab') closeMenu();
+  };
+  document.addEventListener('pointerdown', event => { if (!menu.contains(event.target)) closeMenu(); });
+  document.addEventListener('scroll', event => { if (!menu.contains(event.target)) closeMenu(); }, true);
+  window.addEventListener('resize', () => closeMenu());
+  container.tabIndex = 0;
+  container.addEventListener('keydown', event => {
+    if (event.target.closest('input,select,textarea,[contenteditable=true]')) return;
+    if (event.key === 'Delete' && management.items.size) { event.preventDefault(); openEditor('remove'); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (band) finishBand(true); else selectTarget(null); }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); management.box(visible); focused = visible.at(-1) || null; closeEditor(); paintSelection(); }
+    if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') showMenu(event, focused);
+  });
+
+  // Rubber-band selection changes management selection only, never rendering/processing selection.
+  const marquee = make('div', null, 'project-marquee'); marquee.hidden = true; document.body.append(marquee);
+  let band = null, animation = null, suppressClick = false;
+  function updateBand() {
+    if (!band?.active) return;
+    const bounds = container.getBoundingClientRect();
+    if (band.y < bounds.top + 22) container.scrollTop -= 10;
+    else if (band.y > bounds.bottom - 22) container.scrollTop += 10;
+    const startY = bounds.top + band.startY - container.scrollTop;
+    const selectionArea = {left:Math.min(band.startX,band.x),right:Math.max(band.startX,band.x),top:Math.min(startY,band.y),bottom:Math.max(startY,band.y)};
+    const area = {left:Math.max(bounds.left,selectionArea.left),right:Math.min(bounds.right,selectionArea.right),top:Math.max(bounds.top,selectionArea.top),bottom:Math.min(bounds.bottom,selectionArea.bottom)};
+    Object.assign(marquee.style,{left:`${area.left}px`,top:`${area.top}px`,width:`${Math.max(0,area.right-area.left)}px`,height:`${Math.max(0,area.bottom-area.top)}px`});
+    const hits = [];
+    for (const [row,target] of rowTargets) if (typeof target !== 'string' && projectBoxIntersects(selectionArea,row.getBoundingClientRect())) hits.push(target);
+    management.box(hits, band.additive ? band.before : []); focused = [...management.items].at(-1) || null; paintSelection();
+  }
+  function tickBand() { updateBand(); if (band?.active) animation = requestAnimationFrame(tickBand); }
+  function finishBand(cancelled = false) {
+    if (!band) return;
+    if (cancelled) { management.box(band.before); paintSelection(); }
+    suppressClick = band.active; band = null; marquee.hidden = true; cancelAnimationFrame(animation); animation = null;
+    setTimeout(() => { suppressClick = false; }, 0);
+  }
+  container.addEventListener('pointerdown', event => {
+    if (!projectCanStartBox(event)) return;
+    closeMenu(); closeEditor();
+    const rect = container.getBoundingClientRect();
+    band = {pointer:event.pointerId,startX:event.clientX,startY:event.clientY-rect.top+container.scrollTop,x:event.clientX,y:event.clientY,originY:event.clientY,before:[...management.items],additive:event.ctrlKey||event.metaKey,active:false};
+    container.setPointerCapture(event.pointerId); event.preventDefault();
+  });
+  container.addEventListener('pointermove', event => {
+    if (!band || band.pointer !== event.pointerId) return;
+    band.x = event.clientX; band.y = event.clientY;
+    if (!band.active && Math.hypot(band.x-band.startX,band.y-band.originY) >= 4) { band.active = true; marquee.hidden = false; tickBand(); }
+    else updateBand();
+  });
+  container.addEventListener('pointerup', event => {
+    if (!band || band.pointer !== event.pointerId) return;
+    if (!band.active && !band.additive) selectTarget(null);
+    finishBand(); if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+  });
+  container.addEventListener('pointercancel', () => finishBand(true));
+  container.addEventListener('lostpointercapture', () => finishBand(true));
+  container.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); } }, true);
+  function render() {
+    // Selection changes rebuild rows. Preserve the focused row control so repeated
+    // Space toggles and keyboard folder navigation do not jump back to the page.
+    const active = document.activeElement, oldRow = active?.closest?.('.project-row');
+    const focusTarget = rowTargets.get(oldRow);
+    const focusKind = oldRow && oldRow.contains(active) ? ['input', '.project-name', 'button.project-chevron'].find(selector => oldRow.querySelector(selector) === active) : null;
+    const entries = getEntries(), selected = getSelected(), query = getQuery().trim().toLowerCase();
+    for (const target of management.items) if (!exists(target)) management.items.delete(target);
+    if (focused && !exists(focused)) focused = null;
+    if (editorTargets.some(target => !exists(target))) closeEditor();
+    if (query !== lastQuery) { limit = 200; lastQuery = query; management.clear(); focused = null; closeEditor(); closeMenu(); }
+    const groupsByParent = new Map(), entriesByGroup = new Map(), membersByGroup = new Map();
+    const matching = entries.filter(entry => project.matches(entry, query));
+    const push = (map, key, value) => { if (!map.has(key)) map.set(key, []); map.get(key).push(value); };
+    for (const entry of matching) {
+      push(entriesByGroup, entry.group || '', entry);
+      for (let group = project.groups.get(entry.group); group; group = project.groups.get(group.parent)) push(membersByGroup, group.id, entry);
+    }
+    const visibleGroups = new Set(membersByGroup.keys());
+    for (const group of project.groups.values()) if (!query || project.path(group.id).toLowerCase().includes(query)) {
+      for (let current = group; current; current = project.groups.get(current.parent)) visibleGroups.add(current.id);
+    }
+    for (const group of project.groups.values()) if (visibleGroups.has(group.id)) push(groupsByParent, group.parent, group);
+    const sort = (a,b) => (a.name || a.treeName || a.id).localeCompare(b.name || b.treeName || b.id, undefined, {numeric:true});
+    for (const map of [groupsByParent, entriesByGroup]) for (const rows of map.values()) rows.sort(sort);
+    const flat = [], stack = [{id:'',depth:0}];
+    while (stack.length) {
+      const task = stack.pop();
+      if (task.entry || task.group) { flat.push(task); if (task.entry || task.group.collapsed && !query) continue; }
+      const parent = task.group?.id || task.id, depth = task.group ? task.depth + 1 : task.depth;
+      const rows = [...(groupsByParent.get(parent) || []).map(group => ({group,depth})), ...(entriesByGroup.get(parent) || []).map(entry => ({entry,depth}))];
+      stack.push(...rows.reverse());
+    }
+    const fragment = document.createDocumentFragment(); rowTargets = new Map(); visible = flat.slice(0,limit).map(item=>item.group?.id || item.entry);
+    for (const item of flat.slice(0, limit)) {
+      const target = item.group?.id || item.entry, row = make('div', null, 'project-row' + (item.group ? ' project-folder' : ''));
+      row.style.setProperty('--tree-depth', Math.min(item.depth, 8)); rowTargets.set(row,target);
+      const members = item.group ? membersByGroup.get(item.group.id) || [] : [item.entry];
+      const count = members.filter(entry => selected.has(entry)).length;
+      const check = make('input'); check.type = 'checkbox'; check.checked = members.length > 0 && count === members.length; check.indeterminate = count > 0 && count < members.length;
+      check.disabled = !!item.group && (getMode() === 'single' || !members.length);
+      check.setAttribute('aria-label', t("显示 {0}", [label(target)]));
+      const hit = make('label', null, 'project-check-hit'); hit.title = item.group && query ? t('仅选择当前搜索匹配的数据') : t(selectionHint); hit.append(check);
+      hit.onpointerdown = event => { closeMenu(); event.stopPropagation(); }; hit.onclick = event => event.stopPropagation(); hit.ondragstart = event => event.preventDefault();
+      check.onchange = () => item.group ? onGroupSelection(members, check.checked) : onToggle(item.entry);
+      if (item.group) {
+        const toggle = button(item.group.collapsed && !query ? '▸' : '▾', `${item.group.collapsed ? t('展开') : t('收起')} ${item.group.name}`, () => { item.group.collapsed = !item.group.collapsed; render(); });
+        toggle.className = 'project-chevron'; toggle.setAttribute('aria-expanded', String(!item.group.collapsed || !!query)); row.append(toggle);
+      } else row.append(make('span', '', 'project-chevron'));
+      const name = button((item.group ? '▱ ' : '') + (item.group?.name || item.entry.treeName || item.entry.id), t("管理 {0}", [label(target)]), event => selectTarget(target,event));
+      name.className = 'project-name'; name.title = item.group ? project.path(target) : t("{0} / {1}\n来源：{2}", [project.path(item.entry.group) || t('项目根目录'), item.entry.treeName || item.entry.id, item.entry.id]);
+      const meta = make('span', item.group ? String(project.members(target, entries).length) : detail(item.entry), 'project-meta');
+      row.append(hit, name, meta, gripFor(target)); wireDrop(row, item.group ? item.group.id : item.entry.group || ''); fragment.append(row);
+    }
+    if (flat.length > limit) fragment.append(button(t("显示更多（剩余 {0} 项）", [flat.length - limit]), t('显示更多项目条目'), () => { limit += 200; render(); }));
+    if (!flat.length) fragment.append(make('p', query ? t('没有匹配的数据') : t('拖入文件或文件夹\n开始整理你的项目'), 'empty-list'));
+    const blank = make('div', null, 'project-selection-space'); blank.setAttribute('aria-hidden','true'); fragment.append(blank);
+    const scroll = container.scrollTop; container.replaceChildren(fragment); paintSelection();
+    if (focusKind) {
+      const replacement = [...rowTargets].find(([, target]) => target === focusTarget)?.[0];
+      (replacement?.querySelector(focusKind) || container).focus({preventScroll:true});
+    }
+    container.scrollTop = scroll;
+  }
+  return {render};
+}
+
+
+// Source: src/shared/project-import.js
+/** Import adapters preserve entry/File identity so tree edits do not invalidate render caches. */
+function projectFilePath(file, paths) {
+  return (paths?.get(file) || file.webkitRelativePath || file.name).replaceAll('\\', '/');
+}
+function projectFileKey(file, path) { return `${path}\0${file.size}\0${file.lastModified}`; }
+function projectUniqueId(base, names) {
+  let id = base, suffix = 2;
+  while (names.has(id)) id = `${base}_${suffix++}`;
+  names.add(id); return id;
+}
+function appendLodFiles(entries, project, files, paths) {
+  const keys = new Set(entries.map(entry => entry.key)), names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.obj$/i.test(file.name)) continue;
+    const path = projectFilePath(file, paths), key = projectFileKey(file,path);
+    if (keys.has(key)) { duplicates++; continue; }
+    const base = file.name.replace(/\.obj$/i,''), id = projectUniqueId(base,names);
+    const entry = {id,key,file,bytes:file.size}; project.assign(entry,path);
+    // Keep names clear when separate folders contain the same model number.
+    if (id !== base) entry.treeName += ` [${id}]`;
+    entries.push(entry); keys.add(key); added++;
+  }
+  return {added,duplicates};
+}
+function appendWireFiles(entries, project, files, paths) {
+  const groups = new Map(entries.map(entry => [entry.sourceGroup,entry]));
+  const names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name)) continue;
+    const path = projectFilePath(file,paths), parts = path.split('/');
+    const sourceGroup = parts.slice(0,-1).join('/');
+    let entry = groups.get(sourceGroup);
+    if (!entry) {
+      const base = parts.length > 2 ? parts.slice(1,-1).join('/') : parts.length === 2 ? parts[0] : 'Files';
+      entry = {id:projectUniqueId(base,names),sourceGroup,wires:[],clouds:[],fileKeys:new Set()};
+      // A leaf is a building set; its parent folders remain independently manageable.
+      project.assign(entry,sourceGroup || 'Files');
+      entries.push(entry); groups.set(sourceGroup,entry);
+    }
+    const key = projectFileKey(file,path);
+    if (entry.fileKeys.has(key)) { duplicates++; continue; }
+    entry.fileKeys.add(key); entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file); added++;
+  }
+  // Keep file ordering stable while adding files: selected dropdown indices remain valid.
+  return {added,duplicates};
+}
+
+
+// Source: src/shared/point-drop.js
+
+// Capture drag handles synchronously: browsers protect the data store after drop returns.
+function capturePointDrop(dataTransfer) {
+  const roots = [];
+  for (const item of Array.from(dataTransfer?.items || [])) {
+    if (item.kind !== 'file') continue;
+    let entry = null, file = null;
+    try { entry = (item.getAsEntry || item.webkitGetAsEntry)?.call(item); } catch {}
+    try { file = item.getAsFile?.(); } catch {}
+    if (entry || file) roots.push({ entry, file });
+  }
+  if (!roots.length) for (const file of Array.from(dataTransfer?.files || [])) roots.push({ file });
+  return roots;
+}
+
+async function scanPointDrop(roots, accepts, onProgress = () => {}) {
+  const result = { files: [], skipped: 0, errors: [], directories: 0 };
+  const pending = roots.map(root => ({ ...root, parent: '' })).reverse();
+  let visited = 0;
+  while (pending.length) {
+    const { entry, file, parent } = pending.pop();
+    const path = parent + (entry?.name || file?.webkitRelativePath || file?.name || t('未知文件'));
+    try {
+      if (entry?.isDirectory) {
+        result.directories++;
+        const reader = entry.createReader();
+        // Chromium returns directory entries in batches (often 100 at a time).
+        while (true) {
+          const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+          if (!batch.length) break;
+          for (const child of batch) pending.push({ entry: child, parent: path + '/' });
+        }
+      } else if (!accepts(entry?.name || file?.name || '')) {
+        result.skipped++;
+      } else {
+        const resolved = entry?.isFile
+          ? await new Promise((resolve, reject) => entry.file(resolve, reject)) : file;
+        if (!resolved) throw new Error(t('无法读取文件'));
+        result.files.push({ file: resolved, path });
+      }
+    } catch (err) {
+      result.errors.push({ path, message: err?.message || t('无法读取') });
+    }
+    if (++visited % 100 === 0) {
+      onProgress(result);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+  return result;
+}
+
+function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
+  let depth = 0, queue = Promise.resolve(), disposed = false;
+  const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files') ||
+    Array.from(event.dataTransfer?.items || []).some(item => item.kind === 'file');
+  const reset = () => { depth = 0; zone.classList.remove('drop-active'); };
+  const say = message => { if (disposed) return; status.hidden = false; status.textContent = message; };
+  const inside = event => zone.contains(event.target);
+  const onEnter = event => {
+    if (!hasFiles(event)) return;
+    event.preventDefault(); depth++; zone.classList.add('drop-active');
+  };
+  const onLeave = event => {
+    if (depth && --depth === 0) reset();
+  };
+  const onOver = event => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = inside(event) ? 'copy' : 'none';
+    if (inside(event)) zone.classList.add('drop-active'); else reset();
+  };
+  const onDrop = event => {
+    if (!hasFiles(event)) return;
+    event.preventDefault(); reset();
+    if (!inside(event)) { say(t('请将数据文件或文件夹拖到左侧文件区域。')); return; }
+    const roots = capturePointDrop(event.dataTransfer);
+    say(t('正在整理拖入的文件…'));
+    // A second drop can arrive during directory scanning; handles are already captured.
+    queue = queue.then(async () => {
+      if (disposed) return;
+      const result = await scanPointDrop(roots, accepts, progress =>
+        say(t("正在查找数据… 已找到 {0} 个文件", [progress.files.length.toLocaleString('zh-CN')])));
+      if (disposed) return;
+      const received = result.files.length ? await onFiles(result.files) : { added: 0, duplicates: 0 };
+      const parts = [t("新增 {0} 个数据", [received.added])];
+      if (received.duplicates) parts.push(t("{0} 个已存在", [received.duplicates]));
+      if (result.skipped) parts.push(t("跳过 {0} 个其他格式文件", [result.skipped]));
+      if (result.errors.length) parts.push(t("{0} 项无法读取：{1}", [result.errors.length, result.errors.slice(0, 3).map(error => error.path).join('、')]));
+      if (!result.files.length) parts.push(t('未找到支持的数据；也可使用“添加数据文件夹…”按钮'));
+      say(parts.join(' · '));
+    }).catch(err => say(t("添加失败：{0}。可改用添加文件 / 文件夹按钮。", [err?.message || t('无法读取拖入的文件')])));
+    return queue;
+  };
+  zone.addEventListener('dragenter', onEnter);
+  zone.addEventListener('dragleave', onLeave);
+  host.addEventListener('dragover', onOver);
+  host.addEventListener('drop', onDrop);
+  host.addEventListener('dragend', reset);
+  return () => {
+    disposed = true;
+    zone.removeEventListener('dragenter', onEnter);
+    zone.removeEventListener('dragleave', onLeave);
+    host.removeEventListener('dragover', onOver);
+    host.removeEventListener('drop', onDrop);
+    host.removeEventListener('dragend', reset);
+    reset();
+  };
+}
+
+
+// Source: src/shared/zip-import.js
+
+/** Bounded local ZIP reader. File slices avoid retaining a second complete archive buffer. */
+function safeArchivePath(name) {
+  const path=String(name).replaceAll('\\','/');
+  if(!path || path.startsWith('/') || /^[a-z]:/i.test(path) || path.split('/').some(part=>part==='..'||part==='.') || /[\x00-\x1f]/.test(path))throw Error(t('压缩包包含不安全的文件路径。'));
+  return path;
+}
+function zipCRC32(bytes,previous=0) {
+  let crc=(previous^0xffffffff)>>>0;
+  for(const byte of bytes){crc^=byte;for(let b=0;b<8;b++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+  return (crc^0xffffffff)>>>0;
+}
+async function readZipDirectory(file,{maxEntries=10000,maxBytes=512*1024*1024}={}) {
+  const tailStart=Math.max(0,file.size-65557),tail=new Uint8Array(await file.slice(tailStart).arrayBuffer()),dv=new DataView(tail.buffer);
+  let end=-1;
+  for(let i=tail.length-22;i>=0;i--)if(dv.getUint32(i,true)===0x06054b50 && i+22+dv.getUint16(i+20,true)===tail.length){end=i;break;}
+  if(end<0)throw Error(t('无法读取 ZIP 目录，文件可能损坏。'));
+  const count=dv.getUint16(end+10,true),size=dv.getUint32(end+12,true),offset=dv.getUint32(end+16,true);
+  if(dv.getUint16(end+4,true)||dv.getUint16(end+6,true)||count!==dv.getUint16(end+8,true)||count===65535||size===0xffffffff||offset===0xffffffff)throw Error(t('暂不支持分卷或 ZIP64 压缩包。'));
+  if(count>maxEntries || size>8*1024*1024 || offset+size>tailStart+end)throw Error(t('压缩包目录过大或无效。'));
+  const bytes=new Uint8Array(await file.slice(offset,offset+size).arrayBuffer()),view=new DataView(bytes.buffer),entries=[],seen=new Set();let at=0,total=0;
+  for(let i=0;i<count;i++){
+    if(at+46>size||view.getUint32(at,true)!==0x02014b50)throw Error(t('压缩包目录无效。'));
+    const flags=view.getUint16(at+8,true),method=view.getUint16(at+10,true),crc=view.getUint32(at+16,true),compressed=view.getUint32(at+20,true),length=view.getUint32(at+24,true);
+    const nameSize=view.getUint16(at+28,true),extra=view.getUint16(at+30,true),comment=view.getUint16(at+32,true),local=view.getUint32(at+42,true);
+    if(at+46+nameSize+extra+comment>size || local+30>offset || view.getUint16(at+34,true))throw Error(t('压缩包目录无效。'));
+    const rawName=bytes.subarray(at+46,at+46+nameSize);
+    // UTF-8 names are standard. Older non-UTF ZIPs remain best effort via GB18030.
+    let name;try{name=new TextDecoder('utf-8',{fatal:true}).decode(rawName);}catch{ name=new TextDecoder('gb18030').decode(rawName); }
+    const path=safeArchivePath(name);
+    if(seen.has(path))throw Error(t('压缩包包含重复路径。'));seen.add(path);
+    if(length===0xffffffff||compressed===0xffffffff||(total+=length)>maxBytes)throw Error(t('压缩包解压后超过 512 MB，请先解压后选择所需文件。'));
+    entries.push({path,flags,method,crc,compressed,length,local,directory:offset});at+=46+nameSize+extra+comment;
+  }
+  return entries;
+}
+async function extractZipEntry(archive,entry) {
+  if(entry.flags&1)throw Error(t('暂不支持加密压缩包，请先解压。'));
+  if(![0,8].includes(entry.method))throw Error(t('仅支持 ZIP 的 Store / Deflate 压缩方式。'));
+  const header=new DataView(await archive.slice(entry.local,entry.local+30).arrayBuffer());
+  if(header.getUint32(0,true)!==0x04034b50 || header.getUint16(8,true)!==entry.method || header.getUint16(6,true)!==entry.flags)throw Error(t('压缩包文件头无效。'));
+  const start=entry.local+30+header.getUint16(26,true)+header.getUint16(28,true);
+  if(start+entry.compressed>entry.directory)throw Error(t('压缩包文件范围无效。'));
+  let stream=archive.slice(start,start+entry.compressed).stream();
+  if(entry.method===8){
+    let decoder;try{decoder=new DecompressionStream('deflate-raw');}catch{throw Error(t('当前浏览器不支持 ZIP 解压，请先在系统中解压。'));}
+    stream=stream.pipeThrough(decoder);
+  }
+  const reader=stream.getReader(),chunks=[];let size=0,crc=0;
+  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>entry.length)throw Error(t('解压大小与目录不符。'));crc=zipCRC32(value,crc);chunks.push(value);}}
+  finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  if(size!==entry.length||crc!==entry.crc)throw Error(t('压缩包校验失败，文件可能损坏。'));
+  return new File(chunks,entry.path.split('/').at(-1),{lastModified:archive.lastModified||0});
+}
+async function expandProjectArchives(records,accepts,onProgress=()=>{}) {
+  const result=[];let total=0;
+  for(const record of records){
+    if(!/\.zip$/i.test(record.file.name)){result.push(record);continue;}
+    onProgress(t('正在读取压缩包…'));
+    const entries=await readZipDirectory(record.file),base=safeArchivePath(record.path||record.file.name).replace(/\.zip$/i,'');
+    for(const entry of entries){
+      if(entry.path.endsWith('/')||!accepts(entry.path)||entry.path.startsWith('__MACOSX/'))continue;
+      if((total+=entry.length)>512*1024*1024)throw Error(t('压缩包解压后超过 512 MB，请先解压后选择所需文件。'));
+      onProgress(t('正在解压 {0}',[entry.path]));
+      result.push({file:await extractZipEntry(record.file,entry),path:base+'/'+entry.path});
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+  }
+  return result;
+}
+/** Serializes import batches; failures never insert a partially extracted archive. */
+function archiveImportQueue({accepts,receive,onProgress=()=>{},onError=()=>{}}) {
+  let pending=Promise.resolve();
+  return records=>{
+    const job=pending.then(async()=>{const expanded=await expandProjectArchives(records,accepts,onProgress);const result=await receive(expanded);onProgress(t('导入完成'));return result;});
+    pending=job.catch(()=>{});return job.catch(error=>{onError(error.message);throw error;});
+  };
+}
+
+
 // Source: src/gaussian/edit-state.js
 // Editing metadata stays separate from immutable source PLY records.
 const GS_SELECTED=1, GS_HIDDEN=2, GS_DELETED=4;
@@ -3016,8 +3167,6 @@ function gsExportPly(model,{selectedOnly=false,includeHidden=false}={}) {
 
 
 // Source: src/gaussian/editor-controls.js
-
-
 
 
 
@@ -3088,38 +3237,6 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{},
   panel.append(make('p',text('按原始数据导出，不受显示抽样影响。每次导出一个源文件，保留全部原始属性。','Export full-resolution source records, independent of viewport sampling. One source file per export; all original properties are retained.'),'presentation-help'));
   button(panel,'导出高斯 PLY','Export Gaussian PLY',()=>exportData());
   async function exportData(){try{const models=getModels(),m=models[Number(exportTarget.value)||0];if(!m)throw Error(text('请先勾选文件','Select a file first'));const blob=gsExportPly(m,{selectedOnly:scope.value==='selected',includeHidden:scope.value==='all'});await saveLocalBlob(blob,(m.name||'gaussians').replace(/\.ply$/i,'')+'-edited.ply');onStatus(text('已导出高斯 PLY，原文件未修改。','Gaussian PLY exported; source file unchanged.'));}catch(e){onError(e.message);}}
-  // Gaussian cameras use their own versioned snapshots; old orthographic bookmarks remain untouched.
-  const cameraPanel=document.getElementById('camera-controls');
-  cameraPanel.append(make('h3',text('相机','Camera')));
-  mountFlyCameraControls(viewer, cameraPanel);
-  mountCameraNavigationControls(cameraPanel, viewer);
-  const projection=make('select');projection.setAttribute('aria-label',text('投影模式','Projection'));
-  for(const [v,z,e]of[['perspective','透视','Perspective'],['orthographic','正交','Orthographic']]){const o=make('option',text(z,e));o.value=v;projection.append(o);}cameraPanel.append(projection);
-  projection.onchange=()=>{viewer.stopNavigation();viewer.leaveTraining();viewer.projection=projection.value;viewer.requestRender();};
-  const sliders=[];
-  for(const [name,zh,eng,min,max,step]of[['fov','视野角','Field of view',10,120,1],['elevation','俯仰角','Elevation',-89,89,.1],['azimuth','方位角','Azimuth',-180,180,.1]]){
-    const label=make('label',text(zh,eng),'gs-camera-field'),range=make('input'),number=make('input');range.type='range';number.type='number';for(const input of[range,number]){input.min=min;input.max=max;input.step=step;input.setAttribute('aria-label',text(zh,eng)+(input===range?' slider':' number'));}range.value=number.value=name==='fov'?viewer.fov:viewer.camera[name];
-    const change=input=>{const value=Number(input.value);if(!input.value||!Number.isFinite(value)||value<min||value>max)return;viewer.stopNavigation();viewer.leaveTraining();if(name==='fov'){viewer.orbitLens=null;viewer.fov=value;}else viewer.camera[name]=value;range.value=number.value=value;viewer.requestRender();};range.oninput=()=>change(range);number.onchange=()=>change(number);label.append(range,number);cameraPanel.append(label);sliders.push({name,range,number});
-  }
-  const nearLabel=make('label',text('近裁剪距离（坐标单位）','Near clip (coordinate units)'),'gs-camera-field'),nearInput=make('input');
-  nearInput.type='number';nearInput.min=.00001;nearInput.step=.01;nearInput.value=viewer.near;nearInput.setAttribute('aria-label',text('近裁剪距离','Near clip'));
-  nearInput.onchange=()=>{const n=Number(nearInput.value);if(Number.isFinite(n)&&n>=.00001){viewer.near=n;viewer.requestRender();}};nearLabel.append(nearInput);cameraPanel.append(nearLabel);
-  cameraPanel.append(make('p',text('训练相机使用原始旋转、位置和焦距，并按图像比例适配视口。开始手动浏览时保留当前倾斜角和垂直视野，再进行环绕调整。','Training views preserve rotation, position and focal lengths, fitted to the viewport. Manual navigation preserves the current roll and vertical field of view before orbiting.'),'presentation-help'));
-  const poseInfo=make('p',null,'presentation-help');cameraPanel.append(poseInfo);
-  let lastCameraUI='',lastCameraAt=-Infinity,cameraUITimer;
-  const setValue=(el,value)=>{if(el.value!==String(value))el.value=value;};
-  viewer.onViewChange=()=>{
-    if(cameraPanel.closest('[hidden]'))return;
-    const now=performance.now();if(now-lastCameraAt<80){clearTimeout(cameraUITimer);cameraUITimer=setTimeout(()=>viewer.onViewChange?.(),85);return;}lastCameraAt=now;
-    const state=JSON.stringify([viewer.near,viewer.projection,viewer.fov,viewer.distance,viewer.baseHeight,viewer.orbitLens,viewer.camera,viewer.target,viewer.flyPose,viewer.trainingPose,viewer.origin]);
-    if(state===lastCameraUI)return;lastCameraUI=state;
-    if(document.activeElement!==nearInput)setValue(nearInput,viewer.near);setValue(projection,viewer.projection);for(const s of sliders){const back=(viewer.flyPose||viewer.trainingPose)?.basis[2];const v=s.name==='fov'?viewer.fov:back?(s.name==='elevation'?Math.asin(Math.max(-1,Math.min(1,back[2])))*180/Math.PI:Math.atan2(back[1],back[0])*180/Math.PI):viewer.camera[s.name];if(document.activeElement!==s.number)setValue(s.number,Number(v.toFixed(2)));if(document.activeElement!==s.range)setValue(s.range,v);}const size=viewer.viewportSize||viewer.canvas;const spec=gsViewSpec(viewer,size.width||size.clientWidth,size.height||size.clientHeight);poseInfo.textContent='XYZ: '+spec.eye.map((v,i)=>(v+viewer.origin[i]).toFixed(3)).join(' / ');};
-  const bookPanel=document.getElementById('bookmark-controls'),bookName=make('input'),bookList=make('select');bookName.placeholder=text('视角名称','View name');bookName.setAttribute('aria-label',text('视角名称','View name'));bookList.setAttribute('aria-label',text('高斯视角书签','Gaussian bookmarks'));bookPanel.append(bookName,bookList);
-  let bookmarks=[];const key='BuildingWebViewer.gaussian.camera.v1';try{const saved=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(saved))bookmarks=saved.slice(0,50);}catch{}
-  function listBooks(){bookList.replaceChildren();for(let i=0;i<bookmarks.length;i++){const o=make('option',bookmarks[i].name);o.value=i;bookList.append(o);}}
-  button(bookPanel,'保存当前视角','Save view',()=>{if(bookmarks.length>=50)throw Error('最多 50 个书签 / At most 50 bookmarks');bookmarks.push({name:bookName.value.trim()||text('视角 ','View ')+(bookmarks.length+1),camera:JSON.parse(JSON.stringify(viewer.camera)),projection:viewer.projection,orbitLens:viewer.orbitLens?{...viewer.orbitLens}:null,fov:viewer.fov,distance:viewer.distance,baseHeight:viewer.baseHeight,near:viewer.near,origin:[...viewer.origin],target:[...viewer.target],trainingPose:viewer.trainingPose?JSON.parse(JSON.stringify(viewer.trainingPose)):null});localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();bookList.value=bookmarks.length-1;});
-  button(bookPanel,'加载视角','Load view',()=>{const b=bookmarks[Number(bookList.value)];if(!b)return;viewer.stopNavigation();const delta=b.origin.map((v,i)=>v-viewer.origin[i]);viewer.camera=JSON.parse(JSON.stringify(b.camera));viewer.orbitLens=b.orbitLens||null;viewer.projection=b.projection;viewer.fov=b.fov;viewer.distance=b.distance;viewer.baseHeight=b.baseHeight;viewer.near=b.near||.001;viewer.target=b.target.map((v,i)=>v+delta[i]);viewer.trainingPose=b.trainingPose?{...b.trainingPose,eye:b.trainingPose.eye.map((v,i)=>v+delta[i])}:null;viewer.sortDirty=true;viewer.requestRender();});
-  button(bookPanel,'删除书签','Delete bookmark',()=>{bookmarks.splice(Number(bookList.value),1);localStorage.setItem(key,JSON.stringify(bookmarks));listBooks();});listBooks();
   refresh();return {edits,refresh,setLoading(value){loading=value;if(value)stopEditing();refresh();},sceneChanged(){revision++;gesture=null;paint();const value=exportTarget.value;exportTarget.replaceChildren();getModels().forEach((m,i)=>{edits.attach(m);const o=make('option',m.name||`PLY ${i+1}`);o.value=i;exportTarget.append(o);});exportTarget.value=value!==''&&Number(value)<getModels().length?value:'0';refresh();},get busy(){return busy;}};
 }
 
@@ -3149,7 +3266,27 @@ function paletteUniforms(palette = 'current', reverse = false) {
   return values;
 }
 
+const PALETTE_STORAGE_KEY = 'BuildingWebViewer.palette.v1';
+/** Copy the small scalar-color contract; numeric limits belong to the current dataset, never a global preference. */
+function normalizePaletteOptions(options = {}) {
+  validatePaletteOptions(options);
+  return {palette:options.palette || 'current',reverse:!!options.reverse,range:options.range?{min:options.range.min,max:options.range.max}:null};
+}
+function currentPalettePreferences() {
+  try {
+    const stored=JSON.parse(globalThis.localStorage?.getItem(PALETTE_STORAGE_KEY)||'null');
+    if(stored && typeof stored==='object')return {...normalizePaletteOptions({palette:stored.palette,reverse:stored.reverse}),range:null};
+  } catch {}
+  return {palette:'current',reverse:false,range:null};
+}
+function rememberPalettePreferences(options) {
+  const {palette,reverse}=normalizePaletteOptions(options);
+  try { globalThis.localStorage?.setItem(PALETTE_STORAGE_KEY,JSON.stringify({palette,reverse})); } catch {}
+}
+
 function validatePaletteOptions(options) {
+  if(!options || typeof options!=='object' || Array.isArray(options))throw new Error('Invalid palette options');
+  if(options.reverse!==undefined && typeof options.reverse!=='boolean')throw new Error('Invalid palette reversal flag');
   if (!Object.hasOwn(PALETTE_DEFINITIONS, options.palette || 'current')) throw new Error(t("不支持的色带：{0}", [options.palette]));
   if (options.range !== null && options.range !== undefined) {
     const {min, max} = options.range;
@@ -3174,10 +3311,32 @@ vec3 paletteColor(float value) {
 
 // Source: src/shared/render-style.js
 /** Shared display-only options. Geometry and exported point attributes stay unchanged. */
-const PRESENTATION_DEFAULTS = {pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true};
+const PRESENTATION_DEFAULTS = Object.freeze({pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true});
+const PRESENTATION_STORAGE_KEY = 'BuildingWebViewer.presentation.v1';
+const presentationEnums = {pointStyle:['disc','square','sphere'],lineStyle:['native','cylinder','box'],surfaceStyle:['matte','unlit','gloss']};
+/** Only capability-independent visual preferences travel between tools. Sampling is always explicit. */
+function normalizePresentation(options = {}) {
+  const clean = {};
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return clean;
+  for (const [key, fallback] of Object.entries(PRESENTATION_DEFAULTS)) {
+    const value=options[key];
+    if (presentationEnums[key]?.includes(value) || typeof fallback==='boolean'&&typeof value==='boolean' || key==='pointRatio'&&Number.isFinite(value)&&value>=1&&value<=100 || key==='lineWidth'&&Number.isFinite(value)&&value>=.5&&value<=24 || key==='lineEndColor'&&typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)) clean[key]=value;
+  }
+  return clean;
+}
+function portablePresentation(options) {
+  const clean=normalizePresentation(options);
+  // A saved cylinder style may be unsupported by a new renderer. Never silently sample another dataset.
+  delete clean.lineStyle; delete clean.pointRatio;
+  return clean;
+}
 let presentationPreferences = {...PRESENTATION_DEFAULTS};
+try { Object.assign(presentationPreferences,portablePresentation(JSON.parse(globalThis.localStorage?.getItem(PRESENTATION_STORAGE_KEY)||'null'))); } catch {}
 function currentPresentation() { return {...presentationPreferences}; }
-function rememberPresentation(options) { presentationPreferences = {...presentationPreferences, ...options}; }
+function rememberPresentation(options) {
+  presentationPreferences = {...presentationPreferences, ...normalizePresentation(options)};
+  try { globalThis.localStorage?.setItem(PRESENTATION_STORAGE_KEY,JSON.stringify(portablePresentation(presentationPreferences))); } catch {}
+}
 function displaySampleIndices(total, ratio) {
   if (!Number.isSafeInteger(total) || total < 0 || total > 0xffffffff || !Number.isFinite(ratio) || ratio < 1 || ratio > 100) throw Error('Invalid display sampling size or percentage');
   const count = Math.floor(total * ratio / 100);
@@ -3326,9 +3485,9 @@ function wireframeSVG(viewer,width,height,{transparent=false}={}) {
   parts.push('</g></svg>');return parts.join('\n');
 }
 async function downloadImageBlob(blob,filename,doc=document) {
-  if(isMobileApp()){await mobileShareBlob(blob,filename);return;}
-  const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  return saveLocalBlob(blob,filename,{document:doc});
 }
+
 function canvasImageBlob(canvas,format,quality=.92) {
   const mime={png:'image/png',jpeg:'image/jpeg',webp:'image/webp'}[format];
   if(!mime)throw Error(t('不支持的图片格式'));
@@ -3391,7 +3550,7 @@ function mountImageExport({root=document,getViewers,pauseSync=callback=>callback
 
 
 function mountPresentationControls({root=document,getViewers,pauseSync=callback=>callback()}) {
-  const container=root.querySelector('#settings-panel-display');if(!container)return;
+  const container=root.querySelector('#settings-panel-display');if(!container||container.querySelector('.presentation-controls'))return;
   const doc=container.ownerDocument,section=doc.createElement('section');section.className='inspector-section presentation-controls';
   const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=t(text);return n;};
   section.append(el('h3','渲染样式'));const status=el('p');status.className='presentation-help';status.setAttribute('role','status');
@@ -3406,9 +3565,9 @@ function mountPresentationControls({root=document,getViewers,pauseSync=callback=
     input.onchange=()=>{
       const value=kind==='checkbox'?input.checked:['select','color'].includes(kind)?input.value:Number(input.value);
       if(kind==='number'&&(!Number.isFinite(value)||value<Number(input.min)||value>Number(input.max))){status.textContent=t('请输入范围内的数值。');return;}
-      const prior=currentPresentation()[name];
-      try{pauseSync(()=>{for(const viewer of getViewers())viewer.setOptions({[name]:value});});rememberPresentation({[name]:value});status.textContent=name==='pointRatio'?t('仅抽样当前显示点；原始数据与计算、文件导出不变。'):'';}
-      catch(error){pauseSync(()=>{for(const viewer of getViewers())try{viewer.setOptions({[name]:prior});}catch{}});if(kind==='checkbox')input.checked=prior;else input.value=prior;status.textContent=error.message;}
+      const prior=currentPresentation()[name], viewers=Array.from(getViewers()), previous=viewers.map(viewer=>viewer.options?.[name]??prior);
+      try{pauseSync(()=>{for(const viewer of viewers)viewer.setOptions({[name]:value});});rememberPresentation({[name]:value});status.textContent=name==='pointRatio'?t('仅抽样当前显示点；原始数据与计算、文件导出不变。'):'';}
+      catch(error){pauseSync(()=>{for(const [i,viewer] of viewers.entries())try{viewer.setOptions({[name]:previous[i]});}catch{}});if(kind==='checkbox')input.checked=prior;else input.value=prior;status.textContent=error.message;}
     };
     if(kind==='number')input.oninput=input.onchange;
     return input;
@@ -3448,15 +3607,30 @@ function projectSidebarWidth(value, available, inspector = false) {
   return Math.round(Math.max(240, Math.min(maximum, Number.isFinite(value) ? value : 300)));
 }
 
+const PROJECT_SIDEBAR_STORAGE = 'BWV.project-sidebar.v1';
+function projectSidebarPreferences(value) {
+  return {
+    width: Number.isFinite(value?.width) ? Math.max(240, Math.min(500, value.width)) : 300,
+    desktopCollapsed: typeof value?.desktopCollapsed === 'boolean' ? value.desktopCollapsed : false,
+    mobileCollapsed: typeof value?.mobileCollapsed === 'boolean' ? value.mobileCollapsed : true
+  };
+}
+
 function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) {
-  let width = 300, folded = false, resizing = null;
+  const win = sidebar.ownerDocument.defaultView || window;
+  const media = win.matchMedia?.('(max-width: 700px)');
+  let preferences = projectSidebarPreferences();
+  try { preferences = projectSidebarPreferences(JSON.parse(win.localStorage.getItem(PROJECT_SIDEBAR_STORAGE))); } catch {}
+  let preferredWidth = preferences.width, width = preferredWidth, folded = false, resizing = null;
+  const save = () => { try { win.localStorage.setItem(PROJECT_SIDEBAR_STORAGE, JSON.stringify(preferences)); } catch {} };
+  const foldKey = () => media?.matches ? 'mobileCollapsed' : 'desktopCollapsed';
   function apply() {
-    width = projectSidebarWidth(width, workspace.clientWidth, workspace.classList.contains('inspector-open'));
+    width = projectSidebarWidth(preferredWidth, workspace.clientWidth, workspace.classList.contains('inspector-open'));
     workspace.style.setProperty('--project-width', `${width}px`);
     separator.setAttribute('aria-valuenow', String(width));
     separator.setAttribute('aria-valuemax', String(projectSidebarWidth(500, workspace.clientWidth, workspace.classList.contains('inspector-open'))));
   }
-  function fold(value) {
+  function fold(value, remember = true) {
     const hadSidebarFocus = sidebar.contains(sidebar.ownerDocument.activeElement);
     folded = value; workspace.classList.toggle('project-collapsed', value); sidebar.inert = value;
     toggle.setAttribute('aria-expanded', String(!value)); toggle.title = value ? t('展开项目栏') : t('收起项目栏');
@@ -3466,6 +3640,7 @@ function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) 
     collapse.setAttribute('aria-controls', sidebar.id);
     separator.tabIndex = value ? -1 : 0;
     if (value && hadSidebarFocus) toggle.focus();
+    if (remember) { preferences[foldKey()] = value; save(); }
   }
   toggle.onclick = () => fold(!folded); collapse.onclick = () => fold(true);
   separator.onpointerdown = event => {
@@ -3475,20 +3650,29 @@ function mountProjectSidebar({workspace, sidebar, toggle, collapse, separator}) 
   };
   separator.onpointermove = event => {
     if (!resizing || event.pointerId !== resizing.pointer) return;
-    width = resizing.width + event.clientX - resizing.x; apply();
+    preferredWidth = projectSidebarWidth(resizing.width + event.clientX - resizing.x, workspace.clientWidth, workspace.classList.contains('inspector-open'));
+    preferences.width = preferredWidth; apply();
   };
-  const stop = () => { resizing = null; workspace.classList.remove('project-resizing'); };
+  const stop = () => { if (resizing) save(); resizing = null; workspace.classList.remove('project-resizing'); };
   separator.onpointerup = event => { stop(); if (separator.hasPointerCapture(event.pointerId)) separator.releasePointerCapture(event.pointerId); };
   separator.onpointercancel = stop; separator.onlostpointercapture = stop;
-  separator.ondblclick = () => { width = 300; apply(); };
+  separator.ondblclick = () => { preferredWidth = preferences.width = 300; apply(); save(); };
   separator.onkeydown = event => {
     if (!['ArrowLeft','ArrowRight','Home'].includes(event.key)) return;
-    event.preventDefault(); width = event.key === 'Home' ? 300 : width + (event.key === 'ArrowRight' ? 16 : -16); apply();
+    event.preventDefault(); preferredWidth = preferences.width = event.key === 'Home' ? 300 : projectSidebarWidth(width + (event.key === 'ArrowRight' ? 16 : -16), workspace.clientWidth, workspace.classList.contains('inspector-open')); apply(); save();
   };
   // Resizing the layout is independent of the camera and never reloads point data.
   const observer = new ResizeObserver(apply); observer.observe(workspace);
-  new MutationObserver(apply).observe(workspace, {attributes:true, attributeFilter:['class']});
-  apply(); fold(window.matchMedia?.('(max-width: 700px)').matches || false);
+  const mutation = new MutationObserver(apply); mutation.observe(workspace, {attributes:true, attributeFilter:['class']});
+  const breakpoint = () => { stop(); fold(preferences[foldKey()], false); apply(); };
+  if (media?.addEventListener) media.addEventListener('change', breakpoint); else media?.addListener?.(breakpoint);
+  apply(); fold(preferences[foldKey()], false);
+  return {destroy() {
+    stop(); observer.disconnect(); mutation.disconnect();
+    if (media?.removeEventListener) media.removeEventListener('change', breakpoint); else media?.removeListener?.(breakpoint);
+    toggle.onclick = collapse.onclick = null;
+    for (const name of ['onpointerdown','onpointermove','onpointerup','onpointercancel','onlostpointercapture','ondblclick','onkeydown']) separator[name] = null;
+  }};
 }
 
 
@@ -3578,6 +3762,7 @@ function mountResourceMonitor({root=document, getViewers=()=>[]}) {
 
 
 
+
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
   const primary=getViewers()[0],cameraPanel=root.getElementById('camera-controls');
@@ -3589,7 +3774,8 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     const label=root.createElement('label'),select=root.createElement('select'),en=document.documentElement.lang==='en';
     label.textContent=en?'Projection':'投影模式';select.setAttribute('aria-label',label.textContent);
     for(const[value,zh,english]of [['orthographic','正交','Orthographic'],['perspective','透视','Perspective']]){const option=root.createElement('option');option.value=value;option.textContent=en?english:zh;select.append(option);}
-    select.onchange=()=>{for(const viewer of getViewers()){viewer.stopNavigation();if(select.value==='perspective')viewer.prepareFly();else viewer.baseHeight=2*viewer.distance*Math.tan(viewer.fov*Math.PI/360);viewer.projection=select.value;viewer.requestRender();}};
+    select.value=primary.projection;
+    select.onchange=()=>setViewerProjection(getViewers(),select.value,pauseSync);
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }
@@ -4886,6 +5072,7 @@ function gsViewingProfile(mode, mobile=false, software=false) {
 
 
 
+
 async function gsBoot() {
   initializeLocale();
   if(await openNativeGaussianPage())return;
@@ -4915,7 +5102,7 @@ async function gsBoot() {
   const gsProject = new ViewerProject();
   const gsEntries = [], gsSelected = new Set(), gsCatalogs = [];
   let nativeSession=null,preservedWebCamera=null,editRevision=0,knownIds=[];const nativeApp=isMobileApp();
-  let gsEditor = null, gsViewer = null, gsSerial = 0, gsMode = 'multiple';
+  let gsEditor = null, gsViewer = null, gsCameraControls = null, gsSerial = 0, gsMode = 'multiple';
   const gsAccept = name => /\.(ply|json|zip)$/i.test(name);
   const gsBytes = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   const gsSay = message => { const note = gs$('data-notes'); note.textContent = message || ''; };
@@ -4982,7 +5169,7 @@ async function gsBoot() {
       : t('把 cameras.json 和 point_cloud.ply 一起导入后，可以跳到训练机位。');
   }
 
-  async function gsApply({preserveView = false} = {}) {
+  async function gsApply({preserveView = gsCameraControls?.preserveView ?? true} = {}) {
     const serial = ++gsSerial;
     const selected = [...gsSelected];
     if (!selected.length) {
@@ -5041,7 +5228,7 @@ async function gsBoot() {
     if (gsMode === 'single') {
       if (gsSelected.has(entry)) gsSelected.delete(entry); else { gsSelected.clear(); gsSelected.add(entry); }
     } else if (gsSelected.has(entry)) gsSelected.delete(entry); else gsSelected.add(entry);
-    gsApply({preserveView: true});
+    gsApply();
   }
 
   const gsTree = mountProjectTree({
@@ -5133,6 +5320,7 @@ async function gsBoot() {
     mountRenderDiagnostics(gsViewer, gs$('settings-panel-display').querySelector('.render-controls'));
     const quickDiagnostic=document.createElement('button');quickDiagnostic.type='button';quickDiagnostic.textContent=label('诊断','Diagnostics');quickDiagnostic.onclick=()=>gs$('gs-diagnostics').click();document.querySelector('.inspector-shortcuts').append(quickDiagnostic);
     gsEditor = mountGaussianEditor({loadFull:async()=>{profileSelect.value='full';await gsApply({preserveView:true});},viewer: gsViewer, getModels: () => gsViewer.models, onError: gsError, onStatus: gsSay,onChange:()=>{editRevision++;nativeSession?.schedule();}});
+    gsCameraControls = mountGaussianCameraControls({viewer:gsViewer,onError:gsError});
     mountViewerLayout({getViewers: () => gsViewer ? [gsViewer] : []});
   } catch (error) { gsError(error.message); }
   window.addEventListener('beforeunload', event => { if(!nativeApp&&gsEntries.some(e=>gsEntryFlags(e)?.some(flag=>flag&6))) {event.preventDefault();event.returnValue='';} });

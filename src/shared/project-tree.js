@@ -1,6 +1,12 @@
 import { t } from './i18n.js';
 import { ProjectSelection, projectBoxIntersects } from './project-model.js';
 
+// Touch and pen drags belong to native scrolling; box selection is a mouse gesture.
+export function projectCanStartBox(event) {
+  return event.button === 0 && (!event.pointerType || event.pointerType === 'mouse') &&
+    !event.target.closest('button,input,label,select,textarea,a,.project-drag-handle');
+}
+
 export function mountProjectTree({project, container, root, controls, getEntries, getSelected, getMode, getQuery,
   onToggle, onGroupSelection, onVisibility, onRemove, onChange, detail = () => '', selectionHint = '勾选后显示数据'}) {
   const make = (tag, text, cls) => { const node = document.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; return node; };
@@ -148,7 +154,7 @@ export function mountProjectTree({project, container, root, controls, getEntries
   window.addEventListener('resize', () => closeMenu());
   container.tabIndex = 0;
   container.addEventListener('keydown', event => {
-    if (event.target.closest('input')) return;
+    if (event.target.closest('input,select,textarea,[contenteditable=true]')) return;
     if (event.key === 'Delete' && management.items.size) { event.preventDefault(); openEditor('remove'); }
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (band) finishBand(true); else selectTarget(null); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); management.box(visible); focused = visible.at(-1) || null; closeEditor(); paintSelection(); }
@@ -179,7 +185,7 @@ export function mountProjectTree({project, container, root, controls, getEntries
     setTimeout(() => { suppressClick = false; }, 0);
   }
   container.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || event.target.closest('button,input,label,.project-drag-handle')) return;
+    if (!projectCanStartBox(event)) return;
     closeMenu(); closeEditor();
     const rect = container.getBoundingClientRect();
     band = {pointer:event.pointerId,startX:event.clientX,startY:event.clientY-rect.top+container.scrollTop,x:event.clientX,y:event.clientY,originY:event.clientY,before:[...management.items],additive:event.ctrlKey||event.metaKey,active:false};
@@ -200,6 +206,11 @@ export function mountProjectTree({project, container, root, controls, getEntries
   container.addEventListener('lostpointercapture', () => finishBand(true));
   container.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); } }, true);
   function render() {
+    // Selection changes rebuild rows. Preserve the focused row control so repeated
+    // Space toggles and keyboard folder navigation do not jump back to the page.
+    const active = document.activeElement, oldRow = active?.closest?.('.project-row');
+    const focusTarget = rowTargets.get(oldRow);
+    const focusKind = oldRow && oldRow.contains(active) ? ['input', '.project-name', 'button.project-chevron'].find(selector => oldRow.querySelector(selector) === active) : null;
     const entries = getEntries(), selected = getSelected(), query = getQuery().trim().toLowerCase();
     for (const target of management.items) if (!exists(target)) management.items.delete(target);
     if (focused && !exists(focused)) focused = null;
@@ -251,7 +262,12 @@ export function mountProjectTree({project, container, root, controls, getEntries
     if (flat.length > limit) fragment.append(button(t("显示更多（剩余 {0} 项）", [flat.length - limit]), t('显示更多项目条目'), () => { limit += 200; render(); }));
     if (!flat.length) fragment.append(make('p', query ? t('没有匹配的数据') : t('拖入文件或文件夹\n开始整理你的项目'), 'empty-list'));
     const blank = make('div', null, 'project-selection-space'); blank.setAttribute('aria-hidden','true'); fragment.append(blank);
-    const scroll = container.scrollTop; container.replaceChildren(fragment); container.scrollTop = scroll; paintSelection();
+    const scroll = container.scrollTop; container.replaceChildren(fragment); paintSelection();
+    if (focusKind) {
+      const replacement = [...rowTargets].find(([, target]) => target === focusTarget)?.[0];
+      (replacement?.querySelector(focusKind) || container).focus({preventScroll:true});
+    }
+    container.scrollTop = scroll;
   }
   return {render};
 }

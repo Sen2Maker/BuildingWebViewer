@@ -1,3 +1,4 @@
+import { currentPalettePreferences } from '../shared/palettes.js';
 import { wirePreference, wireEntryFiles, combineWireframes, adjacentWireEntry, wireNavigationDirection, normalizeWirePreferences } from './wire-selection.js';
 import { mountMobileProject, snapshotProjectTree, restoreProjectTree, captureMobileInputs, restoreMobileInputs, isMobileApp, nativeExportWriter, NativeProjectFile } from '../shared/mobile-project.js';
 import { writePointExport } from '../pointcloud/point-export.js';
@@ -45,7 +46,7 @@ initializeLocale();
   let wireChoices={wires:[],clouds:[]};
   if(isWire)try{wirePreferences=normalizeWirePreferences(JSON.parse(localStorage.getItem('BuildingWebViewer.wirePreferences')||'null'));}catch{}
   const pointProject = new ViewerProject(); let projectControls = null;
-  let options = { showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
+  let options = {...currentPalettePreferences(), showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
 
   function columnSettings(entry, cloud) {

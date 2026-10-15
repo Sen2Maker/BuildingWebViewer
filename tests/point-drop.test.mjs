@@ -104,3 +104,26 @@ assert.equal(context.receiveCloudFiles([other], false, new Map([[other, 'other/s
 assert.equal(existingEntries.length, 3); assert.equal(selection.size, 1); assert(selection.has(selected));
 assert(existingEntries.includes(selected)); assert(existingEntries.some(entry => entry.id === 'other/same.txt'));
 console.log('PASS picker/drop deduplication preserves selected entry objects and distinct paths');
+
+// Navigating away while directory enumeration is pending must not import into a stale project.
+const closingHost = eventTarget(), closingZone = eventTarget();
+closingZone.contains = target => target === closingZone;
+closingZone.classList = {add(){},remove(){}};
+let resolveScan, importsAfterClose = 0;
+const pausedDirectory = {name:'slow',isDirectory:true,createReader(){let first=true;return {readEntries(resolve){if(first){first=false;resolveScan=()=>resolve([leaf(a)]);}else resolve([]);}};}};
+const closingStatus = {hidden:true,textContent:''};
+const closeDrop = mountPointDrop({host:closingHost,zone:closingZone,status:closingStatus,accepts,onFiles(){importsAfterClose++;return {added:1};}});
+const closePending = closingHost.dispatch('drop',event(transfer([pausedDirectory]),closingZone));
+await Promise.resolve();assert.equal(typeof resolveScan,'function');closeDrop();
+const closedMessage = closingStatus.textContent;resolveScan();await closePending;
+assert.equal(importsAfterClose,0);assert.equal(closingStatus.textContent,closedMessage);
+console.log('PASS an in-flight directory scan cannot import or mutate UI after disposal');
+
+const recoveringHost=eventTarget(),recoveringZone=eventTarget();
+recoveringZone.contains=target=>target===recoveringZone;recoveringZone.classList={add(){},remove(){}};
+let attempts=0;
+const recoverDispose=mountPointDrop({host:recoveringHost,zone:recoveringZone,status:{},accepts,onFiles(records){if(++attempts===1)throw Error('Import failed');return {added:records.length};}});
+await recoveringHost.dispatch('drop',event(transfer([leaf(a)]),recoveringZone));
+await recoveringHost.dispatch('drop',event(transfer([leaf(b)]),recoveringZone));
+assert.equal(attempts,2);recoverDispose();
+console.log('PASS failed imports do not poison subsequent queued drops');

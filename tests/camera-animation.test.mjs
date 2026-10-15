@@ -19,3 +19,11 @@ console.log('PASS one-based frame timing, exact keys, shortest quaternion rotati
 // Output preferences survive a JSON backup; unsupported sizes and formats fail validation.
 const preferences=caNewProject();preferences.output={format:'webm',width:1080,height:1920,bitrate:5e6,guides:true};assert.deepEqual(caParse(caSerialize(preferences)).output,preferences.output);
 for(const patch of [{width:1279},{height:0},{format:'unknown'},{bitrate:NaN},{guides:'true'}])assert.throws(()=>caValidateProject({...preferences,output:{...preferences.output,...patch}}));
+
+// Unequal calibrated focal lengths transition smoothly; exact keys preserve their complete camera.
+function lensKeysSource(){return {format:'BuildingWebViewer.camera',version:2,space:'lod-arrangement',projection:'perspective',scene:{ids:['lens'],scale:'real'},camera:{azimuth:0,elevation:20,zoom:1,pan:[0,0],target:[0,0,0],baseHeight:10,roll:0,distance:10,fov:55,near:.001}};}
+const lensProject=caNewProject();lensProject.duration=1;lensProject.fps=8;
+const lensA=JSON.parse(JSON.stringify(lensKeysSource()));lensA.version=2;Object.assign(lensA.camera,{roll:0,distance:10,fov:55,near:.001,lens:{fx:1,fy:2}});
+const lensB=JSON.parse(JSON.stringify(lensA));delete lensB.camera.lens;lensB.camera.fov=70;
+const lensKeys=caPutKey(caPutKey(lensProject,{frame:1,snapshot:lensA,easing:'linear'}),{frame:8,snapshot:lensB});
+assert.deepEqual(caSample(lensKeys,1),lensKeys.keys[0].snapshot);assert.deepEqual(caSample(lensKeys,8),lensKeys.keys[1].snapshot);const lensMid=caSample(lensKeys,4.5).camera.lens;assert(lensMid.fx>0&&lensMid.fy>0&&lensMid.fx!==lensMid.fy);

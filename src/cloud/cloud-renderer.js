@@ -5,7 +5,7 @@ import { updateSceneGuides } from '../shared/scene-guides.js';
 import { StyledLineRenderer } from '../shared/line-renderer.js';
 import { t } from '../shared/i18n.js';
 import { mountTouchCamera } from '../shared/touch-camera.js';
-import { samplePalette, paletteUniforms, validatePaletteOptions, PALETTE_GLSL } from '../shared/palettes.js';
+import { samplePalette, paletteUniforms, validatePaletteOptions, currentPalettePreferences, PALETTE_GLSL } from '../shared/palettes.js';
 /** Point clouds and edge networks share one origin, preserving their original coordinate alignment. */
 const CLOUD_DEG = Math.PI / 180;
 const CLOUD_DOT = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -85,7 +85,7 @@ export class CloudViewer {
     this.onError = onError;
     this.onViewChange = onViewChange;
     this.options = { ...currentPresentation(), showPoints: true, showWire: true, pointSize: 2, pointOpacity: 1,
-      colorMode: 'height', pointColor: '#547d99', wireColor: '#ed8e48', rgbFields: null, grid: true, palette: 'current', reverse: false, range: null };
+      colorMode: 'height', pointColor: '#547d99', wireColor: '#ed8e48', rgbFields: null, grid: true, ...currentPalettePreferences() };
     this.data = { cloud: null, wire: null };
     this.camera = { elevation: 38, azimuth: -55, zoom: 1, pan: [0, 0] };
     this.target = [0, 0, 0];

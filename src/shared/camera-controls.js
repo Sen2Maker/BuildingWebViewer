@@ -1,5 +1,5 @@
 import { gsSetOrbitBasis } from './orbit-camera.js';
-import { isMobileApp, mobileShareBlob } from './mobile-project.js';
+import { saveLocalBlob } from './file-save.js';
 import { t } from './i18n.js';
 /** Shared camera snapshots and an optional, local-only control panel. */
 const CAMERA_FORMAT = 'BuildingWebViewer.camera';
@@ -50,7 +50,7 @@ export function validateCameraSnapshot(value, {space = value?.space, scene = nul
   if (zoom < limits.minZoom || zoom > limits.maxZoom) throw Error(t("缩放倍率需在 {0} 至 {1} 之间", [limits.minZoom, limits.maxZoom]));
   if (!(baseHeight > 0) || !Number.isFinite(baseHeight / zoom)) throw Error(t('基准视野高度必须为有效正数'));
   let extended={};
-  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};}
+  if(value.version===2){const roll=cameraFinite(source.roll,'roll'),distance=cameraFinite(source.distance,'distance'),fov=cameraFinite(source.fov,'fov'),near=cameraFinite(source.near,'near');if(Math.abs(roll)>1e6||distance<=0||fov<10||fov>120||near<=0)throw Error('Invalid perspective camera');extended={roll,distance,fov,near};if(source.lens!=null){if(!cameraObject(source.lens)||!['fx','fy'].every(k=>typeof source.lens[k]==='number'&&Number.isFinite(source.lens[k])&&source.lens[k]>0&&source.lens[k]<=1e6))throw Error('Invalid camera lens');extended.lens={fx:source.lens.fx,fy:source.lens.fy};}}
   const savedScene = cameraScene(value.scene, space);
   if (space === 'lod-arrangement' && checkScene && !cameraSameScene(savedScene, cameraScene(scene, space))) throw Error(t("网格布局不匹配：此书签需要模型 {0}，比例模式为{1}。请先恢复该布局再加载。", [savedScene.ids.join(', ').slice(0, 160) || t('（空）'), savedScene.scale === 'real' ? t('实际比例') : t('统一展示大小')]));
   return {format: CAMERA_FORMAT, version: value.version, space, projection: value.projection,
@@ -64,11 +64,15 @@ export function captureCameraSnapshot(viewer, {space, scene = null} = {}) {
   const origin = space === 'raw-world' ? cameraVector(viewer.origin || [0, 0, 0], 3, t('原点')) : [0, 0, 0];
   const camera={...viewer.camera,pan:[...viewer.camera.pan]},projection=viewer.projection||'orthographic';
   let localTarget=[...viewer.target],distance=viewer.distance||viewer.baseHeight*2;
-  if(viewer.flyPose){gsSetOrbitBasis({camera},viewer.flyPose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=viewer.flyPose.eye.map((v,i)=>v-viewer.flyPose.basis[2][i]*distance);}
-  const version=projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
+  const pose=viewer.flyPose||viewer.trainingPose;
+  if(pose){gsSetOrbitBasis({camera},pose.basis);distance/=camera.zoom;camera.zoom=1;camera.pan=[0,0];localTarget=pose.eye.map((v,i)=>v-pose.basis[2][i]*distance);}
+  let lens=viewer.orbitLens?{fx:viewer.orbitLens.fx,fy:viewer.orbitLens.fy}:null;
+  if(viewer.trainingPose){const p=viewer.trainingPose,w=viewer.canvas?.clientWidth,h=viewer.canvas?.clientHeight;if(w>0&&h>0){const fit=Math.min(w/p.width,h/p.height);lens={fx:p.fx*fit/h,fy:p.fy*fit/h};}}
+
+  const version=lens||projection==='perspective'||camera.roll||camera.elevation<-89||space==='lod-arrangement'&&(camera.elevation<0||camera.zoom<.15||camera.zoom>30)?2:1;
   const target = cameraVector(localTarget,3,t('目标点')).map((value,axis)=>value+origin[axis]);
   return validateCameraSnapshot({format:CAMERA_FORMAT,version,space,projection,scene,
-    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001}:{})}}, {space,scene,checkScene:false});
+    camera:{...camera,target,baseHeight:viewer.baseHeight,...(version===2?{roll:camera.roll||0,distance,fov:viewer.fov||55,near:viewer.near||.001,...(lens?{lens}:{})}:{})}}, {space,scene,checkScene:false});
 }
 
 export function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space, scene = null, checkScene = true, pauseSync = callback => callback(), render = true} = {}) {
@@ -81,7 +85,7 @@ export function applyCameraSnapshot(viewers, snapshot, {space = snapshot?.space,
   });
   pauseSync(() => {
     viewers.forEach((viewer, index) => {
-      viewer.stopNavigation?.();viewer.flyPose=null;viewer.projection=value.projection;
+      viewer.stopNavigation?.();if(viewer.fly?.active)viewer.fly.leave();viewer.flyPose=null;viewer.trainingPose=null;viewer.orbitLens=value.camera.lens?{...value.camera.lens}:null;viewer.projection=value.projection;
       if(value.version===2){viewer.distance=value.camera.distance;viewer.fov=value.camera.fov;viewer.near=value.camera.near;}
       viewer.camera = {...(value.version===2?{roll:value.camera.roll}:{}),azimuth: value.camera.azimuth, elevation: value.camera.elevation, zoom: value.camera.zoom, pan: [...value.camera.pan]};
       viewer.target = targets[index]; viewer.baseHeight = value.camera.baseHeight;
@@ -324,7 +328,7 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
         if (!dragging.has(name)) slider.value = String(sliderPosition(name, inputValue(snapshot, name), slider));
         slider.setAttribute('aria-valuetext', `${displayNumber(inputValue(snapshot, name), name)}${name === 'zoom' ? t(' 倍') : t(' 度')}`);
       }
-      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? 2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
+      heightLabel.textContent = t("可视高度 {0}（原坐标单位）", [((snapshot.projection==='perspective' ? (snapshot.camera.lens?snapshot.camera.distance/snapshot.camera.lens.fy:2*snapshot.camera.distance*Math.tan(snapshot.camera.fov*Math.PI/360)) : snapshot.camera.baseHeight) / snapshot.camera.zoom).toPrecision(6)]);
     } else {
       dragging.clear(); for (const input of inputs.values()) if (doc.activeElement !== input) input.value = '';
       heightLabel.textContent = t('加载数据后可调整');
@@ -390,9 +394,8 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
   exportButton.addEventListener('click', async () => { try {
     syncStored();
     const blob = new Blob([serializeCameraBookmarks(bookmarks, space, preserveView)], {type: 'application/json'});
-    if (isMobileApp()) { await mobileShareBlob(blob, `BuildingWebViewer-camera-${space}.json`); message(t('相机书签 JSON 已导出，不含模型数据。')); return; }
-    const url = win.URL.createObjectURL(blob), link = el('a'); link.href = url; link.download = `BuildingWebViewer-camera-${space}.json`; link.click();
-    win.setTimeout(() => win.URL.revokeObjectURL(url), 1000); message(t('相机书签 JSON 已导出，不含模型数据。'));
+    await saveLocalBlob(blob, `BuildingWebViewer-camera-${space}.json`, {document:doc,window:win});
+    message(t('相机书签 JSON 已导出，不含模型数据。'));
   } catch(error) { message(error.message, true); } });
   importButton.addEventListener('click', () => importInput.click());
   importInput.addEventListener('change', async () => {
