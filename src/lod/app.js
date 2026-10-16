@@ -1,3 +1,4 @@
+import { createBatchProgress } from '../shared/batch-progress.js';
 import { currentPalettePreferences } from '../shared/palettes.js';
 import { mountCameraAnimation } from '../shared/animation-controls.js';
 import { createMeshAnimationAdapter } from './animation-adapter.js';
@@ -123,6 +124,7 @@ async function loadSelection() {
   $('empty-state').hidden = !!ids.length;
   $('screenshot').disabled = true;
   $('scene-stats').textContent = ids.length ? t("正在读取 {0} 个模型…", [ids.length]) : t('未选择模型');
+  const batchProgress=createBatchProgress($('loading'),{total:ids.length,unit:'个模型',current:()=>version===generation});
   const results = new Map(), failures = []; let next = 0, completed = 0;
   const worker = async () => {
     while (next < ids.length && !signal.aborted) {
@@ -144,11 +146,12 @@ async function loadSelection() {
         if (error.name !== 'AbortError') failures.push(`#${id}：${error.message}`);
       }
       completed++;
-      if (version === generation) $('loading').querySelector('span').textContent = t("正在读取模型 {0} / {1}", [completed, ids.length]);
+      batchProgress.report(completed,failures.length);
     }
   };
   await Promise.all(Array.from({length: Math.min(4, ids.length)}, worker));
   if (version !== generation) return;
+  batchProgress.prepare();
   const savedView = cameraControls?.preserveView ? cameraControls.capture() : null;
   currentModels = ids.map(id => results.get(id)).filter(Boolean);
   try {
@@ -163,7 +166,7 @@ async function loadSelection() {
     if (failures.length) showError(t('部分模型读取失败。') + failures.join('；'), true);
     renderSelection(false);
   } catch (error) { showError(t("模型渲染失败：{0}", [error.message]), true); }
-  finally { $('loading').hidden = true;mobileSession?.schedule(); }
+  finally { if(version===generation){$('loading').hidden = true;mobileSession?.schedule();} }
 }
 function updateHeightLegend() {
   const legend = $('height-legend'); if (!legend) return;

@@ -19,3 +19,14 @@
 .loading.has-progress::after{display:none}
 @keyframes loading-track{from{background-position:100% 0}to{background-position:-100% 0}}
 @media(prefers-reduced-motion:reduce){.loading::after,.loading i{animation:none}}
+
+/* Shared batch loading: rounded slanted track and a distinct percentage badge. */
+.loading.batch-loading{background:#fffffff7;border-color:#e1ebf5;color:#34465b}
+.loading.batch-loading i{border-color:#e3edf9;border-top-color:#4d83c9}
+.loading.batch-loading>progress{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+.batch-progress-visual{grid-column:1/-1;position:relative;height:16px;min-width:0;margin:9px 3px 7px;--batch-progress:0%}
+.batch-progress-track{position:absolute;inset:0;border-radius:4px;transform:skewX(-14deg);overflow:hidden;background:repeating-linear-gradient(135deg,#fff 0,#fff 8px,#edf6ff 8px,#edf6ff 16px);box-shadow:inset 0 0 0 1px #dceafa}
+.batch-progress-fill{width:var(--batch-progress);height:100%;border-radius:4px;background:linear-gradient(90deg,#a6cdff,#8ab7f0)}
+.batch-progress-marker{position:absolute;top:0;bottom:0;left:32px;right:32px}
+.batch-progress-percent{position:absolute;top:50%;left:var(--batch-progress);transform:translate(-50%,-50%) skewX(-14deg);height:28px;min-width:46px;padding:0 8px;display:grid;place-items:center;border:1px solid #4577b8;border-radius:5px;background:#4d83c9;color:#fff;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;box-shadow:0 2px 7px #4b8add22}
+.batch-progress-percent-text{transform:skewX(14deg)}

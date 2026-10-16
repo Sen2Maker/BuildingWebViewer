@@ -6,6 +6,19 @@
 
 后续变更先在此记录。Record upcoming changes here.
 
+## [1.8.2] - 2026-10-16
+
+- 整批进度采用圆角平行四边形：浅蓝进度色块、深蓝百分比标签、淡蓝白条纹；数字端正，百分比标签不会越过两端，保留无障碍进度语义。
+- Style shared batch progress with rounded slanted shapes, a light-blue fill, dark-blue percentage badge and pale blue/white stripes; retain accessible progress semantics.
+
+- 批量加载按整批对象 / 模型 / 文件数量显示进度，完成一个才计数，不再逐文件重置；显示失败数量与准备画面阶段，快速换选时旧任务不覆盖新进度。
+- Show item-count progress for the whole batch across viewers, with failed-item counts and scene preparation; superseded loads cannot overwrite current progress.
+
+- 限制线框多 ID 文件说明、对比标题与高斯多文件标题长度，避免挤满画面；统一长名称、标签栏和手机布局边界，完整列表仍在项目栏。
+- Bound multi-file scene labels and Gaussian titles; constrain long chips and annotations across viewers and mobile layouts. Full source lists remain in the project tree.
+
+- 验证 / Validation：138 项网页测试、28 项原生单元测试、WebView 60 兼容编译和完整 APK 构建通过。进度按对象数量统计，不代表耗时；原生高斯加载界面保持现有实现。
+
 ## [1.8.1] - 2026-10-16
 
 - 统一跨工具显示偏好、配色、相机、书签、投影切换和文件下载 / App 分享；高斯工具保留专用镜头控件，并兼容迁移旧书签。

@@ -1,3 +1,5 @@
+import { createBatchProgress } from '../shared/batch-progress.js';
+import { setNameSummary } from '../shared/name-summary.js';
 import { mountGaussianCameraControls } from './camera-controls.js';
 import { openNativeGaussianPage } from './native-view.js';
 import { mountRenderDiagnostics } from '../shared/render-diagnostics.js';
@@ -118,11 +120,12 @@ async function gsBoot() {
     const selected = [...gsSelected];
     if (!selected.length) {
       gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
-      gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
+      setNameSummary(gs$('current-title'),[],t('未选择数据')); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
       gs$('geometry-note').textContent = t('未选择数据时保持空白');
       gsViewer?.clearSplats(); gsEditor?.setLoading(false);gsEditor?.sceneChanged(); gsList(); return;
     }
-    gsLoading(t('正在读取文件…')); gs$('empty-state').hidden = true; gsError('');
+    gsLoading(t('正在读取文件…'));
+    const batchProgress=createBatchProgress(gs$('loading'),{total:selected.length,unit:'个高斯文件',current:()=>serial===gsSerial}); gs$('empty-state').hidden = true; gsError('');
     const degree = Number(gs$('gs-sh').value);
     gs$('gs-sh').disabled=false;
     gsEditor?.setLoading(true);
@@ -132,10 +135,8 @@ async function gsBoot() {
       for (const entry of selected) {
         if (serial !== gsSerial) return;
         if (!entry.parsed || entry.parsed.preview) {
-          gsLoading(t('正在读取 {0}…', [entry.treeName || entry.file.name]));
           if(entry.parsed&&!entry.parsed.preview){entry.savedFlags=entry.parsed.editFlags;gsEditor?.edits.releaseGeometry(entry.parsed);}
-          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]),total>0?done/total:null);};
-          const parsed=await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true,onProgress});
+          const parsed=await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true});
           if(serial!==gsSerial)return;
           if(entry.savedFlags){
             if(entry.savedFlags.length!==parsed.sourceCount)throw Error('Gaussian snapshot does not match source');
@@ -147,15 +148,17 @@ async function gsBoot() {
         entry.parsed.name = entry.treeName || entry.file.name;
         gsEditor?.edits.attach(entry.parsed);
         models.push(entry.parsed);
+        batchProgress.report(models.length);
       }
       if (serial !== gsSerial) return;
+      batchProgress.prepare();
       const useDegree = degree;
       applyQuality();
       gsViewer.setModels(models, {preserveView, maxSplats: 0, shDegree: 3});updateDistance();
       gsEditor?.sceneChanged();
       gsViewer.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value, shDegree: useDegree});
       const shown = gsViewer.count, source = gsViewer.pointCount;
-      gs$('current-title').textContent = selected.map(entry => entry.treeName || entry.id).join('、');
+      setNameSummary(gs$('current-title'),selected.map(entry => entry.treeName || entry.id));
       gs$('scene-stats').textContent = t('已显示 {0} / {1} 个高斯', [shown.toLocaleString('zh-CN'), source.toLocaleString('zh-CN')]);
       gs$('geometry-note').textContent = t('原始尺度 · 可撤销编辑 · 本地处理');
       gs$('screenshot').disabled = false; gsLoading('');

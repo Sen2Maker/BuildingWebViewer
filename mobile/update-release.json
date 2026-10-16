@@ -1,11 +1,11 @@
 {
-  "version": "1.8.1",
+  "version": "1.8.2",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 21,
-  "issuedAt": 1792081556,
-  "expiresAt": 1807633556,
+  "sequence": 22,
+  "issuedAt": 1792135472,
+  "expiresAt": 1807687472,
   "notes": {
-    "zh": "统一跨工具显示、相机、书签及文件出口；修复触屏项目树、投影切换和后台保存问题。改善手机排布、原生高斯参数提交与横屏漫游。已有 App 可热更新网页部分；原生界面修复请安装本版完整 APK。",
-    "en": "Unify shared display, camera, bookmarks and file saving. Fix touch project-tree interactions, projection switching and background saves. Improve mobile layouts and native Gaussian controls. Web changes support hot updates; native UI fixes require this complete APK."
+    "zh": "修复多文件 ID 与名称文字挤满画面的问题；批量加载改为整批数量进度，并采用浅蓝进度、深蓝百分比标签与蓝白条纹。网页和 App 内网页同步生效；提供同版本完整 APK。",
+    "en": "Fix overflowing multi-file IDs and names. Show whole-batch item-count progress with a light-blue fill, dark-blue percentage badge and blue/white stripes. Applies to browser viewers and their App web pages; includes a matching complete APK."
   }
 }

@@ -185,3 +185,14 @@ body{height:100vh;height:100dvh;overflow:hidden}
 /* Shared touch sizing: keep the compact header, expand only interactive form targets. */
 @media(pointer:coarse){.viewer-inspector .inspector-heading button{width:44px;height:44px;flex-shrink:0}.viewer-inspector .inspector-tabs button{min-height:44px}.camera-number-row button{min-width:40px;min-height:40px}.camera-number-row input{min-height:40px;font-size:16px}.camera-slider{height:30px}.project-row .project-check-hit{min-height:44px;width:40px;flex-basis:40px}.project-row .project-name{min-height:40px}.camera-bookmark-actions button,.camera-bookmark-files button{min-height:40px}}
 @media(pointer:coarse) and (max-width:700px){.camera-number-field{grid-template-columns:minmax(0,1fr)}.viewer-inspector input[type=number],.viewer-inspector input[type=text],.viewer-inspector select{font-size:16px}}
+
+/* Dataset size must not determine the height or width of scene annotations. */
+.scene-note{right:20px;max-width:calc(100% - 40px);min-width:0;max-height:76px;overflow:hidden}
+.scene-note>strong,.scene-note>span{min-width:0;overflow:hidden;overflow-wrap:anywhere;line-height:1.5;max-height:3em}
+.main-heading>div{min-width:0;flex:1}.main-heading h2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;line-height:1.4;max-height:2.8em}
+.comparison-heading{flex-shrink:0}.comparison-heading>span{flex-shrink:0}
+.selected-models,.cloud-selection{min-width:0;overscroll-behavior:contain}
+.model-chip{max-width:100%;min-width:0;flex-shrink:0}.model-chip>button:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.model-chip .remove-chip{flex-shrink:0}
+.cloud-chip{min-width:0;flex-shrink:0}.cloud-chip>span{min-width:0}.cloud-chip>button{flex-shrink:0}
+.data-notes{flex-shrink:0;overscroll-behavior:contain}
+@media(max-width:700px){.scene-note{right:10px;max-width:calc(100% - 20px);max-height:44px}}

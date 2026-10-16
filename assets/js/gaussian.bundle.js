@@ -2,111 +2,6 @@
 (() => {
 'use strict';
 
-// Source: src/shared/camera-geometry.js
-// Gaussian camera conventions: right/up/back form an orthonormal world basis.
-// Inria cameras.json stores camera-to-world columns right/down/forward.
-const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
-function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
-function gsTrainingPose(camera, origin=[0,0,0]) {
-  const r=camera.rotation;
-  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
-  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
-  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
-  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
-}
-function gsViewSpec(viewer, width, height) {
-  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
-  const training=viewer.trainingPose;
-  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
-  const fit=training?Math.min(width/training.width,height/training.height):1;
-  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
-  const distance=viewer.distance/viewer.camera.zoom;
-  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
-  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
-  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
-}
-function gsProjectPosition(point, spec) {
-  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
-  const depth=-gsDot3(delta,back);
-  if (spec.perspective && depth<=spec.near) return null;
-  const x=gsDot3(delta,right), y=gsDot3(delta,up);
-  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
-}
-
-
-// Source: src/shared/orbit-camera.js
-
-function gsOrbitRotate(v, axis, angle) {
-  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
-  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
-  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
-}
-function gsSetOrbitBasis(viewer, basis) {
-  const [right,,back]=basis, deg=180/Math.PI;
-  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
-  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
-  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
-  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
-}
-/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
- * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
- */
-function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
-  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
-  if(!viewer.packed)return null;
-  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
-  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
-  let limit=radius*radius;
-  for(let i=0;i<viewer.count;i++) {
-    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
-    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
-    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
-    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
-    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
-    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
-    const d=px*px+py*py;if(d>limit)continue;
-    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
-    if(candidates.length===32)limit=candidates[31].d;
-  }
-  if(!candidates.length)return null;
-  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
-  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
-}
-function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
-  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
-  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
-  if(!model&&x!==null&&picked===null)return false;
-  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
-  let depth=picked??fallback;
-  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
-  if(!model&&x!==null) {
-    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
-    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
-    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
-  }
-  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
-  if(depth<=spec.near)return false;
-  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
-  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
-  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
-  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
-  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
-}
-
-
-// Source: src/shared/autosave.js
-/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
-function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
-  let timer=null, suspended=false, dirty=false, generation=0;
-  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
-  const arm=()=>{if(suspended||!dirty||timer!==null)return;timer=setTimer(()=>{timer=null;flush().catch(()=>arm());},delay);};
-  const flush=()=>{cancel();const savingGeneration=generation;return Promise.resolve().then(save).then(result=>{if(generation===savingGeneration)dirty=false;if(dirty){onDirty();arm();}return result;},error=>{dirty=true;arm();throw error;});};
-  const schedule=()=>{dirty=true;generation++;if(timer!==null)return;onDirty();arm();};
-  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;arm();},dispose(){cancel();suspended=true;}};
-}
-
-
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
@@ -1335,6 +1230,14 @@ const EN_MESSAGES = {
   "高斯原始坐标 · 本地编辑": "Gaussian coordinates · Local editing",
   "本机 PLY · 高斯泼溅": "Local PLY · Gaussian splats",
   "原始尺度 · 可撤销编辑 · 本地处理": "Original scale · Undoable edits · Local processing",
+  "已处理 {0} / {1} {2}": "Processed {0} / {1} {2}",
+  " · {0} 项失败": " · {0} failed",
+  " · 正在准备画面…": " · Preparing scene…",
+  "整批加载进度": "Batch loading progress",
+  "个对象": "objects",
+  "个模型": "models",
+  "个点云": "point clouds",
+  "个高斯文件": "Gaussian files",
 };
 
 
@@ -1402,6 +1305,166 @@ function initializeLocale(doc = document) {
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }
+}
+
+
+// Source: src/shared/batch-progress.js
+
+/** Count complete items, never the current file's bytes. Failures are processed items too. */
+function batchProgressState(done,total,{unit='个对象',failed=0,preparing=false}={}) {
+  total=Math.max(0,Math.floor(Number(total)||0));done=Math.min(total,Math.max(0,Math.floor(Number(done)||0)));
+  failed=Math.min(done,Math.max(0,Math.floor(Number(failed)||0)));
+  const fraction=total?done/total:0;
+  let text=t('已处理 {0} / {1} {2}',[done,total,t(unit)]);
+  if(failed)text+=t(' · {0} 项失败',[failed]);
+  const summary=text+(preparing?t(' · 正在准备画面…'):'');
+  text=summary+(preparing?'':` · ${Math.floor(fraction*100)}%`);
+  return {done,total,failed,fraction,text,summary};
+}
+function createBatchProgress(box,{total,unit='个对象',current=()=>true}={}) {
+  const doc=box.ownerDocument;
+  let bar=box.querySelector('progress');if(!bar){bar=doc.createElement('progress');box.append(bar);}
+  bar.max=1;bar.hidden=false;bar.setAttribute('aria-label',t('整批加载进度'));box.classList.add('has-progress');box.classList.add('batch-loading');
+  let visual=box.querySelector('.batch-progress-visual');
+  if(!visual){
+    const make=className=>{const node=doc.createElement('div');node.className=className;return node;};
+    visual=make('batch-progress-visual');visual.setAttribute('aria-hidden','true');
+    const track=make('batch-progress-track'),fill=make('batch-progress-fill'),badge=make('batch-progress-percent'),text=doc.createElement('span');text.className='batch-progress-percent-text';
+    const marker=make('batch-progress-marker');track.append(fill);badge.append(text);marker.append(badge);visual.append(track,marker);box.append(visual);
+  }
+  let completed=0,failures=0;
+  const report=(done,failed=failures,preparing=false)=>{
+    if(!current())return;
+    completed=Math.max(completed,done);failures=Math.max(failures,failed);
+    const state=batchProgressState(completed,total,{unit,failed:failures,preparing});
+    box.querySelector('span').textContent=state.summary;bar.value=state.fraction;
+    bar.setAttribute('aria-valuetext',state.text);
+    visual.style.setProperty('--batch-progress',`${state.fraction*100}%`);
+    visual.querySelector('.batch-progress-percent-text').textContent=`${Math.floor(state.fraction*100)}%`;
+    return state;
+  };
+  report(0);return {report,prepare:()=>report(total,failures,true)};
+}
+
+
+// Source: src/shared/name-summary.js
+/** Bounded labels for multi-file scenes; source names remain in the project tree. */
+function compactNames(names, {maxItems=2,maxChars=96,separator=' + '}={}) {
+  const values=Array.from(names||[],name=>String(name??'')).filter(Boolean);
+  if(!values.length)return '';
+  const shown=values.slice(0,maxItems),remaining=values.length-shown.length;
+  const suffix=remaining?` … (+${remaining})`:'';
+  const budget=Math.max(1,Math.floor((maxChars-Array.from(suffix).length-(shown.length-1)*Array.from(separator).length)/shown.length));
+  return shown.map(name=>{const points=Array.from(name);return points.length>budget?points.slice(0,Math.max(0,budget-1)).join('')+'…':name;}).join(separator)+suffix;
+}
+function setNameSummary(element,names,empty='') {
+  element.textContent=compactNames(names)||empty;
+  element.title=compactNames(names,{maxItems:8,maxChars:1024,separator:'\n'});
+}
+
+
+// Source: src/shared/camera-geometry.js
+// Gaussian camera conventions: right/up/back form an orthonormal world basis.
+// Inria cameras.json stores camera-to-world columns right/down/forward.
+const gsDot3 = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function gsUnit3(v) { const n=Math.hypot(...v); if (!(n>1e-12)) throw Error('Invalid camera axis'); return v.map(x=>x/n); }
+function gsCross3(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function gsTrainingPose(camera, origin=[0,0,0]) {
+  const r=camera.rotation;
+  if (!Array.isArray(r)||r.length!==3||r.some(row=>!Array.isArray(row)||row.length!==3||!row.every(Number.isFinite)) || !camera.position?.every(Number.isFinite) || !(camera.fx>0&&camera.fy>0&&camera.width>0&&camera.height>0)) throw Error('训练相机缺少有效的 rotation、fx、fy 或图像尺寸 / Invalid training camera');
+  const right=gsUnit3(r.map(row=>row[0])), up=gsUnit3(r.map(row=>-row[1])), back=gsUnit3(r.map(row=>-row[2]));
+  if (Math.abs(gsDot3(right,up))>1e-3||Math.abs(gsDot3(right,back))>1e-3||Math.abs(gsDot3(up,back))>1e-3 || gsDot3(gsCross3(right,up),back)<.999) throw Error('Invalid camera rotation');
+  return {eye:camera.position.map((v,i)=>v-origin[i]),basis:[right,up,back],fx:camera.fx,fy:camera.fy,width:camera.width,height:camera.height};
+}
+function gsViewSpec(viewer, width, height) {
+  const basis=viewer.basis(), perspective=viewer.projection!=='orthographic';
+  const training=viewer.trainingPose;
+  const focal=height/(2*Math.tan((viewer.fov||55)*Math.PI/360));
+  const fit=training?Math.min(width/training.width,height/training.height):1;
+  const fx=training?training.fx*fit:viewer.orbitLens?viewer.orbitLens.fx*height:focal, fy=training?training.fy*fit:viewer.orbitLens?viewer.orbitLens.fy*height:focal;
+  const distance=viewer.distance/viewer.camera.zoom;
+  const target=viewer.target.map((v,i)=>v+basis[0][i]*viewer.camera.pan[0]+basis[1][i]*viewer.camera.pan[1]);
+  const eye=viewer.flyPose?viewer.flyPose.eye:training?training.eye:target.map((v,i)=>v+basis[2][i]*distance);
+  return {basis,eye,target,width,height,fx,fy,perspective,near:viewer.near||.001,worldHeight:viewer.baseHeight/viewer.camera.zoom};
+}
+function gsProjectPosition(point, spec) {
+  const delta=point.map((v,i)=>v-spec.eye[i]), [right,up,back]=spec.basis;
+  const depth=-gsDot3(delta,back);
+  if (spec.perspective && depth<=spec.near) return null;
+  const x=gsDot3(delta,right), y=gsDot3(delta,up);
+  return {x:spec.width/2+(spec.perspective?spec.fx*x/depth:x*spec.height/spec.worldHeight),y:spec.height/2-(spec.perspective?spec.fy*y/depth:y*spec.height/spec.worldHeight),depth};
+}
+
+
+// Source: src/shared/orbit-camera.js
+
+function gsOrbitRotate(v, axis, angle) {
+  const c=Math.cos(angle),s=Math.sin(angle),d=gsDot3(v,axis);
+  const cross=[axis[1]*v[2]-axis[2]*v[1],axis[2]*v[0]-axis[0]*v[2],axis[0]*v[1]-axis[1]*v[0]];
+  return v.map((x,i)=>x*c+cross[i]*s+axis[i]*d*(1-c));
+}
+function gsSetOrbitBasis(viewer, basis) {
+  const [right,,back]=basis, deg=180/Math.PI;
+  const az=Math.atan2(back[1],back[0]), el=Math.asin(Math.max(-1,Math.min(1,back[2])));
+  const r=[-Math.sin(az),Math.cos(az),0], u=[-Math.cos(az)*Math.sin(el),-Math.sin(az)*Math.sin(el),Math.cos(el)];
+  viewer.camera.azimuth=az*deg;viewer.camera.elevation=el*deg;
+  viewer.camera.roll=Math.atan2(gsDot3(right,u),gsDot3(right,r))*deg;
+}
+/** Estimate depth from the nearest 32 projected Gaussian centers. Not a surface raycast.
+ * Runs once at gesture start; hidden/deleted/very transparent splats are excluded.
+ */
+function gsOrbitDepth(viewer, spec, x=spec.width/2, y=spec.height/2) {
+  if(viewer.pickOrbitDepth)return viewer.pickOrbitDepth(spec,x,y);
+  if(!viewer.packed)return null;
+  const {centers,opacity}=viewer.packed, [r,u,b]=spec.basis;
+  const radius=Math.max(12,Math.min(spec.width,spec.height)*.045), candidates=[];
+  let limit=radius*radius;
+  for(let i=0;i<viewer.count;i++) {
+    if((viewer.flags?.[i]||0)&6 || opacity[i]<Math.max(.05,viewer.gauss.opacityCutoff))continue;
+    const dx=centers[i*3]-spec.eye[0],dy=centers[i*3+1]-spec.eye[1],dz=centers[i*3+2]-spec.eye[2];
+    const depth=-(dx*b[0]+dy*b[1]+dz*b[2]);if(depth<=spec.near)continue;
+    const vx=dx*r[0]+dy*r[1]+dz*r[2],vy=dx*u[0]+dy*u[1]+dz*u[2];
+    const px=spec.width/2+(spec.perspective?spec.fx*vx/depth:vx*spec.height/spec.worldHeight)-x;
+    const py=spec.height/2-(spec.perspective?spec.fy*vy/depth:vy*spec.height/spec.worldHeight)-y;
+    const d=px*px+py*py;if(d>limit)continue;
+    candidates.push({d,depth});candidates.sort((a,b)=>a.d-b.d);if(candidates.length>32)candidates.pop();
+    if(candidates.length===32)limit=candidates[31].d;
+  }
+  if(!candidates.length)return null;
+  // A lower quartile resists isolated near-camera floaters and favors foreground geometry.
+  candidates.sort((a,b)=>a.depth-b.depth);return candidates[Math.floor((candidates.length-1)*.25)].depth;
+}
+function gsReanchorOrbit(viewer, {model=false,x=null,y=null}={}) {
+  const spec=gsViewSpec(viewer,viewer.canvas.clientWidth,viewer.canvas.clientHeight), back=spec.basis[2];
+  const picked=model?null:gsOrbitDepth(viewer,spec,x??spec.width/2,y??spec.height/2);
+  if(!model&&x!==null&&picked===null)return false;
+  const fallback=Math.max(spec.near*2,viewer.distance/viewer.camera.zoom);
+  let depth=picked??fallback;
+  let target=model?viewer.worldCenter().map((v,i)=>v-viewer.origin[i]):spec.eye.map((v,i)=>v-back[i]*depth);
+  if(!model&&x!==null) {
+    const sx=spec.perspective?(x-spec.width/2)*depth/spec.fx:(x-spec.width/2)*spec.worldHeight/spec.height;
+    const sy=spec.perspective?-(y-spec.height/2)*depth/spec.fy:-(y-spec.height/2)*spec.worldHeight/spec.height;
+    target=target.map((v,i)=>v+spec.basis[0][i]*sx+spec.basis[1][i]*sy);
+  }
+  const offset=spec.eye.map((v,i)=>v-target[i]);depth=gsDot3(offset,back);
+  if(depth<=spec.near)return false;
+  // Reparameterize the same eye and lens; changing the pivot must not pan or zoom the image.
+  viewer.target=target;viewer.distance=depth*viewer.camera.zoom;
+  viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];
+  if(viewer.trainingPose){viewer.leaveTraining();viewer.camera.pan=[gsDot3(offset,spec.basis[0]),gsDot3(offset,spec.basis[1])];viewer.orbitLens={fx:spec.fx/spec.height,fy:spec.fy/spec.height};}
+  viewer.orbitAnchorHit=picked!==null;return picked!==null||model;
+}
+
+
+// Source: src/shared/autosave.js
+/** Dirty events never serialize data. Flush on a five-minute deadline or lifecycle boundary. */
+function createAutosave({save, onDirty=()=>{}, delay=300000, setTimer=setTimeout, clearTimer=clearTimeout}) {
+  let timer=null, suspended=false, dirty=false, generation=0;
+  const cancel=()=>{if(timer!==null)clearTimer(timer);timer=null;};
+  const arm=()=>{if(suspended||!dirty||timer!==null)return;timer=setTimer(()=>{timer=null;flush().catch(()=>arm());},delay);};
+  const flush=()=>{cancel();const savingGeneration=generation;return Promise.resolve().then(save).then(result=>{if(generation===savingGeneration)dirty=false;if(dirty){onDirty();arm();}return result;},error=>{dirty=true;arm();throw error;});};
+  const schedule=()=>{dirty=true;generation++;if(timer!==null)return;onDirty();arm();};
+  return {schedule,flush,pause(){suspended=true;return flush();},resume(){suspended=false;arm();},dispose(){cancel();suspended=true;}};
 }
 
 
@@ -5073,6 +5136,8 @@ function gsViewingProfile(mode, mobile=false, software=false) {
 
 
 
+
+
 async function gsBoot() {
   initializeLocale();
   if(await openNativeGaussianPage())return;
@@ -5174,11 +5239,12 @@ async function gsBoot() {
     const selected = [...gsSelected];
     if (!selected.length) {
       gsLoading(''); gs$('empty-state').hidden = false; gs$('screenshot').disabled = true;
-      gs$('current-title').textContent = t('未选择数据'); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
+      setNameSummary(gs$('current-title'),[],t('未选择数据')); gs$('scene-stats').textContent = t('从左侧选择要查看的数据');
       gs$('geometry-note').textContent = t('未选择数据时保持空白');
       gsViewer?.clearSplats(); gsEditor?.setLoading(false);gsEditor?.sceneChanged(); gsList(); return;
     }
-    gsLoading(t('正在读取文件…')); gs$('empty-state').hidden = true; gsError('');
+    gsLoading(t('正在读取文件…'));
+    const batchProgress=createBatchProgress(gs$('loading'),{total:selected.length,unit:'个高斯文件',current:()=>serial===gsSerial}); gs$('empty-state').hidden = true; gsError('');
     const degree = Number(gs$('gs-sh').value);
     gs$('gs-sh').disabled=false;
     gsEditor?.setLoading(true);
@@ -5188,10 +5254,8 @@ async function gsBoot() {
       for (const entry of selected) {
         if (serial !== gsSerial) return;
         if (!entry.parsed || entry.parsed.preview) {
-          gsLoading(t('正在读取 {0}…', [entry.treeName || entry.file.name]));
           if(entry.parsed&&!entry.parsed.preview){entry.savedFlags=entry.parsed.editFlags;gsEditor?.edits.releaseGeometry(entry.parsed);}
-          const onProgress=(done,total)=>{if(serial===gsSerial)gsLoading(t('正在解析 {0}（{1}%）',[entry.treeName||entry.file.name,Math.floor(done/total*100)]),total>0?done/total:null);};
-          const parsed=await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true,onProgress});
+          const parsed=await gsParseGaussianPly(await entry.file.arrayBuffer(),{includeRest:true});
           if(serial!==gsSerial)return;
           if(entry.savedFlags){
             if(entry.savedFlags.length!==parsed.sourceCount)throw Error('Gaussian snapshot does not match source');
@@ -5203,15 +5267,17 @@ async function gsBoot() {
         entry.parsed.name = entry.treeName || entry.file.name;
         gsEditor?.edits.attach(entry.parsed);
         models.push(entry.parsed);
+        batchProgress.report(models.length);
       }
       if (serial !== gsSerial) return;
+      batchProgress.prepare();
       const useDegree = degree;
       applyQuality();
       gsViewer.setModels(models, {preserveView, maxSplats: 0, shDegree: 3});updateDistance();
       gsEditor?.sceneChanged();
       gsViewer.setGaussianOptions({scale: Number(gs$('gs-scale').value), opacityCutoff: Number(gs$('gs-cutoff').value) / 100, background: gs$('gs-background').value, shDegree: useDegree});
       const shown = gsViewer.count, source = gsViewer.pointCount;
-      gs$('current-title').textContent = selected.map(entry => entry.treeName || entry.id).join('、');
+      setNameSummary(gs$('current-title'),selected.map(entry => entry.treeName || entry.id));
       gs$('scene-stats').textContent = t('已显示 {0} / {1} 个高斯', [shown.toLocaleString('zh-CN'), source.toLocaleString('zh-CN')]);
       gs$('geometry-note').textContent = t('原始尺度 · 可撤销编辑 · 本地处理');
       gs$('screenshot').disabled = false; gsLoading('');

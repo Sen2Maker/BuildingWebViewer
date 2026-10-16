@@ -1225,4 +1225,12 @@ export const EN_MESSAGES = {
   "高斯原始坐标 · 本地编辑": "Gaussian coordinates · Local editing",
   "本机 PLY · 高斯泼溅": "Local PLY · Gaussian splats",
   "原始尺度 · 可撤销编辑 · 本地处理": "Original scale · Undoable edits · Local processing",
+  "已处理 {0} / {1} {2}": "Processed {0} / {1} {2}",
+  " · {0} 项失败": " · {0} failed",
+  " · 正在准备画面…": " · Preparing scene…",
+  "整批加载进度": "Batch loading progress",
+  "个对象": "objects",
+  "个模型": "models",
+  "个点云": "point clouds",
+  "个高斯文件": "Gaussian files",
 };

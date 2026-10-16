@@ -1230,6 +1230,14 @@ const EN_MESSAGES = {
   "高斯原始坐标 · 本地编辑": "Gaussian coordinates · Local editing",
   "本机 PLY · 高斯泼溅": "Local PLY · Gaussian splats",
   "原始尺度 · 可撤销编辑 · 本地处理": "Original scale · Undoable edits · Local processing",
+  "已处理 {0} / {1} {2}": "Processed {0} / {1} {2}",
+  " · {0} 项失败": " · {0} failed",
+  " · 正在准备画面…": " · Preparing scene…",
+  "整批加载进度": "Batch loading progress",
+  "个对象": "objects",
+  "个模型": "models",
+  "个点云": "point clouds",
+  "个高斯文件": "Gaussian files",
 };
 
 
@@ -1297,6 +1305,61 @@ function initializeLocale(doc = document) {
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }
+}
+
+
+// Source: src/shared/batch-progress.js
+
+/** Count complete items, never the current file's bytes. Failures are processed items too. */
+function batchProgressState(done,total,{unit='个对象',failed=0,preparing=false}={}) {
+  total=Math.max(0,Math.floor(Number(total)||0));done=Math.min(total,Math.max(0,Math.floor(Number(done)||0)));
+  failed=Math.min(done,Math.max(0,Math.floor(Number(failed)||0)));
+  const fraction=total?done/total:0;
+  let text=t('已处理 {0} / {1} {2}',[done,total,t(unit)]);
+  if(failed)text+=t(' · {0} 项失败',[failed]);
+  const summary=text+(preparing?t(' · 正在准备画面…'):'');
+  text=summary+(preparing?'':` · ${Math.floor(fraction*100)}%`);
+  return {done,total,failed,fraction,text,summary};
+}
+function createBatchProgress(box,{total,unit='个对象',current=()=>true}={}) {
+  const doc=box.ownerDocument;
+  let bar=box.querySelector('progress');if(!bar){bar=doc.createElement('progress');box.append(bar);}
+  bar.max=1;bar.hidden=false;bar.setAttribute('aria-label',t('整批加载进度'));box.classList.add('has-progress');box.classList.add('batch-loading');
+  let visual=box.querySelector('.batch-progress-visual');
+  if(!visual){
+    const make=className=>{const node=doc.createElement('div');node.className=className;return node;};
+    visual=make('batch-progress-visual');visual.setAttribute('aria-hidden','true');
+    const track=make('batch-progress-track'),fill=make('batch-progress-fill'),badge=make('batch-progress-percent'),text=doc.createElement('span');text.className='batch-progress-percent-text';
+    const marker=make('batch-progress-marker');track.append(fill);badge.append(text);marker.append(badge);visual.append(track,marker);box.append(visual);
+  }
+  let completed=0,failures=0;
+  const report=(done,failed=failures,preparing=false)=>{
+    if(!current())return;
+    completed=Math.max(completed,done);failures=Math.max(failures,failed);
+    const state=batchProgressState(completed,total,{unit,failed:failures,preparing});
+    box.querySelector('span').textContent=state.summary;bar.value=state.fraction;
+    bar.setAttribute('aria-valuetext',state.text);
+    visual.style.setProperty('--batch-progress',`${state.fraction*100}%`);
+    visual.querySelector('.batch-progress-percent-text').textContent=`${Math.floor(state.fraction*100)}%`;
+    return state;
+  };
+  report(0);return {report,prepare:()=>report(total,failures,true)};
+}
+
+
+// Source: src/shared/name-summary.js
+/** Bounded labels for multi-file scenes; source names remain in the project tree. */
+function compactNames(names, {maxItems=2,maxChars=96,separator=' + '}={}) {
+  const values=Array.from(names||[],name=>String(name??'')).filter(Boolean);
+  if(!values.length)return '';
+  const shown=values.slice(0,maxItems),remaining=values.length-shown.length;
+  const suffix=remaining?` … (+${remaining})`:'';
+  const budget=Math.max(1,Math.floor((maxChars-Array.from(suffix).length-(shown.length-1)*Array.from(separator).length)/shown.length));
+  return shown.map(name=>{const points=Array.from(name);return points.length>budget?points.slice(0,Math.max(0,budget-1)).join('')+'…':name;}).join(separator)+suffix;
+}
+function setNameSummary(element,names,empty='') {
+  element.textContent=compactNames(names)||empty;
+  element.title=compactNames(names,{maxItems:8,maxChars:1024,separator:'\n'});
 }
 
 
@@ -6082,6 +6145,8 @@ async function genTakeHandoff() {
 
 
 
+
+
 initializeLocale();
 (() => {
   const $ = id => document.getElementById(id);
@@ -6212,7 +6277,7 @@ initializeLocale();
   function resetPanelLabels() {
     if (!isWire) return;
     for (let index = 1; index <= 3; index++) {
-      $(`panel-label-${index}`).textContent = t("线框 {0}", [index]); $(`panel-stats-${index}`).textContent = '—';
+      setNameSummary($(`panel-label-${index}`),[],t("线框 {0}", [index])); $(`panel-stats-${index}`).textContent = '—';
       $(`panel-empty-${index}`).hidden = true;
     }
   }
@@ -6226,7 +6291,7 @@ initializeLocale();
     resetFileControls(); resetPanelLabels(); fields(); list(); error('');
     $('loading').hidden = true; $('screenshot').disabled = true; $('empty-state').hidden = false;
     $('current-title').textContent = t('未选择数据'); $('scene-stats').textContent = t('从左侧选择要查看的数据');
-    $('geometry-note').textContent = t('未选择数据时保持空白'); $('data-notes').textContent = ''; $('color-legend').hidden = true;
+    setNameSummary($('geometry-note'),[],t('未选择数据时保持空白')); $('data-notes').textContent = ''; $('color-legend').hidden = true;
   }
   function receive(fileList, fromFolder, dropPaths = null) {
     const files = [...fileList];
@@ -6435,7 +6500,7 @@ initializeLocale();
     let snapshot = preserveCamera ? captureView() : null;
     const before = {...cached.stats};
     syncEnabled = false;
-    $('loading').querySelector('span').textContent = t('正在读取新增文件…');
+    const batchProgress=createBatchProgress($('loading'),{total:selection.length,unit:'个点云',current:()=>version===revision});
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
     $('current-title').textContent = selection.length === 1 ? selection[0].id : t("{0} 个点云叠加", [selection.length]);
     const items = [], failures = [];
@@ -6444,19 +6509,16 @@ initializeLocale();
       for (const [index, entry] of selection.entries()) {
         if (version !== revision) return;
         try {
-          const cloud = await read(entry.file, 'cloud', {maxPoints, signal: controller.signal, onProgress({loaded, total}) {
-            if (version !== revision) return;
-            const message = t("解析点云 {0}%", [Math.floor(loaded / Math.max(1, total) * 100)]);
-            $('loading').querySelector('span').textContent = `${index + 1} / ${selection.length} · ${message}`;
-            $('scene-stats').textContent = `${entry.id} · ${message} · ${formatSize(loaded)} / ${formatSize(total)}`;
-          }});
+          const cloud = await read(entry.file, 'cloud', {maxPoints, signal: controller.signal});
           items.push({key: entry.file, name: entry.id, entry, rawCloud: cloud, cloud: prepareColumns(entry,cloud)});
         } catch (cause) {
           if (version !== revision) return;
           failures.push(`${entry.id}：${cause.message}`);
         }
+        batchProgress.report(index+1,failures.length);
       }
       if (version !== revision) return;
+      batchProgress.prepare();
       const description = describePointClouds(items);
       snapshot = preserveCamera ? captureView() : null;
       initViewers();
@@ -6464,7 +6526,7 @@ initializeLocale();
       displayedItems = items; columnsControls?.refresh();cloudColors?.refresh();
       loaded.cloud = description; loaded.wire = null; loadedWires = [];
       selectedFiles = {cloud: null, wires: [], clouds: items.map(item => item.name)};
-      currentPointName = items.map(item => item.name).join(' + ');
+      currentPointName = compactNames(items.map(item => item.name));
       messages = [...(loaded.cloud?.notes || [])];
       messages.push(maxPoints ? t("每个文件最多显示 {0} 点，增减选择不会改变其他文件的采样。", [pretty(maxPoints)]) : t('全量读取 · 不设置读取点数上限。'));
       messages.push(t("本次解析 {0} 个文件，复用 {1} 个缓存。", [cached.stats.reads - before.reads, cached.stats.hits - before.hits]));
@@ -6519,18 +6581,18 @@ initializeLocale();
     const before = {...cached.stats}, failures = [], cloudItems = [], wireGroups = Array.from({length:count},()=>[]);
     const panelNames = Array.from({length:count},()=>[]);
     let viewSnapshot = preserveCamera ? captureView() : null; syncEnabled = false;
-    $('loading').querySelector('span').textContent = t('正在读取所选文件…');
+    const batchProgress=createBatchProgress($('loading'),{total:selection.length,unit:'个对象',current:()=>version===revision});
     $('loading').hidden = false; $('empty-state').hidden = true; $('screenshot').disabled = true; error('');
     $('current-title').textContent = selection.length === 1 ? t('对象 {0}',[active.id]) : t('{0} 个 ID 叠加',[selection.length]);
     $('scene-stats').textContent = t('正在读取所选文件…');
     try {
+      let completed=0,failedItems=0;
       for (const {entry,files} of plans) {
         if (version !== revision) return;
-        const onProgress = ({loaded,total}) => {
-          if (version === revision) $('loading').querySelector('span').textContent = `${entry.id} · ${t('解析点云 {0}%',[Math.floor(loaded / Math.max(1,total)*100)])}`;
-        };
-        const results = await Promise.allSettled([read(files.cloud,'cloud',{signal:controller.signal,onProgress}),...files.wires.map(file=>read(file,'wire',{signal:controller.signal}))]);
+        const results = await Promise.allSettled([read(files.cloud,'cloud',{signal:controller.signal}),...files.wires.map(file=>read(file,'wire',{signal:controller.signal}))]);
         if (version !== revision) return;
+        if(results.some(result=>result.status==='rejected'))failedItems++;
+        batchProgress.report(++completed,failedItems);
         const value = (result,file) => {
           if (result.status === 'fulfilled') return result.value;
           failures.push(`${entry.id} / ${file?.name || ''}：${result.reason?.message || result.reason}`); return null;
@@ -6543,11 +6605,12 @@ initializeLocale();
         });
       }
       if (version !== revision) return;
+      batchProgress.prepare();
       viewSnapshot = preserveCamera ? captureView() : null;
       loadedWires = wireGroups.map(combineWireframes); loaded.wire = loadedWires[0] || null;
       loaded.cloud = cloudItems.length === 1 ? cloudItems[0].cloud : describePointClouds(cloudItems);
       selectedFiles = plans.find(plan=>plan.entry===active)?.files || {cloud:null,wires:[]};
-      currentPointName = cloudItems.map(item=>item.name).join(' + ');
+      currentPointName = compactNames(cloudItems.map(item=>item.name));
       messages = [...(loaded.cloud?.notes || []),t('本次解析 {0} 个文件，复用 {1} 个缓存。',[cached.stats.reads-before.reads,cached.stats.hits-before.hits])];
       initViewers(); fields();
       const sharedBounds = unionBounds([...cloudItems.map(item=>item.cloud.bounds),...loadedWires.map(wire=>wire?.bounds)]);
@@ -6560,13 +6623,13 @@ initializeLocale();
       syncEnabled = count>1; update(); cameraControls?.refresh();
       for(let index=0;index<3;index++) {
         const wire=loadedWires[index];
-        $(`panel-label-${index+1}`).textContent=panelNames[index]?.join(' + ') || t('未加载线框');
+        setNameSummary($(`panel-label-${index+1}`),panelNames[index],t('未加载线框'));
         $(`panel-stats-${index+1}`).textContent=wire?t('{0} 条线',[pretty(wire.edges.length)]):'—';
         $(`panel-empty-${index+1}`).hidden=!(index<count && wire && !wire.edges.length);
       }
       const edges=loadedWires.reduce((sum,wire)=>sum+(wire?.edges.length||0),0);
       $('scene-stats').textContent=t('{0} 个 ID · {1} 条线 · {2} 点',[selection.length,pretty(edges),pretty(loaded.cloud?.count||0)]);
-      $('geometry-note').textContent=panelNames[0].join(' + ') || currentPointName || t('未加载数据');
+      setNameSummary($('geometry-note'),panelNames[0].length ? panelNames[0] : cloudItems.map(item=>item.name),t('未加载数据'));
       const hasLoaded=Boolean(cloudItems.length || loadedWires.some(wire=>wire?.edges.length));
       $('empty-state').hidden=hasLoaded; $('screenshot').disabled=!hasLoaded;
       if(failures.length) error(failures.join('；'));
