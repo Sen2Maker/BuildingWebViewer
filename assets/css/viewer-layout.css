@@ -196,3 +196,22 @@ body{height:100vh;height:100dvh;overflow:hidden}
 .cloud-chip{min-width:0;flex-shrink:0}.cloud-chip>span{min-width:0}.cloud-chip>button{flex-shrink:0}
 .data-notes{flex-shrink:0;overscroll-behavior:contain}
 @media(max-width:700px){.scene-note{right:10px;max-width:calc(100% - 20px);max-height:44px}}
+
+/* ID viewing choices share one compact row; the project tree keeps its space. */
+.main-heading.object-browser-heading{flex-wrap:wrap;gap:8px 16px}
+.main-heading>.object-browser-controls{flex:0 1 auto}
+.object-browser-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto;min-width:0;max-width:100%}
+.object-browser-controls select{width:auto;max-width:180px;min-width:0;padding:7px 9px;font-size:12px;text-overflow:ellipsis}
+.object-browser-controls .object-id-navigation{display:flex;gap:3px}
+.object-browser-controls button,.object-browser-help>summary{min-width:32px;height:32px;padding:0 8px;font-size:18px;line-height:1;border:1px solid #dce6e1;border-radius:7px;background:#f8fbf9;color:#496e61}
+.object-browser-controls .object-variant{display:flex;align-items:center;gap:6px;font-size:11px;color:#72867c;min-width:0}
+.object-variant select{max-width:170px}
+.object-browser-help{position:relative;flex:none}
+.object-browser-help>summary{display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;list-style:none;width:32px}
+.object-browser-help>summary::-webkit-details-marker{display:none}
+.object-browser-help[open]>summary{background:#e6f1ec;border-color:#9dbdaf}
+.object-browser-help>div{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:260px;max-width:calc(100vw - 44px);padding:12px 14px;background:white;border:1px solid #dce6e1;border-radius:10px;box-shadow:0 8px 24px #183c2920;font-size:12px;line-height:1.6;color:#687e73}
+.object-browser-help p{margin:0}.object-browser-help p+p{margin-top:8px}
+.object-browser-controls [hidden]{display:none!important}
+@media(max-width:700px){.object-browser-controls{margin-left:0}.object-browser-controls select{max-width:160px}.object-variant select{max-width:145px}}
+@media(pointer:coarse){.object-browser-controls select,.object-browser-controls button,.object-browser-help>summary{min-height:44px}.object-browser-controls button,.object-browser-help>summary{min-width:44px}}

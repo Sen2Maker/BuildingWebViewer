@@ -1,5 +1,8 @@
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 export const EN_MESSAGES = {
+  "显示模式说明": "Display mode help",
+  "上一个 ID": "Previous ID",
+  "下一个 ID": "Next ID",
   "线框显示模式": "Wireframe display mode",
   "单个 ID": "Single ID",
   "多个 ID 叠加": "Multiple IDs",
@@ -1233,4 +1236,12 @@ export const EN_MESSAGES = {
   "个模型": "models",
   "个点云": "point clouds",
   "个高斯文件": "Gaussian files",
+  "网格显示模式": "Mesh display mode",
+  "多个 ID 陈列": "Multiple IDs",
+  "OBJ 版本": "OBJ variant",
+  "版本按文件名沿用，当前 ID 缺少同名文件时使用可用版本。": "Reuse the variant filename across IDs; fall back to an available OBJ if missing.",
+  "勾选多个 ID，以独立模型陈列；显示设置应用到所有已选 ID。": "Display checked IDs as separate models; settings apply to every selected ID.",
+  "支持 ID.obj 或 ID 文件夹中的 OBJ。单个 ID 可切换，多个 ID 可批选；同一 ID 内可选择 OBJ 版本。": "Load ID.obj or OBJ files inside ID folders. Switch single IDs, batch-select multiple IDs and choose an OBJ variant per ID.",
+  "支持 ID.obj 或 ID 文件夹中的多个 OBJ；同名 ID 的点云可一起读取，两种结构可以混合导入。": "Load ID.obj or multiple OBJ files inside ID folders, with matching ID clouds. Both layouts can be mixed.",
+  "{0} 个 ID · {1} 个 OBJ · 按需读取": "{0} IDs · {1} OBJ files · Read on demand",
 };

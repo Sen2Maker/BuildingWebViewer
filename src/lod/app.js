@@ -1,3 +1,5 @@
+import { migrateObjectImportState } from '../shared/object-import-state.js';
+import { objectFilePreference, resolveObjectFile, adjacentObjectEntry, objectNavigationDirection } from '../shared/object-selection.js';
 import { createBatchProgress } from '../shared/batch-progress.js';
 import { currentPalettePreferences } from '../shared/palettes.js';
 import { mountCameraAnimation } from '../shared/animation-controls.js';
@@ -20,7 +22,7 @@ import { mountPaletteControls, paletteGradient } from '../shared/palette-control
 
 initializeLocale();
 const $ = (id) => document.getElementById(id);
-let animationControls=null;
+let animationControls=null,meshMode='multiple',meshPreference=null,lastMeshId=null;
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
@@ -73,13 +75,35 @@ function filteredModels() {
 function renderList() {
   $('filter-count').textContent = t("匹配 {0} 项 · 已勾选 {1}", [number(filteredModels().length), selected.size]);
   $('item-count').textContent = t('共 {0} 项', [number(catalog.length)]);
-  for (const id of ['select-all-models','invert-model-selection']) $(id).disabled = !filteredModels().length;
+  for (const id of ['select-all-models','invert-model-selection']) $(id).disabled = meshMode!=='multiple'||!filteredModels().length;
   $('random-selection').disabled = !catalog.length;
-  modelTree?.render();
+  renderMeshMode();modelTree?.render();
 }
+function meshFiles(entry){const files=entry?.files?.length?entry.files:entry?.file?[entry.file]:[];return files.filter(file=>!entry.excludedFileKeys?.includes(entry.sourceKeys?.get(file)));}
+function syncMeshFiles(){
+  for(const entry of catalog){const file=resolveObjectFile(meshFiles(entry),meshPreference);if(file!==entry.file){cache.delete(entry.id);entry.file=file;}entry.bytes=file?.size||0;localFiles.set(entry.id,file);}
+}
+function renderMeshMode(){
+  const multiple=meshMode==='multiple',filtered=filteredModels();$('mesh-mode-select').value=meshMode;
+  $('mesh-mode-note').textContent=multiple?t('勾选多个 ID，以独立模型陈列；显示设置应用到所有已选 ID。'):t('单个 ID：← / → 或 [ / ] 切换；按自然编号顺序，遵循搜索筛选。');
+  const active=catalogById.get(lastMeshId)||catalogById.get(orderedIds().at(-1));
+  $('previous-mesh-id').parentElement.hidden=multiple;
+  $('previous-group').hidden=!multiple;$('next-group').hidden=!multiple;
+  for(const id of ['previous-mesh-id','next-mesh-id'])$(id).disabled=multiple||!filtered.length||adjacentObjectEntry(filtered,active,id==='previous-mesh-id'?-1:1)===active;
+  const files=meshFiles(active);$('mesh-file-select').replaceChildren();
+  for(const [index,file] of files.entries()){const option=document.createElement('option');option.value=String(index);option.textContent=file.name;$('mesh-file-select').append(option);}
+  $('mesh-file-select').closest('label').hidden=files.length<2;
+  $('mesh-file-select').disabled=!files.length;$('mesh-file-select').value=String(Math.max(0,files.indexOf(active?.file)));
+}
+function navigateMesh(direction){if(meshMode!=='single')return;const entry=adjacentObjectEntry(filteredModels(),catalogById.get(lastMeshId),direction);if(entry)selectIds([entry.id]);}
+$('mesh-mode-select').onchange=()=>{meshMode=$('mesh-mode-select').value==='single'?'single':'multiple';if(meshMode==='single'&&selected.size>1)selectIds([selected.has(lastMeshId)?lastMeshId:orderedIds().at(-1)]);else renderList();};
+$('mesh-file-select').onchange=()=>{const entry=catalogById.get(lastMeshId);if(!entry)return;meshPreference=objectFilePreference(meshFiles(entry),$('mesh-file-select').value);syncMeshFiles();renderList();loadSelection();};
+$('previous-mesh-id').onclick=()=>navigateMesh(-1);$('next-mesh-id').onclick=()=>navigateMesh(1);
+document.addEventListener('keydown',event=>{const direction=objectNavigationDirection(event,{multiple:meshMode!=='single',flying:!!viewer?.fly?.active});if(direction){event.preventDefault();navigateMesh(direction);}});
 function renderSelection(syncInput = true) {
   $('selection-count').textContent = t('已勾选 {0} 个', [selected.size]);
   $('previous-group').disabled = !selected.size; $('next-group').disabled = !selected.size;
+  $('previous-group').hidden=meshMode==='single';$('next-group').hidden=meshMode==='single';
   const fragment = document.createDocumentFragment();
   for (const id of orderedIds()) {
     const chip = document.createElement('span'); chip.className = 'model-chip';
@@ -98,13 +122,14 @@ function renderSelection(syncInput = true) {
   if (syncInput) $('batch-ids').value = orderedIds().join(', ');
 }
 function selectIds(ids) {
-  const unique = [...new Set(ids.map(String))];
+  let unique = [...new Set(ids.map(String))];
+  if(meshMode==='single'&&unique.length>1)unique=unique.slice(-1);
   const invalid = unique.filter(id => !catalogById.has(id));
   if (invalid.length) { showError(t("找不到模型编号：{0}", [invalid.slice(0, 8).join('、')])); return false; }
-  selected = new Set(unique); clearError(); renderSelection(); renderList(); loadSelection(); return true;
+  selected = new Set(unique);lastMeshId=unique.at(-1)||null;syncMeshFiles(); clearError(); renderSelection(); renderList(); loadSelection(); return true;
 }
 function applyBatch(append) {
-  try { const ids = parseLodIds($('batch-ids').value, catalogById); selectIds(append ? [...selected, ...ids] : ids); }
+  try { const ids = parseLodIds($('batch-ids').value, catalogById);if(ids.length>1)meshMode='multiple'; selectIds(append ? [...selected, ...ids] : ids); }
   catch (error) { showError(error.message); }
 }
 async function loadSelection() {
@@ -124,6 +149,7 @@ async function loadSelection() {
   $('empty-state').hidden = !!ids.length;
   $('screenshot').disabled = true;
   $('scene-stats').textContent = ids.length ? t("正在读取 {0} 个模型…", [ids.length]) : t('未选择模型');
+  const sameIds=currentModels.map(model=>String(model.id)).sort().join('\0')===[...ids].sort().join('\0');
   const batchProgress=createBatchProgress($('loading'),{total:ids.length,unit:'个模型',current:()=>version===generation});
   const results = new Map(), failures = []; let next = 0, completed = 0;
   const worker = async () => {
@@ -152,7 +178,7 @@ async function loadSelection() {
   await Promise.all(Array.from({length: Math.min(4, ids.length)}, worker));
   if (version !== generation) return;
   batchProgress.prepare();
-  const savedView = cameraControls?.preserveView ? cameraControls.capture() : null;
+  const savedView = cameraControls?.preserveView && (meshMode==='multiple'||sameIds) ? cameraControls.capture() : null;
   currentModels = ids.map(id => results.get(id)).filter(Boolean);
   try {
     viewer?.setModels(currentModels);
@@ -206,6 +232,7 @@ $('batch-ids').onkeydown = event => { if (event.key === 'Enter' && (event.ctrlKe
 $('search').oninput = () => { renderList(); };
 $('clear-selection').onclick = () => selectIds([]);
 $('random-selection').onclick = () => {
+  meshMode='multiple';
   const pool = catalog.map(m => m.id);
   for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
   selectIds(pool.slice(0, 6));
@@ -239,17 +266,18 @@ function folderReady(fileList, paths = null) {
   const result = appendLodFiles(catalog, modelProject, [...fileList], paths);
   catalog.sort((a,b) => a.id.localeCompare(b.id,undefined,{numeric:true}));
   catalogById = new Map(catalog.map(model => [model.id,model]));
-  localFiles = new Map(catalog.map(model => [model.id,model.file]));
+  localFiles = new Map(catalog.map(model => [model.id,model.file]));syncMeshFiles();
   $('search').value = '';
   $('source-path').textContent = t('文件留在本机 · 分组仅保留在本次页面');
-  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选模型", [number(catalog.length)]);
+  $('folder-status').textContent = t('{0} 个 ID · {1} 个 OBJ · 按需读取',[number(catalog.length),number(catalog.reduce((sum,entry)=>sum+meshFiles(entry).length,0))]);
   $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
   if (!result.added && !result.duplicates) showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。'));
   else clearError();
-  renderList(); return result;
+  renderList();if(selected.size&&result.added)loadSelection(); return result;
 }
 function changeModelVisibility(members, checked) {
   const next = new Set(selected);
+  if(checked&&meshMode==='single'){if(members.length!==1)return;next.clear();}
   for (const model of members) checked ? next.add(model.id) : next.delete(model.id);
   selectIds([...next]);
 }
@@ -259,7 +287,7 @@ function removeModelEntries(members) {
   for (const model of members) { cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
   catalog = catalog.filter(model => !removed.has(model));
   $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
-  $('folder-status').textContent = t("{0} 个 OBJ · 仅按需读取所选模型", [number(catalog.length)]);
+  $('folder-status').textContent = t('{0} 个 ID · {1} 个 OBJ · 按需读取',[number(catalog.length),number(catalog.reduce((sum,entry)=>sum+meshFiles(entry).length,0))]);
   selectIds([...selected]);
 }
 const importLodRecords=archiveImportQueue({accepts:name=>/\.obj$/i.test(name),
@@ -277,10 +305,10 @@ function init() {
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
       getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),
-      getMode: () => 'multiple', getQuery: () => $('search').value.trim().replace(/^#/,''),
+      getMode: () => meshMode, getQuery: () => $('search').value.trim().replace(/^#/,''),
       onToggle: model => changeModelVisibility([model],!selected.has(model.id)),
-      onGroupSelection: changeModelVisibility, onVisibility: changeModelVisibility,
-      onRemove: removeModelEntries, onChange: renderList, detail: model => `${(model.bytes / 1024).toFixed(1)} KB`,
+      onGroupSelection: (members,checked)=>{if(meshMode==='multiple')changeModelVisibility(members,checked);}, onVisibility: changeModelVisibility,
+      onRemove: removeModelEntries, onChange: renderList, detail: model => `${meshFiles(model).length} OBJ · ${(model.bytes / 1024).toFixed(1)} KB`,
     });
     mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name), onFiles: importLodRecords});
     $('select-all-models').onclick = () => selectIds([...selected, ...filteredModels().map(model => model.id)]);
@@ -295,9 +323,10 @@ function init() {
     $('source-path').textContent = t('尚未选择文件夹。关闭或刷新网页后，请手动重新选择。');
     $('folder-status').textContent = t('选择含 OBJ 的目录 · 文件仅在本机读取');
     selectIds([]);
-    mountMobileProject({receive:importLodRecords,getState:()=>({tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length?cameraControls?.capture():null}),restoreState:async state=>{
+    mountMobileProject({receive:importLodRecords,getState:()=>({objectImportVersion:2,mode:meshMode,meshPreference,tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length?cameraControls?.capture():null}),restoreState:async (state,records)=>{
+      state=migrateObjectImportState(state,records,catalog,'mesh');
       mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...catalog.map(e=>e.id)])];
-      if(state){catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&currentModels.length)cameraControls.restore(state.camera,{checkScene:false});}
+      if(state){meshMode=state.mode==='single'?'single':'multiple';meshPreference=state.meshPreference?.none?null:state.meshPreference||null;catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));lastMeshId=[...selected].at(-1)||null;syncMeshFiles();restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&currentModels.length)cameraControls.restore(state.camera,{checkScene:false});}
       $('source-path').textContent=t('项目自动保存在此设备');
     },onBackground:()=>{for(const id of cache.keys())if(!selected.has(id))cache.delete(id);}}).then(session=>{mobileSession=session;});
   } catch (error) {

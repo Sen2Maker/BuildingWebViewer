@@ -22,5 +22,5 @@ wireProject.move(set,'');appendWireFiles(sets,wireProject,[file('dataset/101/c.o
 assert.equal(set.group,'');assert.equal(set.wires[2].name,'c.obj');
 appendWireFiles(sets,wireProject,[file('other/101/a.obj')]);assert.equal(sets.length,3);assert.notEqual(sets[2].id,set.id);
 const loose=[], looseProject=new ViewerProject();appendWireFiles(loose,looseProject,[file('a.obj'),file('pc.txt')]);
-assert.equal(loose.length,1);assert.equal(loose[0].clouds.length,1);
+assert.equal(loose.length,2);assert.deepEqual(loose.map(e=>e.id),['a','pc']);
 console.log('PASS wire sets append in stable order, retain virtual moves, and isolate same IDs in different datasets');

@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>线框查看器 · 三维数据工具箱</title><!-- site-meta:start -->
-<meta name="application-build" content="c0a186dbd8facedf">
+<meta name="application-build" content="e88c661e5ad034af">
 <meta name="description" content="通用 OBJ 线框查看器：按目录分组、点云叠加、最多三个面板对比与相机同步。General OBJ wireframe viewer with folder groups, point cloud overlays, up to three comparison panes and synchronized cameras.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.8.2">
+<meta name="application-version" content="1.9.0">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/wireframe.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="线框查看器 / Wireframe Viewer · BuildingWebViewer">
@@ -98,7 +98,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once: true}); else start();
 })();
 </script>
-<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=9db3e16ad754" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=57fe6ee6fffe"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=6fa2af78d567"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=c5a7b3551b38"><link rel="stylesheet" href="assets/css/styles.css?v=e5f35201e2a7"><link rel="stylesheet" href="assets/css/cloud.css?v=c9998ca39751"><link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=e67b78b33a69"><link rel="stylesheet" href="assets/css/project-tree.css?v=2b50fa80e241"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"><link rel="stylesheet" href="assets/css/camera-navigation.css?v=f1f7db3ac58c"></head>
+<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=9db3e16ad754" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=57fe6ee6fffe"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=6fa2af78d567"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=c5a7b3551b38"><link rel="stylesheet" href="assets/css/styles.css?v=e5f35201e2a7"><link rel="stylesheet" href="assets/css/cloud.css?v=c9998ca39751"><link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=c0bb61a496c0"><link rel="stylesheet" href="assets/css/project-tree.css?v=9fe2a270f63d"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"><link rel="stylesheet" href="assets/css/camera-navigation.css?v=f1f7db3ac58c"></head>
 <body data-tool="wireframe"><!-- boot-body:start -->
 <div id="page-boot" role="status" aria-live="polite" data-no-i18n>
   <div class="boot-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none" stroke="#48846b" stroke-width="1.6" stroke-linejoin="round"><path d="m20 5 14 8v15l-14 8-14-8V13Z M6 13l14 8 14-8 M20 21v15 M13 9l14 8"/></svg></div>
@@ -117,14 +117,19 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
     <p id="drop-hint" class="point-drop-hint">拖入文件或文件夹</p>
     <p id="drop-status" class="point-drop-status" role="status" hidden></p>
   </div>
-<div class="wire-project-mode"><label>线框显示模式<select id="wire-mode-select" aria-label="线框显示模式"><option value="single">单个 ID</option><option value="multiple">多个 ID 叠加</option></select></label><div class="button-row"><button id="previous-wire-id" type="button" disabled>← 上一个 ID</button><button id="next-wire-id" type="button" disabled>下一个 ID →</button></div><p id="wire-mode-note"></p></div>
+<div class="object-browser-controls" data-object-browser="wire">
+  <select id="wire-mode-select" aria-label="线框显示模式"><option value="single">单个 ID</option><option value="multiple">多个 ID 叠加</option></select>
+  <div class="object-id-navigation" data-object-navigation><button id="previous-wire-id" type="button" aria-label="上一个 ID" title="上一个 ID" disabled>‹</button><button id="next-wire-id" type="button" aria-label="下一个 ID" title="下一个 ID" disabled>›</button></div>
+
+  <details class="object-browser-help"><summary aria-label="显示模式说明" title="显示模式说明">?</summary><div><p id="wire-mode-note"></p></div></details>
+</div>
 
   <input id="search" type="search" aria-label="搜索文件或文件夹" placeholder="搜索文件或文件夹…" autocomplete="off">
   <div class="list-meta"><span id="filter-count">尚未读取数据</span><div class="cloud-batch-actions" aria-label="显示选择"><button id="select-all-wires" disabled>全选</button><button id="invert-wire-selection" disabled>反选</button><button id="clear-selection">取消</button></div></div>
   <button id="project-root" class="project-root" title="拖到这里移出文件夹">▱ 项目根目录 <span>拖到此处移出分组</span></button>
   <div id="data-list" class="model-list project-tree" aria-label="项目文件列表"></div>
   <div id="project-controls"></div>
-  <details class="format-help"><summary>格式与管理说明</summary><p>数据集 / 对象 ID / 多个 OBJ 与可选点云；也可选择单个对象文件夹。</p><p>点云：XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">选择含各数据 ID 子目录的根文件夹，不预设路径。</p><p>单个 ID 或多个 ID 叠加；全选、反选只操作搜索匹配项。Ctrl / Shift 多选用于移动或移除项目条目。</p></details>
+  <details class="format-help"><summary>格式与管理说明</summary><p>支持 ID.obj 或 ID 文件夹中的多个 OBJ；同名 ID 的点云可一起读取，两种结构可以混合导入。</p><p>点云：XYZ / TXT / CSV / PTS、PLY（文本 / 二进制）、PCD（文本 / 未压缩二进制）。LAS / LAZ、压缩 PCD 暂不支持。</p><p id="source-note">选择含各数据 ID 子目录的根文件夹，不预设路径。</p><p>单个 ID 或多个 ID 叠加；全选、反选只操作搜索匹配项。Ctrl / Shift 多选用于移动或移除项目条目。</p></details>
 
 </aside>
 <!-- project-sidebar:end -->
@@ -138,7 +143,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <section id="viewer-panel-3" class="viewer-panel" hidden><div class="comparison-heading"><strong id="panel-label-3">线框 3</strong><span id="panel-stats-3">—</span></div><div class="viewport comparison-viewport"><canvas id="scene-3" class="scene-canvas" aria-label="第三个线框三维预览"></canvas><div id="panel-empty-3" class="wire-empty" hidden>空线框 · 0 条</div></div></section>
 </div>
 <div id="data-notes" class="data-notes" aria-live="polite"></div><footer><span class="desktop-hint">拖动旋转 · 滚轮缩放 · 右键 / Shift 拖动平移 · F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">文件不会上传</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.8.2" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.8.2</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.9.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.9.0</a></nav>
 
 <!-- site-footer:end --></footer></main>
 <aside id="viewer-inspector" class="viewer-inspector" aria-label="查看器设置" hidden>
@@ -151,4 +156,4 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
     <section role="tabpanel" id="settings-panel-bookmarks" data-settings-panel="bookmarks" aria-labelledby="settings-tab-bookmarks" hidden><div id="bookmark-controls"></div></section>
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside></div>
-<script data-viewer-src="assets/js/cloud.bundle.js?v=70342e40f00e"></script></body></html>
+<script data-viewer-src="assets/js/cloud.bundle.js?v=dff03cef9c30"></script></body></html>

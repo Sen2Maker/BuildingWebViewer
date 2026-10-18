@@ -39,3 +39,11 @@
 Android 原生高斯继续使用独立 OpenGL 渲染器与原生界面。共享网页代码不会取代它，也不承诺网页与原生书签缓存自动互通；原生界面修复需要新 APK。相机动画仍仅在桌面网格工具启用。
 
 Portable preferences exclude sampling and dataset-specific scalar ranges. Shared browser camera modules preserve optional calibrated lenses and validate coordinate spaces. Android Gaussian rendering and UI remain native adapters; browser storage is origin-local, not cross-device synchronization.
+
+## Mesh / Wireframe ID 读取与选择
+
+`project-import.js` 统一两种入口：平铺 `101.obj` 与 `101/model.obj`，两者可混合；同名点云按 ID 配对，同一个 ID 文件夹的 OBJ 成为可选版本。条目身份使用原始路径，移动虚拟分组不改变源路径或读取缓存。不同源路径的同名 ID 保留为不同条目。
+
+`object-selection.js` 共用文件名版本偏好、自然顺序的 ID 导航与快捷键隔离；Wireframe 保留旧函数名适配调用。Mesh 多 ID 继续独立陈列，Wireframe 多 ID 继续按原始坐标叠加，不改变各自坐标语义。
+
+`object-import-state.js` 仅在旧 App 项目恢复时按实际 File 对象建立旧 / 新条目对应；保留选择与虚拟树，必要时从旧单项批量条目转为多 ID。Mesh 旧的单文件条目合并时，已移除版本通过源文件键保持排除。该元数据不修改磁盘文件或原生接口。

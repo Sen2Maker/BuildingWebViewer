@@ -19,7 +19,7 @@ export class NativeProjectFile {
   async text(){return new TextDecoder().decode(await this.slice().arrayBuffer());}
   async arrayBuffer(){return this.slice().arrayBuffer();}
 }
-export function snapshotProjectTree(project,entries){return {groups:[...project.groups.values()].map(g=>({...g})),serial:project.serial,items:entries.map(e=>({id:e.id,group:e.group,treeName:e.treeName,columnSettings:e.columnSettings,displayColor:e.displayColor}))};}
+export function snapshotProjectTree(project,entries){return {groups:[...project.groups.values()].map(g=>({...g})),serial:project.serial,items:entries.map(e=>({id:e.id,group:e.group,treeName:e.treeName,columnSettings:e.columnSettings,displayColor:e.displayColor,...(e.excludedFileKeys?.length?{excludedFileKeys:[...e.excludedFileKeys]}:{})}))};}
 export function restoreProjectTree(project,entries,state){
   if(!state?.groups||!state?.items)return entries;
   const groups=new Map(state.groups.map(g=>[g.id,{...g}]));

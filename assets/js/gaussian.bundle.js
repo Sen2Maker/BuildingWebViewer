@@ -5,6 +5,9 @@
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  "显示模式说明": "Display mode help",
+  "上一个 ID": "Previous ID",
+  "下一个 ID": "Next ID",
   "线框显示模式": "Wireframe display mode",
   "单个 ID": "Single ID",
   "多个 ID 叠加": "Multiple IDs",
@@ -1238,6 +1241,14 @@ const EN_MESSAGES = {
   "个模型": "models",
   "个点云": "point clouds",
   "个高斯文件": "Gaussian files",
+  "网格显示模式": "Mesh display mode",
+  "多个 ID 陈列": "Multiple IDs",
+  "OBJ 版本": "OBJ variant",
+  "版本按文件名沿用，当前 ID 缺少同名文件时使用可用版本。": "Reuse the variant filename across IDs; fall back to an available OBJ if missing.",
+  "勾选多个 ID，以独立模型陈列；显示设置应用到所有已选 ID。": "Display checked IDs as separate models; settings apply to every selected ID.",
+  "支持 ID.obj 或 ID 文件夹中的 OBJ。单个 ID 可切换，多个 ID 可批选；同一 ID 内可选择 OBJ 版本。": "Load ID.obj or OBJ files inside ID folders. Switch single IDs, batch-select multiple IDs and choose an OBJ variant per ID.",
+  "支持 ID.obj 或 ID 文件夹中的多个 OBJ；同名 ID 的点云可一起读取，两种结构可以混合导入。": "Load ID.obj or multiple OBJ files inside ID folders, with matching ID clouds. Both layouts can be mixed.",
+  "{0} 个 ID · {1} 个 OBJ · 按需读取": "{0} IDs · {1} OBJ files · Read on demand",
 };
 
 
@@ -1521,7 +1532,7 @@ class NativeProjectFile {
   async text(){return new TextDecoder().decode(await this.slice().arrayBuffer());}
   async arrayBuffer(){return this.slice().arrayBuffer();}
 }
-function snapshotProjectTree(project,entries){return {groups:[...project.groups.values()].map(g=>({...g})),serial:project.serial,items:entries.map(e=>({id:e.id,group:e.group,treeName:e.treeName,columnSettings:e.columnSettings,displayColor:e.displayColor}))};}
+function snapshotProjectTree(project,entries){return {groups:[...project.groups.values()].map(g=>({...g})),serial:project.serial,items:entries.map(e=>({id:e.id,group:e.group,treeName:e.treeName,columnSettings:e.columnSettings,displayColor:e.displayColor,...(e.excludedFileKeys?.length?{excludedFileKeys:[...e.excludedFileKeys]}:{})}))};}
 function restoreProjectTree(project,entries,state){
   if(!state?.groups||!state?.items)return entries;
   const groups=new Map(state.groups.map(g=>[g.id,{...g}]));
@@ -2953,7 +2964,7 @@ function projectUniqueId(base, names) {
   while (names.has(id)) id = `${base}_${suffix++}`;
   names.add(id); return id;
 }
-function appendLodFiles(entries, project, files, paths) {
+function appendLegacyLodFiles(entries, project, files, paths) {
   const keys = new Set(entries.map(entry => entry.key)), names = new Set(entries.map(entry => entry.id));
   let added = 0, duplicates = 0;
   for (const file of files) {
@@ -2968,7 +2979,7 @@ function appendLodFiles(entries, project, files, paths) {
   }
   return {added,duplicates};
 }
-function appendWireFiles(entries, project, files, paths) {
+function appendLegacyWireFiles(entries, project, files, paths) {
   const groups = new Map(entries.map(entry => [entry.sourceGroup,entry]));
   const names = new Set(entries.map(entry => entry.id));
   let added = 0, duplicates = 0;
@@ -2991,6 +3002,36 @@ function appendWireFiles(entries, project, files, paths) {
   // Keep file ordering stable while adding files: selected dropdown indices remain valid.
   return {added,duplicates};
 }
+
+/** Numeric ID parents take precedence; flat numeric filenames remain separate at any depth. */
+function objectFileSource(file,paths) {
+  const path=projectFilePath(file,paths),parts=path.split('/').filter(Boolean),name=parts.at(-1)||file.name;
+  const stem=name.replace(/\.[^.]+$/,''),directory=parts.slice(0,-1).join('/'),parent=parts.at(-2)||'';
+  const generic=/^(?:mesh|model|raw|refined|final|reconstruction|wireframe|wire|pc|points?|point_cloud|cloud)(?:[_. -].*)?$/i.test(stem);
+  const folder=!!directory && (/^\d+$/.test(parent) || (!/^\d+$/.test(stem) && (parts.length>2 || generic)));
+  const base=folder ? (parts.length>2?parts.slice(1,-1).join('/'):parent) : stem;
+  return {path,key:projectFileKey(file,path),identity:folder?`folder:${directory}`:`file:${directory}/${stem}`,base,folder,sourceGroup:folder?directory:[directory,stem].filter(Boolean).join('/'),treePath:folder?directory:path.replace(/\.[^.]+$/,'')};
+}
+function appendObjectFiles(entries,project,files,paths,mesh) {
+  const groups=new Map(entries.filter(e=>e.sourceIdentity).map(e=>[e.sourceIdentity,e])),names=new Set(entries.map(e=>e.id));
+  let added=0,duplicates=0;
+  for(const file of files) {
+    if(!(mesh?/\.obj$/i:/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i).test(file.name))continue;
+    const source=objectFileSource(file,paths);let entry=groups.get(source.identity);
+    if(!entry){
+      entry={id:projectUniqueId(source.base,names),sourceIdentity:source.identity,sourceGroup:source.sourceGroup,sourceLayout:source.folder?'folder':'file',files:[],wires:[],clouds:[],fileKeys:new Set(),sourceKeys:new Map()};
+      project.assign(entry,source.treePath);if(entry.id!==source.base)entry.treeName+=` [${entry.id}]`;
+      entries.push(entry);groups.set(source.identity,entry);
+    }
+    if(entry.fileKeys.has(source.key)){duplicates++;continue;}
+    entry.fileKeys.add(source.key);entry.sourceKeys.set(file,source.key);entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file);
+    if(mesh){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
+    added++;
+  }
+  return {added,duplicates};
+}
+function appendLodFiles(entries,project,files,paths){return appendObjectFiles(entries,project,files,paths,true);}
+function appendWireFiles(entries,project,files,paths){return appendObjectFiles(entries,project,files,paths,false);}
 
 
 // Source: src/shared/point-drop.js
@@ -3301,6 +3342,26 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{},
   button(panel,'导出高斯 PLY','Export Gaussian PLY',()=>exportData());
   async function exportData(){try{const models=getModels(),m=models[Number(exportTarget.value)||0];if(!m)throw Error(text('请先勾选文件','Select a file first'));const blob=gsExportPly(m,{selectedOnly:scope.value==='selected',includeHidden:scope.value==='all'});await saveLocalBlob(blob,(m.name||'gaussians').replace(/\.ply$/i,'')+'-edited.ply');onStatus(text('已导出高斯 PLY，原文件未修改。','Gaussian PLY exported; source file unchanged.'));}catch(e){onError(e.message);}}
   refresh();return {edits,refresh,setLoading(value){loading=value;if(value)stopEditing();refresh();},sceneChanged(){revision++;gesture=null;paint();const value=exportTarget.value;exportTarget.replaceChildren();getModels().forEach((m,i)=>{edits.attach(m);const o=make('option',m.name||`PLY ${i+1}`);o.value=i;exportTarget.append(o);});exportTarget.value=value!==''&&Number(value)<getModels().length?value:'0';refresh();},get busy(){return busy;}};
+}
+
+
+// Source: src/shared/object-browser-controls.js
+/** Keep file management in the sidebar and viewing choices beside the preview. */
+function mountObjectBrowserControls({root = document} = {}) {
+  const controls = root.querySelector('[data-object-browser]');
+  const heading = root.querySelector('.workspace > main > .main-heading');
+  if (!controls || !heading) return;
+  heading.classList.add('object-browser-heading');
+  heading.append(controls);
+  const help = controls.querySelector('details');
+  root.addEventListener('click', event => {
+    if (help.open && !help.contains(event.target)) help.open = false;
+  });
+  controls.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && help.open) {
+      help.open = false; help.querySelector('summary').focus(); event.preventDefault();
+    }
+  });
 }
 
 
@@ -3826,6 +3887,7 @@ function mountResourceMonitor({root=document, getViewers=()=>[]}) {
 
 
 
+
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
   const primary=getViewers()[0],cameraPanel=root.getElementById('camera-controls');
@@ -3842,6 +3904,7 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }
+  mountObjectBrowserControls({root});
   mountResourceMonitor({root, getViewers});
   mountImageExport({root,getViewers,pauseSync});
   mountPresentationControls({root,getViewers,pauseSync});

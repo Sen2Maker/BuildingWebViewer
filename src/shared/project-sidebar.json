@@ -3,7 +3,8 @@
     "accept": ".obj,.zip",
     "list_id": "model-list",
     "selection_actions": "<button id=\"select-all-models\" disabled>全选</button><button id=\"invert-model-selection\" disabled>反选</button>",
-    "options_file": "src/lod/lod-project-options.html"
+    "options_file": "src/lod/lod-project-options.html",
+    "mode_file": "src/lod/mesh-mode.html"
   },
   "wireframe.html": {
     "accept": ".obj,.xyz,.txt,.csv,.pts,.ply,.pcd,.zip",

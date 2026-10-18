@@ -1,3 +1,4 @@
+import { mountObjectBrowserControls } from './object-browser-controls.js';
 import { mountFlyCameraControls } from './fly-controls.js';
 import { mountCameraNavigationControls } from './camera-navigation-controls.js';
 import { mountImageExport } from './image-export.js';
@@ -23,6 +24,7 @@ export function mountViewerLayout({root = document, getViewers = () => [], pause
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }
+  mountObjectBrowserControls({root});
   mountResourceMonitor({root, getViewers});
   mountImageExport({root,getViewers,pauseSync});
   mountPresentationControls({root,getViewers,pauseSync});

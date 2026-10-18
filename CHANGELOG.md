@@ -4,7 +4,18 @@
 
 ## [Unreleased]
 
-后续变更先在此记录。Record upcoming changes here.
+## [1.9.0] - 2026-10-18
+
+- Mesh 与线框的显示模式、ID 切换和版本选择统一移至预览标题区；多 ID 隐藏逐项切换，仅有多个版本时显示 OBJ 选择，说明按需展开，项目栏留给文件列表。
+- Move Mesh/Wireframe viewing controls beside the preview; show ID navigation and OBJ variants only when relevant, with help on demand.
+
+- Mesh 与线框共用 ID 导入规则，支持 ID.obj 与 ID 文件夹、同名点云配对和混合导入；独立路径同名 ID 不覆盖。
+- Mesh 增加单个 / 多个 ID、筛选内上一个 / 下一个与快捷键，以及按文件名沿用的 OBJ 版本选择；切换版本更新缓存，切换单 ID 适应新模型。
+- 旧 App 项目按实际源文件迁移选择、虚拟分组、重命名与移除记录，原始文件不修改。
+- Share ID-file / ID-folder imports across Mesh and Wireframe. Add single/multiple Mesh IDs, filtered navigation, shared shortcuts and filename-based OBJ variants; migrate legacy native project metadata by source identity.
+
+- 验证：143 项网页测试、WebView 60 兼容及 23 个 Android 脚本检查通过；桌面与 390 像素宽布局、混合 ID 导入、版本沿用和批量选择已验证。未进行真机触屏与大场景压力测试。
+- Validation: 143 web tests, WebView 60 compatibility and 23 Android script checks pass. Desktop/narrow layouts and synthetic mixed-ID workflows verified; physical touch and large-scene performance remain untested.
 
 ## [1.8.2] - 2026-10-16
 

@@ -1,3 +1,4 @@
+import { migrateObjectImportState } from '../shared/object-import-state.js';
 import { createBatchProgress } from '../shared/batch-progress.js';
 import { compactNames, setNameSummary } from '../shared/name-summary.js';
 import { currentPalettePreferences } from '../shared/palettes.js';
@@ -117,6 +118,7 @@ initializeLocale();
     $('wire-mode-select').value = wireMode;
     for (const id of ['select-all-wires','invert-wire-selection']) $(id).disabled = wireMode !== 'multiple' || !filtered.length;
     const multiple = wireMode === 'multiple';
+    $('previous-wire-id').parentElement.hidden=multiple;
     $('wire-mode-note').textContent = multiple ? t('勾选多个 ID，按原始坐标叠加；显示设置应用到所有已选 ID。') : t('单个 ID：← / → 或 [ / ] 切换；按自然编号顺序，遵循搜索筛选。');
     for (const id of ['previous-wire-id','next-wire-id']) $(id).disabled = multiple || !filtered.length || adjacentWireEntry(filtered,active,id === 'previous-wire-id' ? -1 : 1) === active;
     $('item-count').textContent = t('共 {0} 项', [pretty(entries.length)]);
@@ -736,9 +738,10 @@ initializeLocale();
       }).catch(cause => error(cause.message || t('没有找到刚生成的点云，请从点云生成页重新打开。')));
     }
     mountMobileProject({receive:importRecords,getState:()=>({
-      tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...(isWire?selectedWireEntries:selectedCloudEntries)].map(e=>e.id),active:active?.id,cloudMode,wireMode,wirePreferences,
+      objectImportVersion:2,tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...(isWire?selectedWireEntries:selectedCloudEntries)].map(e=>e.id),active:active?.id,cloudMode,wireMode,wirePreferences,
       inputs:captureMobileInputs(),wire:isWire?Object.fromEntries(['wire-file','wire-file-2','wire-file-3','cloud-file','compare-mode','compare-count'].map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value])):null,camera:(loaded.cloud||loaded.wire)?cameraControls?.capture():null,
-    }),restoreState:async state=>{
+    }),restoreState:async (state,records)=>{
+      if(isWire)state=migrateObjectImportState(state,records,entries,'wire');
       mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...entries.map(e=>e.id)])];
       if(state){entries=restoreProjectTree(pointProject,entries,state.tree);cloudMode=state.cloudMode==='single'?'single':'multiple';
         const limit=state.inputs?.find(x=>x.id==='point-limit');if(limit)$('point-limit').value=limit.value;

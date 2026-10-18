@@ -5,6 +5,9 @@
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  "显示模式说明": "Display mode help",
+  "上一个 ID": "Previous ID",
+  "下一个 ID": "Next ID",
   "线框显示模式": "Wireframe display mode",
   "单个 ID": "Single ID",
   "多个 ID 叠加": "Multiple IDs",
@@ -1238,6 +1241,14 @@ const EN_MESSAGES = {
   "个模型": "models",
   "个点云": "point clouds",
   "个高斯文件": "Gaussian files",
+  "网格显示模式": "Mesh display mode",
+  "多个 ID 陈列": "Multiple IDs",
+  "OBJ 版本": "OBJ variant",
+  "版本按文件名沿用，当前 ID 缺少同名文件时使用可用版本。": "Reuse the variant filename across IDs; fall back to an available OBJ if missing.",
+  "勾选多个 ID，以独立模型陈列；显示设置应用到所有已选 ID。": "Display checked IDs as separate models; settings apply to every selected ID.",
+  "支持 ID.obj 或 ID 文件夹中的 OBJ。单个 ID 可切换，多个 ID 可批选；同一 ID 内可选择 OBJ 版本。": "Load ID.obj or OBJ files inside ID folders. Switch single IDs, batch-select multiple IDs and choose an OBJ variant per ID.",
+  "支持 ID.obj 或 ID 文件夹中的多个 OBJ；同名 ID 的点云可一起读取，两种结构可以混合导入。": "Load ID.obj or multiple OBJ files inside ID folders, with matching ID clouds. Both layouts can be mixed.",
+  "{0} 个 ID · {1} 个 OBJ · 按需读取": "{0} IDs · {1} OBJ files · Read on demand",
 };
 
 
@@ -1305,6 +1316,225 @@ function initializeLocale(doc = document) {
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }
+}
+
+
+// Source: src/shared/project-model.js
+
+// Project groups are virtual: source identity and disk paths never change on a move.
+class ViewerProject {
+  constructor() { this.groups = new Map(); this.serial = 0; }
+  create(name, parent = '') {
+    name = name.trim();
+    if (!name || /[/\\\x00-\x1f]/.test(name)) throw Error(t('请输入文件夹名称，不含斜线或控制字符'));
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    if ([...this.groups.values()].some(group => group.parent === parent && group.name === name)) throw Error(t('此位置已有同名文件夹'));
+    const group = {id: `group:${++this.serial}`, name, parent, collapsed: false};
+    this.groups.set(group.id, group); return group.id;
+  }
+  assign(entry, path) {
+    const parts = path.split('/').filter(Boolean); entry.treeName = parts.pop() || entry.id;
+    let parent = '';
+    for (const name of parts) {
+      parent = [...this.groups.values()].find(group => group.parent === parent && group.name === name)?.id || this.create(name, parent);
+    }
+    entry.group = parent;
+  }
+  within(groupId, ancestor) {
+    if (!ancestor) return true;
+    for (let group = this.groups.get(groupId); group; group = this.groups.get(group.parent)) if (group.id === ancestor) return true;
+    return false;
+  }
+  path(id) {
+    const parts = [];
+    for (let group = this.groups.get(id); group; group = this.groups.get(group.parent)) parts.unshift(group.name);
+    return parts.join('/');
+  }
+  members(id, entries) { return entries.filter(entry => this.within(entry.group, id)); }
+  move(target, parent) {
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    if (typeof target === 'string') {
+      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
+      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
+      if ([...this.groups.values()].some(other => other.id !== target && other.parent === parent && other.name === group.name)) throw Error(t('目标位置已有同名文件夹'));
+      group.parent = parent;
+    } else target.group = parent;
+    if (parent) this.groups.get(parent).collapsed = false;
+  }
+  roots(targets) {
+    const unique = [...new Set(targets)], groups = unique.filter(target => typeof target === 'string');
+    return unique.filter(target => !groups.some(group => group !== target && this.within(
+      typeof target === 'string' ? this.groups.get(target)?.parent : target.group, group)));
+  }
+  files(targets, entries) {
+    const selected = new Set();
+    for (const target of this.roots(targets)) {
+      for (const entry of typeof target === 'string' ? this.members(target, entries) : [target]) if (entries.includes(entry)) selected.add(entry);
+    }
+    return [...selected];
+  }
+  moveMany(targets, parent) {
+    const roots = this.roots(targets);
+    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
+    const movingGroups = new Set(roots.filter(target => typeof target === 'string'));
+    const names = new Set([...this.groups.values()].filter(group => group.parent === parent && !movingGroups.has(group.id)).map(group => group.name));
+    // Validate the whole batch before moving anything, so a conflict cannot leave half a move.
+    for (const target of movingGroups) {
+      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
+      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
+      if (names.has(group.name)) throw Error(t('目标位置存在同名文件夹，本次移动未执行'));
+      names.add(group.name);
+    }
+    for (const target of roots) this.move(target, parent);
+    return roots;
+  }
+  removeGroup(id) {
+    const removed = [...this.groups.keys()].filter(key => this.within(key, id));
+    for (const key of removed) this.groups.delete(key);
+  }
+  matches(entry, query) {
+    return `${this.path(entry.group)}/${entry.treeName || entry.id} ${entry.id}`.toLowerCase().includes(query.toLowerCase().trim());
+  }
+}
+
+class ProjectSelection {
+  constructor() { this.items = new Set(); this.anchor = null; }
+  select(target, {toggle = false, range = false, ordered = []} = {}) {
+    const from = ordered.indexOf(this.anchor), to = ordered.indexOf(target);
+    if (range && from >= 0 && to >= 0) {
+      if (!toggle) this.items.clear();
+      ordered.slice(Math.min(from,to), Math.max(from,to)+1).forEach(item => this.items.add(item));
+    } else {
+      if (!toggle) this.items.clear();
+      if (toggle && this.items.has(target)) this.items.delete(target); else this.items.add(target);
+      this.anchor = target;
+    }
+  }
+  box(hits, base = []) { this.items = new Set([...base, ...hits]); }
+  clear() { this.items.clear(); this.anchor = null; }
+}
+
+function projectBoxIntersects(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+
+
+// Source: src/shared/project-import.js
+/** Import adapters preserve entry/File identity so tree edits do not invalidate render caches. */
+function projectFilePath(file, paths) {
+  return (paths?.get(file) || file.webkitRelativePath || file.name).replaceAll('\\', '/');
+}
+function projectFileKey(file, path) { return `${path}\0${file.size}\0${file.lastModified}`; }
+function projectUniqueId(base, names) {
+  let id = base, suffix = 2;
+  while (names.has(id)) id = `${base}_${suffix++}`;
+  names.add(id); return id;
+}
+function appendLegacyLodFiles(entries, project, files, paths) {
+  const keys = new Set(entries.map(entry => entry.key)), names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.obj$/i.test(file.name)) continue;
+    const path = projectFilePath(file, paths), key = projectFileKey(file,path);
+    if (keys.has(key)) { duplicates++; continue; }
+    const base = file.name.replace(/\.obj$/i,''), id = projectUniqueId(base,names);
+    const entry = {id,key,file,bytes:file.size}; project.assign(entry,path);
+    // Keep names clear when separate folders contain the same model number.
+    if (id !== base) entry.treeName += ` [${id}]`;
+    entries.push(entry); keys.add(key); added++;
+  }
+  return {added,duplicates};
+}
+function appendLegacyWireFiles(entries, project, files, paths) {
+  const groups = new Map(entries.map(entry => [entry.sourceGroup,entry]));
+  const names = new Set(entries.map(entry => entry.id));
+  let added = 0, duplicates = 0;
+  for (const file of files) {
+    if (!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name)) continue;
+    const path = projectFilePath(file,paths), parts = path.split('/');
+    const sourceGroup = parts.slice(0,-1).join('/');
+    let entry = groups.get(sourceGroup);
+    if (!entry) {
+      const base = parts.length > 2 ? parts.slice(1,-1).join('/') : parts.length === 2 ? parts[0] : 'Files';
+      entry = {id:projectUniqueId(base,names),sourceGroup,wires:[],clouds:[],fileKeys:new Set()};
+      // A leaf is a building set; its parent folders remain independently manageable.
+      project.assign(entry,sourceGroup || 'Files');
+      entries.push(entry); groups.set(sourceGroup,entry);
+    }
+    const key = projectFileKey(file,path);
+    if (entry.fileKeys.has(key)) { duplicates++; continue; }
+    entry.fileKeys.add(key); entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file); added++;
+  }
+  // Keep file ordering stable while adding files: selected dropdown indices remain valid.
+  return {added,duplicates};
+}
+
+/** Numeric ID parents take precedence; flat numeric filenames remain separate at any depth. */
+function objectFileSource(file,paths) {
+  const path=projectFilePath(file,paths),parts=path.split('/').filter(Boolean),name=parts.at(-1)||file.name;
+  const stem=name.replace(/\.[^.]+$/,''),directory=parts.slice(0,-1).join('/'),parent=parts.at(-2)||'';
+  const generic=/^(?:mesh|model|raw|refined|final|reconstruction|wireframe|wire|pc|points?|point_cloud|cloud)(?:[_. -].*)?$/i.test(stem);
+  const folder=!!directory && (/^\d+$/.test(parent) || (!/^\d+$/.test(stem) && (parts.length>2 || generic)));
+  const base=folder ? (parts.length>2?parts.slice(1,-1).join('/'):parent) : stem;
+  return {path,key:projectFileKey(file,path),identity:folder?`folder:${directory}`:`file:${directory}/${stem}`,base,folder,sourceGroup:folder?directory:[directory,stem].filter(Boolean).join('/'),treePath:folder?directory:path.replace(/\.[^.]+$/,'')};
+}
+function appendObjectFiles(entries,project,files,paths,mesh) {
+  const groups=new Map(entries.filter(e=>e.sourceIdentity).map(e=>[e.sourceIdentity,e])),names=new Set(entries.map(e=>e.id));
+  let added=0,duplicates=0;
+  for(const file of files) {
+    if(!(mesh?/\.obj$/i:/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i).test(file.name))continue;
+    const source=objectFileSource(file,paths);let entry=groups.get(source.identity);
+    if(!entry){
+      entry={id:projectUniqueId(source.base,names),sourceIdentity:source.identity,sourceGroup:source.sourceGroup,sourceLayout:source.folder?'folder':'file',files:[],wires:[],clouds:[],fileKeys:new Set(),sourceKeys:new Map()};
+      project.assign(entry,source.treePath);if(entry.id!==source.base)entry.treeName+=` [${entry.id}]`;
+      entries.push(entry);groups.set(source.identity,entry);
+    }
+    if(entry.fileKeys.has(source.key)){duplicates++;continue;}
+    entry.fileKeys.add(source.key);entry.sourceKeys.set(file,source.key);entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file);
+    if(mesh){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
+    added++;
+  }
+  return {added,duplicates};
+}
+function appendLodFiles(entries,project,files,paths){return appendObjectFiles(entries,project,files,paths,true);}
+function appendWireFiles(entries,project,files,paths){return appendObjectFiles(entries,project,files,paths,false);}
+
+
+// Source: src/shared/object-import-state.js
+
+
+/** Convert saved virtual tree/selection metadata using exact File identities, never ID guesses. */
+function migrateObjectImportState(state,records,entries,kind='mesh') {
+  if(!state||state.objectImportVersion===2)return state;
+  const legacy=[],project=new ViewerProject(),paths=new Map(records.map(record=>[record.file,record.path]));
+  (kind==='mesh'?appendLegacyLodFiles:appendLegacyWireFiles)(legacy,project,records.map(record=>record.file),paths);
+  const files=entry=>entry.files?.length?entry.files:entry.file?[entry.file]:[...(entry.wires||[]),...(entry.clouds||[])];
+  const byFile=new Map();for(const entry of entries)for(const file of files(entry)){if(!byFile.has(file))byFile.set(file,new Set());byFile.get(file).add(entry);}
+  const mapping=new Map(),related=new Map();
+  for(const old of legacy){const next=new Set(files(old).flatMap(file=>[...(byFile.get(file)||[])]));mapping.set(old.id,[...next].map(entry=>entry.id));for(const entry of next){if(!related.has(entry))related.set(entry,[]);related.get(entry).push(old);}}
+  const ids=values=>[...new Set((values||[]).flatMap(id=>mapping.get(id)||[id]))];
+  const migrated={...state,objectImportVersion:2,selected:ids(state.selected),active:ids([state.active]).filter(Boolean).at(-1)};
+  if(kind==='wire'&&migrated.selected.length>1)migrated.wireMode='multiple';
+  if(kind==='mesh'&&!migrated.meshPreference){const last=legacy.find(entry=>entry.id===(state.selected||[]).at(-1));if(last?.file)migrated.meshPreference={name:last.file.name,index:0};}
+  if(state.tree?.items){
+    const savedGroups=new Map((state.tree.groups||[]).map(group=>[group.id,group]));
+    const savedPath=id=>{const parts=[],seen=new Set();for(let group=savedGroups.get(id);group&&!seen.has(group.id);group=savedGroups.get(group.parent)){seen.add(group.id);parts.unshift(group.name);}return parts.join('/');};
+    const groupByPath=new Map([...savedGroups.keys()].map(id=>[savedPath(id),id]));
+    const saved=new Map(state.tree.items.map(item=>[item.id,item])),known=new Set(state.tree.knownIds||[]),items=[];
+    for(const entry of entries){
+      const old=related.get(entry)||[],kept=old.filter(item=>saved.has(item.id));if(!kept.length)continue;
+      const previous=saved.get(kept[0].id),renamed=previous.treeName!==kept[0].treeName;
+      const parentPath=entry.sourceGroup.split('/').slice(0,-1).join('/');
+      const originalPath=project.path(kept[0].group),moved=savedPath(previous.group)!==originalPath;
+      const group=moved?previous.group:groupByPath.get(parentPath)||'';
+      const excludedFileKeys=kind==='mesh'?old.filter(item=>known.has(item.id)&&!saved.has(item.id)).map(item=>entry.sourceKeys?.get(item.file)).filter(Boolean):[];
+      if(excludedFileKeys.length)entry.excludedFileKeys=excludedFileKeys;
+      items.push({...previous,id:entry.id,group,treeName:renamed?previous.treeName:entry.treeName,...(excludedFileKeys.length?{excludedFileKeys}:{} )});
+    }
+    migrated.tree={...state.tree,items,knownIds:ids([...known])};
+  }
+  return migrated;
 }
 
 
@@ -1431,19 +1661,40 @@ vec3 paletteColor(float value) {
 }`;
 
 
-// Source: src/cloud/wire-selection.js
-/** Match variants by filename across IDs; a missing variant falls back to a usable file. */
-function wirePreference(files, value) {
+// Source: src/shared/object-selection.js
+/** Common filename preferences and natural, filter-aware ID navigation. */
+function objectFilePreference(files, value) {
   const index = value === '' ? -1 : Number(value), file = files[index];
   return file ? {name: file.name, index} : {none: true};
 }
-function resolveWireFile(files, preference, fallback = 0, used = new Set()) {
+function resolveObjectFile(files, preference, fallback = 0, used = new Set()) {
   if (preference?.none) return null;
   const same = preference?.name == null ? -1 : files.findIndex(file => file.name.toLowerCase() === preference.name.toLowerCase());
   const candidates = [same, preference?.index, fallback, ...files.map((_, index) => index)];
   for (const index of candidates) if (Number.isInteger(index) && index >= 0 && files[index] && !used.has(files[index])) return files[index];
   return null;
 }
+
+function adjacentObjectEntry(entries, active, direction) {
+  if (!entries.length) return null;
+  const sorted = [...entries].sort((a,b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
+  const index = sorted.indexOf(active);
+  return sorted[index < 0 ? direction > 0 ? 0 : sorted.length - 1 : Math.max(0, Math.min(sorted.length - 1, index + direction))];
+}
+function objectNavigationDirection(event, {multiple = false, flying = false} = {}) {
+  if (multiple || flying || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat) return 0;
+  if (event.target?.closest?.('input,select,textarea,button,a,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="tab"],[role="dialog"]')) return 0;
+  return event.key === 'ArrowLeft' || event.key === '[' ? -1 : event.key === 'ArrowRight' || event.key === ']' ? 1 : 0;
+}
+
+
+// Source: src/cloud/wire-selection.js
+
+function wirePreference(...args){return objectFilePreference(...args);}
+function resolveWireFile(...args){return resolveObjectFile(...args);}
+function adjacentWireEntry(...args){return adjacentObjectEntry(...args);}
+function wireNavigationDirection(...args){return objectNavigationDirection(...args);}
+/** Match variants by filename across IDs; a missing variant falls back to a usable file. */
 function wireEntryFiles(entry, preferences, count = 1) {
   const used = new Set();
   const wires = Array.from({length: count}, (_, index) => {
@@ -1473,17 +1724,6 @@ function combineWireframes(wires) {
     }
   }
   return {vertices, edges, bounds: hasBounds ? bounds : null, empty: !edges.length};
-}
-function adjacentWireEntry(entries, active, direction) {
-  if (!entries.length) return null;
-  const sorted = [...entries].sort((a,b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
-  const index = sorted.indexOf(active);
-  return sorted[index < 0 ? direction > 0 ? 0 : sorted.length - 1 : Math.max(0, Math.min(sorted.length - 1, index + direction))];
-}
-function wireNavigationDirection(event, {multiple = false, flying = false} = {}) {
-  if (multiple || flying || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat) return 0;
-  if (event.target?.closest?.('input,select,textarea,button,a,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="tab"],[role="dialog"]')) return 0;
-  return event.key === 'ArrowLeft' || event.key === '[' ? -1 : event.key === 'ArrowRight' || event.key === ']' ? 1 : 0;
 }
 function normalizeWirePreferences(value) {
   const preference = item => item?.none === true ? {none:true} : item && typeof item.name === 'string' && item.name.length <= 1024 && Number.isSafeInteger(item.index) && item.index >= 0 ? {name:item.name,index:item.index} : null;
@@ -1556,7 +1796,7 @@ class NativeProjectFile {
   async text(){return new TextDecoder().decode(await this.slice().arrayBuffer());}
   async arrayBuffer(){return this.slice().arrayBuffer();}
 }
-function snapshotProjectTree(project,entries){return {groups:[...project.groups.values()].map(g=>({...g})),serial:project.serial,items:entries.map(e=>({id:e.id,group:e.group,treeName:e.treeName,columnSettings:e.columnSettings,displayColor:e.displayColor}))};}
+function snapshotProjectTree(project,entries){return {groups:[...project.groups.values()].map(g=>({...g})),serial:project.serial,items:entries.map(e=>({id:e.id,group:e.group,treeName:e.treeName,columnSettings:e.columnSettings,displayColor:e.displayColor,...(e.excludedFileKeys?.length?{excludedFileKeys:[...e.excludedFileKeys]}:{})}))};}
 function restoreProjectTree(project,entries,state){
   if(!state?.groups||!state?.items)return entries;
   const groups=new Map(state.groups.map(g=>[g.id,{...g}]));
@@ -1956,107 +2196,6 @@ function mountCloudColors({container,getItems,onChange}) {
 }
 
 
-// Source: src/shared/project-model.js
-
-// Project groups are virtual: source identity and disk paths never change on a move.
-class ViewerProject {
-  constructor() { this.groups = new Map(); this.serial = 0; }
-  create(name, parent = '') {
-    name = name.trim();
-    if (!name || /[/\\\x00-\x1f]/.test(name)) throw Error(t('请输入文件夹名称，不含斜线或控制字符'));
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    if ([...this.groups.values()].some(group => group.parent === parent && group.name === name)) throw Error(t('此位置已有同名文件夹'));
-    const group = {id: `group:${++this.serial}`, name, parent, collapsed: false};
-    this.groups.set(group.id, group); return group.id;
-  }
-  assign(entry, path) {
-    const parts = path.split('/').filter(Boolean); entry.treeName = parts.pop() || entry.id;
-    let parent = '';
-    for (const name of parts) {
-      parent = [...this.groups.values()].find(group => group.parent === parent && group.name === name)?.id || this.create(name, parent);
-    }
-    entry.group = parent;
-  }
-  within(groupId, ancestor) {
-    if (!ancestor) return true;
-    for (let group = this.groups.get(groupId); group; group = this.groups.get(group.parent)) if (group.id === ancestor) return true;
-    return false;
-  }
-  path(id) {
-    const parts = [];
-    for (let group = this.groups.get(id); group; group = this.groups.get(group.parent)) parts.unshift(group.name);
-    return parts.join('/');
-  }
-  members(id, entries) { return entries.filter(entry => this.within(entry.group, id)); }
-  move(target, parent) {
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    if (typeof target === 'string') {
-      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
-      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
-      if ([...this.groups.values()].some(other => other.id !== target && other.parent === parent && other.name === group.name)) throw Error(t('目标位置已有同名文件夹'));
-      group.parent = parent;
-    } else target.group = parent;
-    if (parent) this.groups.get(parent).collapsed = false;
-  }
-  roots(targets) {
-    const unique = [...new Set(targets)], groups = unique.filter(target => typeof target === 'string');
-    return unique.filter(target => !groups.some(group => group !== target && this.within(
-      typeof target === 'string' ? this.groups.get(target)?.parent : target.group, group)));
-  }
-  files(targets, entries) {
-    const selected = new Set();
-    for (const target of this.roots(targets)) {
-      for (const entry of typeof target === 'string' ? this.members(target, entries) : [target]) if (entries.includes(entry)) selected.add(entry);
-    }
-    return [...selected];
-  }
-  moveMany(targets, parent) {
-    const roots = this.roots(targets);
-    if (parent && !this.groups.has(parent)) throw Error(t('目标文件夹已不存在'));
-    const movingGroups = new Set(roots.filter(target => typeof target === 'string'));
-    const names = new Set([...this.groups.values()].filter(group => group.parent === parent && !movingGroups.has(group.id)).map(group => group.name));
-    // Validate the whole batch before moving anything, so a conflict cannot leave half a move.
-    for (const target of movingGroups) {
-      const group = this.groups.get(target); if (!group) throw Error(t('文件夹已不存在'));
-      if (this.within(parent, target)) throw Error(t('不能移动到自身或其子文件夹'));
-      if (names.has(group.name)) throw Error(t('目标位置存在同名文件夹，本次移动未执行'));
-      names.add(group.name);
-    }
-    for (const target of roots) this.move(target, parent);
-    return roots;
-  }
-  removeGroup(id) {
-    const removed = [...this.groups.keys()].filter(key => this.within(key, id));
-    for (const key of removed) this.groups.delete(key);
-  }
-  matches(entry, query) {
-    return `${this.path(entry.group)}/${entry.treeName || entry.id} ${entry.id}`.toLowerCase().includes(query.toLowerCase().trim());
-  }
-}
-
-class ProjectSelection {
-  constructor() { this.items = new Set(); this.anchor = null; }
-  select(target, {toggle = false, range = false, ordered = []} = {}) {
-    const from = ordered.indexOf(this.anchor), to = ordered.indexOf(target);
-    if (range && from >= 0 && to >= 0) {
-      if (!toggle) this.items.clear();
-      ordered.slice(Math.min(from,to), Math.max(from,to)+1).forEach(item => this.items.add(item));
-    } else {
-      if (!toggle) this.items.clear();
-      if (toggle && this.items.has(target)) this.items.delete(target); else this.items.add(target);
-      this.anchor = target;
-    }
-  }
-  box(hits, base = []) { this.items = new Set([...base, ...hits]); }
-  clear() { this.items.clear(); this.anchor = null; }
-}
-
-function projectBoxIntersects(a, b) {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-}
-
-
-
 // Source: src/shared/project-tree.js
 
 
@@ -2332,57 +2471,6 @@ function mountProjectTree({project, container, root, controls, getEntries, getSe
 }
 
 
-// Source: src/shared/project-import.js
-/** Import adapters preserve entry/File identity so tree edits do not invalidate render caches. */
-function projectFilePath(file, paths) {
-  return (paths?.get(file) || file.webkitRelativePath || file.name).replaceAll('\\', '/');
-}
-function projectFileKey(file, path) { return `${path}\0${file.size}\0${file.lastModified}`; }
-function projectUniqueId(base, names) {
-  let id = base, suffix = 2;
-  while (names.has(id)) id = `${base}_${suffix++}`;
-  names.add(id); return id;
-}
-function appendLodFiles(entries, project, files, paths) {
-  const keys = new Set(entries.map(entry => entry.key)), names = new Set(entries.map(entry => entry.id));
-  let added = 0, duplicates = 0;
-  for (const file of files) {
-    if (!/\.obj$/i.test(file.name)) continue;
-    const path = projectFilePath(file, paths), key = projectFileKey(file,path);
-    if (keys.has(key)) { duplicates++; continue; }
-    const base = file.name.replace(/\.obj$/i,''), id = projectUniqueId(base,names);
-    const entry = {id,key,file,bytes:file.size}; project.assign(entry,path);
-    // Keep names clear when separate folders contain the same model number.
-    if (id !== base) entry.treeName += ` [${id}]`;
-    entries.push(entry); keys.add(key); added++;
-  }
-  return {added,duplicates};
-}
-function appendWireFiles(entries, project, files, paths) {
-  const groups = new Map(entries.map(entry => [entry.sourceGroup,entry]));
-  const names = new Set(entries.map(entry => entry.id));
-  let added = 0, duplicates = 0;
-  for (const file of files) {
-    if (!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name)) continue;
-    const path = projectFilePath(file,paths), parts = path.split('/');
-    const sourceGroup = parts.slice(0,-1).join('/');
-    let entry = groups.get(sourceGroup);
-    if (!entry) {
-      const base = parts.length > 2 ? parts.slice(1,-1).join('/') : parts.length === 2 ? parts[0] : 'Files';
-      entry = {id:projectUniqueId(base,names),sourceGroup,wires:[],clouds:[],fileKeys:new Set()};
-      // A leaf is a building set; its parent folders remain independently manageable.
-      project.assign(entry,sourceGroup || 'Files');
-      entries.push(entry); groups.set(sourceGroup,entry);
-    }
-    const key = projectFileKey(file,path);
-    if (entry.fileKeys.has(key)) { duplicates++; continue; }
-    entry.fileKeys.add(key); entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file); added++;
-  }
-  // Keep file ordering stable while adding files: selected dropdown indices remain valid.
-  return {added,duplicates};
-}
-
-
 // Source: src/shared/point-drop.js
 
 // Capture drag handles synchronously: browsers protect the data store after drop returns.
@@ -2571,6 +2659,26 @@ function mountPointColumns({container,getItems,getSettings,applySettings}) {
   };
   el('columns-reset').onclick=()=>{if(!current)return;draft=defaultPointSettings({...current.rawCloud,semantics:null});el('columns-color').value=draft.colorSpace;el('columns-rgb').value=draft.rgbScale;el('columns-hsv').value=draft.hsvScale;renderRows();status(t('已恢复读取时的设置，点击“应用”生效。'));};
   refresh();return {refresh};
+}
+
+
+// Source: src/shared/object-browser-controls.js
+/** Keep file management in the sidebar and viewing choices beside the preview. */
+function mountObjectBrowserControls({root = document} = {}) {
+  const controls = root.querySelector('[data-object-browser]');
+  const heading = root.querySelector('.workspace > main > .main-heading');
+  if (!controls || !heading) return;
+  heading.classList.add('object-browser-heading');
+  heading.append(controls);
+  const help = controls.querySelector('details');
+  root.addEventListener('click', event => {
+    if (help.open && !help.contains(event.target)) help.open = false;
+  });
+  controls.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && help.open) {
+      help.open = false; help.querySelector('summary').focus(); event.preventDefault();
+    }
+  });
 }
 
 
@@ -3344,6 +3452,7 @@ function setViewerProjection(viewers, projection, pauseSync = callback => callba
 
 
 
+
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
   const primary=getViewers()[0],cameraPanel=root.getElementById('camera-controls');
@@ -3360,6 +3469,7 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }
+  mountObjectBrowserControls({root});
   mountResourceMonitor({root, getViewers});
   mountImageExport({root,getViewers,pauseSync});
   mountPresentationControls({root,getViewers,pauseSync});
@@ -6147,6 +6257,7 @@ async function genTakeHandoff() {
 
 
 
+
 initializeLocale();
 (() => {
   const $ = id => document.getElementById(id);
@@ -6240,6 +6351,7 @@ initializeLocale();
     $('wire-mode-select').value = wireMode;
     for (const id of ['select-all-wires','invert-wire-selection']) $(id).disabled = wireMode !== 'multiple' || !filtered.length;
     const multiple = wireMode === 'multiple';
+    $('previous-wire-id').parentElement.hidden=multiple;
     $('wire-mode-note').textContent = multiple ? t('勾选多个 ID，按原始坐标叠加；显示设置应用到所有已选 ID。') : t('单个 ID：← / → 或 [ / ] 切换；按自然编号顺序，遵循搜索筛选。');
     for (const id of ['previous-wire-id','next-wire-id']) $(id).disabled = multiple || !filtered.length || adjacentWireEntry(filtered,active,id === 'previous-wire-id' ? -1 : 1) === active;
     $('item-count').textContent = t('共 {0} 项', [pretty(entries.length)]);
@@ -6859,9 +6971,10 @@ initializeLocale();
       }).catch(cause => error(cause.message || t('没有找到刚生成的点云，请从点云生成页重新打开。')));
     }
     mountMobileProject({receive:importRecords,getState:()=>({
-      tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...(isWire?selectedWireEntries:selectedCloudEntries)].map(e=>e.id),active:active?.id,cloudMode,wireMode,wirePreferences,
+      objectImportVersion:2,tree:{...snapshotProjectTree(pointProject,entries),knownIds:mobileKnownIds},selected:[...(isWire?selectedWireEntries:selectedCloudEntries)].map(e=>e.id),active:active?.id,cloudMode,wireMode,wirePreferences,
       inputs:captureMobileInputs(),wire:isWire?Object.fromEntries(['wire-file','wire-file-2','wire-file-3','cloud-file','compare-mode','compare-count'].map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value])):null,camera:(loaded.cloud||loaded.wire)?cameraControls?.capture():null,
-    }),restoreState:async state=>{
+    }),restoreState:async (state,records)=>{
+      if(isWire)state=migrateObjectImportState(state,records,entries,'wire');
       mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...entries.map(e=>e.id)])];
       if(state){entries=restoreProjectTree(pointProject,entries,state.tree);cloudMode=state.cloudMode==='single'?'single':'multiple';
         const limit=state.inputs?.find(x=>x.id==='point-limit');if(limit)$('point-limit').value=limit.value;
