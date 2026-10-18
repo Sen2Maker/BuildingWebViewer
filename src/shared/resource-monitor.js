@@ -11,6 +11,7 @@ export function viewerResourceStats(viewers) {
     if (!viewer || viewer.disposed) continue;
     totals.contextLost ||= Boolean(viewer.contextLost);
     totals.models += viewer.models?.length || 0; totals.triangles += viewer.triangleCount || 0;
+    for(const entry of viewer.pointLayer?.entries||[])totals.bufferBytes+=entry.bytes||0;
     totals.points += viewer.pointCount || 0; totals.edges += viewer.edgeCount || 0;
     for (const buffer of Object.values(viewer.buffers || {})) addBuffer(buffer);
     for (const buffer of Object.values(viewer.styledLines?.shapes || {})) addBuffer(buffer);

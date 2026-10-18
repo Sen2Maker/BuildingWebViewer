@@ -1,3 +1,7 @@
+import { meshReferenceModels } from './mesh-data.js';
+import { CloudFileCache } from '../cloud/cloud-cache.js';
+import { createViewerComparison } from '../shared/viewer-comparison.js';
+import { setNameSummary } from '../shared/name-summary.js';
 import { migrateObjectImportState } from '../shared/object-import-state.js';
 import { objectFilePreference, resolveObjectFile, adjacentObjectEntry, objectNavigationDirection } from '../shared/object-selection.js';
 import { createBatchProgress } from '../shared/batch-progress.js';
@@ -23,6 +27,33 @@ import { mountPaletteControls, paletteGradient } from '../shared/palette-control
 initializeLocale();
 const $ = (id) => document.getElementById(id);
 let animationControls=null,meshMode='multiple',meshPreference=null,lastMeshId=null;
+let meshPendingColorMode=null;
+let meshPaneCount=1,meshVariants=[null,null,null],meshCloudPreference=null,meshCloudItems=[],paneModels=[[],[],[]],meshViewers=[];
+const meshFileCache=new CloudFileCache({readWire:async file=>parseOBJ(await file.text(),file.name,file.size)});
+const activeMeshViewers=()=>meshViewers.slice(0,meshPaneCount);
+const meshComparison=createViewerComparison(activeMeshViewers,()=>$('mesh-sync-camera').checked);
+function meshCloudFiles(entry){return (entry?.clouds||[]).filter(file=>!entry.excludedFileKeys?.includes(entry.sourceKeys?.get(file)));}
+function paneOptions(i){const layer=$(`mesh-layers-${i+1}`).value;return {...options,showMesh:layer!=='cloud',showPoints:layer!=='mesh'};}
+function updateMeshDataControls(){
+ const active=catalogById.get(lastMeshId),files=meshFiles(active),clouds=meshCloudFiles(active);
+ $('mesh-compare-count').value=String(meshPaneCount);$('mesh-sync-camera').closest('label').hidden=meshPaneCount===1;
+ for(let i=0;i<3;i++){const select=$(`mesh-variant-${i+1}`),chosen=resolveObjectFile(files,i===0?meshPreference:meshVariants[i],i);select.replaceChildren();
+   if(!files.length){const o=document.createElement('option');o.textContent=t('未加载模型');o.value='';select.append(o);}
+   files.forEach((file,index)=>{const o=document.createElement('option');o.value=String(index);o.textContent=file.name;select.append(o);});select.value=chosen?String(files.indexOf(chosen)):'';select.disabled=!files.length;$(`mesh-slot-${i+1}`).hidden=i>=meshPaneCount;
+ }
+ const select=$('mesh-cloud-file');select.replaceChildren();for(const[value,label]of [['auto',t('按 ID 自动配对')],['none',t('不加载点云')],...clouds.map((file,i)=>[String(i),file.name])]){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o);}
+ const cloud=resolveObjectFile(clouds,meshCloudPreference);select.value=meshCloudPreference?.none?'none':meshCloudPreference&&cloud?String(clouds.indexOf(cloud)):'auto';
+}
+function configureMeshPanes(){
+ $('viewer-grid').dataset.panels=String(meshPaneCount);$('mesh-panel-heading-1').hidden=meshPaneCount===1;
+ for(let i=1;i<3;i++){$(`mesh-panel-${i+1}`).hidden=i>=meshPaneCount;if(i<meshPaneCount&&!meshViewers[i]){meshViewers[i]=new MeshViewer($(`mesh-scene-${i+1}`),{onError:showError});meshComparison.install(meshViewers[i]);}if(i>=meshPaneCount&&meshViewers[i]){meshViewers[i].destroy();meshViewers[i]=null;}}
+ updateMeshDataControls();
+}
+function meshPointFields(){
+ const select=$('mesh-point-color-mode'),previous=meshPendingColorMode||select.value;meshPendingColorMode=null;select.replaceChildren();const keys=[...new Set(meshCloudItems.flatMap(item=>Object.keys(item.cloud.fields||{})))];
+ for(const[value,label]of [['height',t('高度 Z')],['rgb','RGB'],['solid',t('单色')],...keys.map(k=>['field:'+k,k])]){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o);}select.value=[...select.options].some(o=>o.value===previous)?previous:'height';
+}
+
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
@@ -93,6 +124,7 @@ function renderMeshMode(){
   const files=meshFiles(active);$('mesh-file-select').replaceChildren();
   for(const [index,file] of files.entries()){const option=document.createElement('option');option.value=String(index);option.textContent=file.name;$('mesh-file-select').append(option);}
   $('mesh-file-select').closest('label').hidden=files.length<2;
+  updateMeshDataControls();
   $('mesh-file-select').disabled=!files.length;$('mesh-file-select').value=String(Math.max(0,files.indexOf(active?.file)));
 }
 function navigateMesh(direction){if(meshMode!=='single')return;const entry=adjacentObjectEntry(filteredModels(),catalogById.get(lastMeshId),direction);if(entry)selectIds([entry.id]);}
@@ -133,66 +165,34 @@ function applyBatch(append) {
   catch (error) { showError(error.message); }
 }
 async function loadSelection() {
-  const version = ++generation;
-  controller?.abort(); controller = new AbortController();
-  const signal = controller.signal, ids = orderedIds();
-  if (!ids.length) {
-    currentModels = [];
-    viewer?.setModels([]);
-    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
-    renderLabels([]);
-    $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
-    $('scene-stats').textContent = catalog.length ? t('未选择模型') : t('请先在项目栏添加文件或文件夹');
-    return;
-  }
-  $('loading').hidden = !ids.length;
-  $('empty-state').hidden = !!ids.length;
-  $('screenshot').disabled = true;
-  $('scene-stats').textContent = ids.length ? t("正在读取 {0} 个模型…", [ids.length]) : t('未选择模型');
-  const sameIds=currentModels.map(model=>String(model.id)).sort().join('\0')===[...ids].sort().join('\0');
-  const batchProgress=createBatchProgress($('loading'),{total:ids.length,unit:'个模型',current:()=>version===generation});
-  const results = new Map(), failures = []; let next = 0, completed = 0;
-  const worker = async () => {
-    while (next < ids.length && !signal.aborted) {
-      const id = ids[next++];
-      try {
-        let model = cache.get(id);
-        if (!model) {
-          const file = localFiles.get(id);
-          if (!file) throw Error(t('本地文件已不可用，请重新选择文件夹'));
-          const text = await file.text();
-          if (signal.aborted || version !== generation) return;
-          model = parseOBJ(text, id, file.size);
-          if (signal.aborted || version !== generation) return;
-          cache.set(id, model);
-          if (cache.size > 64) cache.delete(cache.keys().next().value);
-        }
-        results.set(id, model);
-      } catch (error) {
-        if (error.name !== 'AbortError') failures.push(`#${id}：${error.message}`);
-      }
-      completed++;
-      batchProgress.report(completed,failures.length);
-    }
-  };
-  await Promise.all(Array.from({length: Math.min(4, ids.length)}, worker));
-  if (version !== generation) return;
-  batchProgress.prepare();
-  const savedView = cameraControls?.preserveView && (meshMode==='multiple'||sameIds) ? cameraControls.capture() : null;
-  currentModels = ids.map(id => results.get(id)).filter(Boolean);
-  try {
-    viewer?.setModels(currentModels);
-    if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
-    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
-    const triangles = currentModels.reduce((sum, m) => sum + m.faces.length, 0);
-    const vertices = currentModels.reduce((sum, m) => sum + m.vertices.length, 0);
-    $('scene-stats').textContent = currentModels.length ? t("已显示 {0} / {1} 个 · {2} 三角面 · {3} 顶点", [currentModels.length, ids.length, number(triangles), number(vertices)]) : t('未显示模型');
-    $('screenshot').disabled = !currentModels.length || !viewer;
-    $('empty-state').hidden = !!currentModels.length;
-    if (failures.length) showError(t('部分模型读取失败。') + failures.join('；'), true);
-    renderSelection(false);
-  } catch (error) { showError(t("模型渲染失败：{0}", [error.message]), true); }
-  finally { if(version===generation){$('loading').hidden = true;mobileSession?.schedule();} }
+ const version=++generation;controller?.abort();controller=new AbortController();const signal=controller.signal,ids=orderedIds();
+ configureMeshPanes();
+ if(!ids.length){meshFileCache.setActive([]);currentModels=[];paneModels=[[],[],[]];meshCloudItems=[];meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.setModels([])));cameraControls?.refresh();animationControls?.refresh();renderLabels([]);updateHeightLegend();$('loading').hidden=true;$('empty-state').hidden=false;$('screenshot').disabled=true;$('scene-stats').textContent=t('未选择模型');for(let i=1;i<=3;i++)$(`mesh-panel-label-${i}`).textContent='';return;}
+ const plans=ids.map(id=>{const entry=catalogById.get(id),files=meshFiles(entry);return {id,entry,meshes:Array.from({length:meshPaneCount},(_,i)=>resolveObjectFile(files,i===0?meshPreference:meshVariants[i],i)),cloud:resolveObjectFile(meshCloudFiles(entry),meshCloudPreference)};});
+ meshFileCache.setActive(plans.flatMap(plan=>[...plan.meshes,plan.cloud]));
+ const sameIds=currentModels.map(m=>String(m.id)).sort().join('\0')===[...ids].sort().join('\0');
+ const progress=createBatchProgress($('loading'),{total:ids.length,unit:'个对象',current:()=>version===generation});$('loading').hidden=false;$('empty-state').hidden=true;$('screenshot').disabled=true;clearError();
+ const results=new Map(),failures=[];let next=0,complete=0,failed=0;
+ const read=async(file,kind)=>file?meshFileCache.read(file,kind,{maxPoints:0,signal}):null;
+ async function worker(){while(next<plans.length&&!signal.aborted){const plan=plans[next++];const values=await Promise.allSettled([...plan.meshes.map(file=>read(file,'wire')),read(plan.cloud,'cloud')]);if(version!==generation)return;
+   const data=values.map((r,i)=>{if(r.status==='fulfilled')return r.value;if(r.reason?.name!=='AbortError')failures.push(`${plan.id} / ${(plan.meshes[i]||plan.cloud)?.name||''}: ${r.reason?.message}`);return null;});results.set(plan.id,data);if(values.some(v=>v.status==='rejected'))failed++;progress.report(++complete,failed);
+ }}
+ try{await Promise.all(Array.from({length:Math.min(3,plans.length)},worker));if(version!==generation)return;progress.prepare();
+   const saved=cameraControls?.preserveView&&(meshMode==='multiple'||sameIds)?cameraControls.capture():null;
+   paneModels=Array.from({length:meshPaneCount},()=>[]);meshCloudItems=[];cache.clear();
+   for(const plan of plans){const values=results.get(plan.id)||[];for(let i=0;i<meshPaneCount;i++)if(values[i])paneModels[i].push({...values[i],id:plan.id,name:plan.meshes[i].name});const cloud=values[meshPaneCount];if(cloud)meshCloudItems.push({id:plan.id,key:plan.cloud,name:plan.cloud.name,cloud});}
+   currentModels=paneModels[0];for(const m of currentModels)cache.set(m.id,m);
+   const referenceModels=meshReferenceModels(paneModels,meshCloudItems);meshPointFields();
+   meshComparison.pause(()=>activeMeshViewers().forEach((v,i)=>{v.setModels(paneModels[i],{referenceModels,clouds:meshCloudItems});v.setOptions(paneOptions(i));}));
+   if(saved&&referenceModels.length)cameraControls.restore(saved,{checkScene:false});else meshComparison.sync();
+   updateOptions();cameraControls?.refresh();animationControls?.refresh();
+   const triangles=paneModels.flat().reduce((n,m)=>n+m.faces.length,0),points=meshCloudItems.reduce((n,item)=>n+item.cloud.count,0);
+   $('scene-stats').textContent=t('{0} 个 ID · {1} 三角面 · {2} 点',[referenceModels.length,number(triangles),number(points)]);
+   updateMeshPaneLabels();
+   $('screenshot').disabled=!referenceModels.length;$('empty-state').hidden=!!referenceModels.length;
+   if(failures.length)showError(failures.join('；'),true);renderSelection(false);
+ }catch(error){if(version===generation&&error.name!=='AbortError')showError(t('显示失败：{0}',[error.message]),true);}
+ finally{if(version===generation){$('loading').hidden=true;mobileSession?.schedule();}}
 }
 function updateHeightLegend() {
   const legend = $('height-legend'); if (!legend) return;
@@ -206,12 +206,18 @@ function updateHeightLegend() {
     paletteControls?.setDataRange?.(range);
   }
 }
+function updateMeshPaneLabels(){for(let i=0;i<meshPaneCount;i++)setNameSummary($(`mesh-panel-label-${i+1}`),orderedIds().map(id=>{const model=paneModels[i]?.find(m=>String(m.id)===String(id));return `${id} / ${paneOptions(i).showMesh?(model?.name||t('仅点云')):t('仅点云')}`;}),t('未加载数据'));}
 function updateOptions() {
   const savedView = cameraControls?.preserveView && $('scale-mode').value !== options.scale ? cameraControls.capture() : null;
-  options = {mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
-  viewer?.setOptions(options);
+  options = {...options,mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
+  options={...options,pointColorMode:$('mesh-point-color-mode').value,pointColor:$('mesh-point-color').value,pointSize:Number($('mesh-point-size').value),pointOpacity:Number($('mesh-point-opacity').value),pointStyle:$('mesh-point-style').value};
+  meshComparison.pause(()=>activeMeshViewers().forEach((v,i)=>v.setOptions(paneOptions(i))));
+  $('mesh-point-size-value').value=options.pointSize;$('mesh-point-opacity-value').value=Math.round(options.pointOpacity*100)+'%';
+  updateMeshPaneLabels();
+  $('mesh-point-note').textContent=[...new Set(activeMeshViewers().flatMap(v=>v.pointLayer?.fallbacks||[]))].join(' ');
   if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
-  paletteControls?.setScalarEnabled(options.colors === 'height');
+  paletteControls?.setScalarEnabled(options.colors==='height'||meshCloudItems.length>0&&(options.pointColorMode==='height'||options.pointColorMode?.startsWith('field:')));
+  if(options.colors!=='height')paletteControls?.setDataRange(viewer?.pointLayer?.colorRange);
   cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
   $('layout-title').textContent = options.scale === 'real' ? t('等比例陈列') : t('统一展示大小');
   $('layout-note').textContent = options.scale === 'real' ? t('独立模型重新排列 · 非实际地理位置') : t('各模型独立等比缩放 · 不可比较实际大小');
@@ -239,26 +245,26 @@ $('random-selection').onclick = () => {
 };
 $('previous-group').onclick = () => nextGroup(-1);
 $('next-group').onclick = () => nextGroup(1);
-$('fit-view').onclick = () => viewer?.fit();
-$('zoom-in').onclick = () => viewer?.zoomBy(1.2);
-$('zoom-out').onclick = () => viewer?.zoomBy(1 / 1.2);
+$('fit-view').onclick = () => meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.fit()));
+$('zoom-in').onclick = () => meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.zoomBy(1.2)));
+$('zoom-out').onclick = () => meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.zoomBy(1 / 1.2)));
 
 $('retry').onclick = () => { clearError(); if (!catalog.length || !viewer) init(); else loadSelection(); };
 $('dismiss-error').onclick = clearError;
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => {
-  viewer?.setView(button.dataset.view);
+  meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.setView(button.dataset.view)));
   for (const other of document.querySelectorAll('[data-view]')) { other.classList.toggle('active', other === button); other.setAttribute('aria-pressed', String(other === button)); }
 };
 for (const id of ['display-mode', 'scale-mode', 'color-mode', 'show-edges', 'show-labels', 'show-grid']) $(id).onchange = updateOptions;
 document.addEventListener('keydown', event => {
   if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(event.target.tagName)) return;
-  if (event.key.toLowerCase() === 'f') { event.preventDefault(); viewer?.fit(); }
+  if (event.key.toLowerCase() === 'f') { event.preventDefault(); meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.fit())); }
 });
 
 function ensureViewer() {
-  if (!viewer) viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});
+  if (!viewer){viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});meshViewers=[viewer];meshComparison.install(viewer);}
   if (!paletteControls && $('palette-controls')) paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: updateOptions});
-  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
+  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: activeMeshViewers,pauseSync:meshComparison.pause, space: 'lod-arrangement', getScene: () => ({ids:(viewer?.sceneData?.referenceModels||currentModels).map(model=>String(model.id)),scale:options.scale})});
   options = {...options, ...paletteControls?.getOptions()};
   viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
@@ -271,7 +277,7 @@ function folderReady(fileList, paths = null) {
   $('source-path').textContent = t('文件留在本机 · 分组仅保留在本次页面');
   $('folder-status').textContent = t('{0} 个 ID · {1} 个 OBJ · 按需读取',[number(catalog.length),number(catalog.reduce((sum,entry)=>sum+meshFiles(entry).length,0))]);
   $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
-  if (!result.added && !result.duplicates) showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。'));
+  if (!result.added && !result.duplicates) showError(t('未找到支持的模型或点云文件。'));
   else clearError();
   renderList();if(selected.size&&result.added)loadSelection(); return result;
 }
@@ -284,13 +290,13 @@ function changeModelVisibility(members, checked) {
 function removeModelEntries(members) {
   const removed = new Set(members);
   ++generation; controller?.abort();
-  for (const model of members) { cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
+  for (const model of members) { for(const file of [...meshFiles(model),...meshCloudFiles(model)])meshFileCache.forget(file);cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
   catalog = catalog.filter(model => !removed.has(model));
   $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
   $('folder-status').textContent = t('{0} 个 ID · {1} 个 OBJ · 按需读取',[number(catalog.length),number(catalog.reduce((sum,entry)=>sum+meshFiles(entry).length,0))]);
   selectIds([...selected]);
 }
-const importLodRecords=archiveImportQueue({accepts:name=>/\.obj$/i.test(name),
+const importLodRecords=archiveImportQueue({accepts:name=>/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(name),
   receive:records=>folderReady(records.map(item=>item.file),new Map(records.map(item=>[item.file,item.path]))),
   onProgress:message=>{$('drop-status').hidden=false;$('drop-status').textContent=message;},onError:showError});
 const pickLodFiles=event=>{const records=Array.from(event.target.files,file=>({file,path:file.webkitRelativePath||file.name}));event.target.value='';importLodRecords(records).catch(()=>{});};
@@ -300,7 +306,7 @@ $('folder-input').onchange = pickLodFiles;
 function init() {
   try {
     ensureViewer();
-    mountViewerLayout({getViewers: () => viewer ? [viewer] : []});
+    mountViewerLayout({getViewers: activeMeshViewers,pauseSync:meshComparison.pause});
     if(!isMobileApp()&&!animationControls)animationControls=mountCameraAnimation({adapter:createMeshAnimationAdapter({getViewer:()=>viewer,getModels:()=>currentModels,getScene:()=>({ids:currentModels.map(m=>String(m.id)),scale:options.scale})}),toolbar:document.querySelector('.viewer-toolbar'),anchor:$('viewport')});
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
@@ -308,9 +314,9 @@ function init() {
       getMode: () => meshMode, getQuery: () => $('search').value.trim().replace(/^#/,''),
       onToggle: model => changeModelVisibility([model],!selected.has(model.id)),
       onGroupSelection: (members,checked)=>{if(meshMode==='multiple')changeModelVisibility(members,checked);}, onVisibility: changeModelVisibility,
-      onRemove: removeModelEntries, onChange: renderList, detail: model => `${meshFiles(model).length} OBJ · ${(model.bytes / 1024).toFixed(1)} KB`,
+      onRemove: removeModelEntries, onChange: renderList, detail: model => `${meshFiles(model).length} OBJ · ${meshCloudFiles(model).length} PC`,
     });
-    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name), onFiles: importLodRecords});
+    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|xyz|txt|csv|pts|ply|pcd|zip)$/i.test(name), onFiles: importLodRecords});
     $('select-all-models').onclick = () => selectIds([...selected, ...filteredModels().map(model => model.id)]);
     $('invert-model-selection').onclick = () => {
       const next = new Set(selected);
@@ -321,14 +327,14 @@ function init() {
     $('file-input').onchange = pickLodFiles;
     $('total-count').textContent = t('尚未选择文件夹');
     $('source-path').textContent = t('尚未选择文件夹。关闭或刷新网页后，请手动重新选择。');
-    $('folder-status').textContent = t('选择含 OBJ 的目录 · 文件仅在本机读取');
+    $('folder-status').textContent = t('导入模型或点云 · 文件仅在本机读取');
     selectIds([]);
-    mountMobileProject({receive:importLodRecords,getState:()=>({objectImportVersion:2,mode:meshMode,meshPreference,tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length?cameraControls?.capture():null}),restoreState:async (state,records)=>{
+    mountMobileProject({receive:importLodRecords,getState:()=>({objectImportVersion:2,mode:meshMode,meshPreference,pointColorMode:meshPendingColorMode||$('mesh-point-color-mode').value,comparison:{count:meshPaneCount,variants:meshVariants,cloud:meshCloudPreference},tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length||meshCloudItems.length?cameraControls?.capture():null}),restoreState:async (state,records)=>{
       state=migrateObjectImportState(state,records,catalog,'mesh');
       mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...catalog.map(e=>e.id)])];
-      if(state){meshMode=state.mode==='single'?'single':'multiple';meshPreference=state.meshPreference?.none?null:state.meshPreference||null;catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));lastMeshId=[...selected].at(-1)||null;syncMeshFiles();restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&currentModels.length)cameraControls.restore(state.camera,{checkScene:false});}
+      if(state){meshPendingColorMode=typeof state.pointColorMode==='string'?state.pointColorMode:null;meshPaneCount=[2,3].includes(state.comparison?.count)?state.comparison.count:1;meshVariants=Array.from({length:3},(_,i)=>state.comparison?.variants?.[i]||null);meshCloudPreference=state.comparison?.cloud||null;configureMeshPanes();meshMode=state.mode==='single'?'single':'multiple';meshPreference=state.meshPreference?.none?null:state.meshPreference||null;catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));lastMeshId=[...selected].at(-1)||null;syncMeshFiles();restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&(currentModels.length||meshCloudItems.length))cameraControls.restore(state.camera,{checkScene:false});}
       $('source-path').textContent=t('项目自动保存在此设备');
-    },onBackground:()=>{for(const id of cache.keys())if(!selected.has(id))cache.delete(id);}}).then(session=>{mobileSession=session;});
+    },onBackground:()=>{meshFileCache.trim();for(const id of cache.keys())if(!selected.has(id))cache.delete(id);}}).then(session=>{mobileSession=session;});
   } catch (error) {
     $('scene-stats').textContent = t('查看器暂时无法启动');
     $('loading').hidden = true;
@@ -336,4 +342,14 @@ function init() {
     $('empty-state').hidden = false;
   }
 }
+$('mesh-compare-count').onchange=async()=>{meshPaneCount=Number($('mesh-compare-count').value);await loadSelection();const version=generation;requestAnimationFrame(()=>{if(version!==generation)return;meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.fit()));meshComparison.sync();});};
+$('mesh-sync-camera').onchange=()=>{if($('mesh-sync-camera').checked)meshComparison.sync();};
+$('mesh-cloud-file').onchange=()=>{const value=$('mesh-cloud-file').value;meshCloudPreference=value==='auto'?null:value==='none'?{none:true}:objectFilePreference(meshCloudFiles(catalogById.get(lastMeshId)),value);loadSelection();};
+for(let i=0;i<3;i++){
+ $(`mesh-variant-${i+1}`).onchange=()=>{const pref=objectFilePreference(meshFiles(catalogById.get(lastMeshId)),$(`mesh-variant-${i+1}`).value);if(i===0)meshPreference=pref;else meshVariants[i]=pref;syncMeshFiles();renderList();loadSelection();};
+ $(`mesh-layers-${i+1}`).onchange=updateOptions;
+}
+for(const id of ['mesh-point-color-mode','mesh-point-color','mesh-point-style'])$(id).onchange=updateOptions;
+for(const id of ['mesh-point-size','mesh-point-opacity'])$(id).oninput=updateOptions;
+
 init();

@@ -1,3 +1,4 @@
+import { createViewerComparison } from '../shared/viewer-comparison.js';
 import { migrateObjectImportState } from '../shared/object-import-state.js';
 import { createBatchProgress } from '../shared/batch-progress.js';
 import { compactNames, setNameSummary } from '../shared/name-summary.js';
@@ -36,7 +37,7 @@ initializeLocale();
   const fieldLabel = name => /^column_\d+$/.test(name) ? t("第 {0} 列", [name.slice(7)]) : name;
   const compact = value => !Number.isFinite(value) ? '—' : Math.abs(value) > 10000 ? value.toPrecision(6) : Number(value.toPrecision(5)).toString();
   let entries = [], active = null, revision = 0, overlay = null;
-  let viewers = [], originals = new Map(), syncEnabled = false, syncGuard = false;
+  let viewers = [], syncEnabled = false;
   let loaded = { cloud: null, wire: null }, loadedWires = [], selectedFiles = { cloud: null, wires: [] };
   let currentPointName = '', messages = [], loadController = null;
   const cached = new CloudFileCache({readCloud: (file, options) => file.generatedCloud ? samplePointCloud(file.generatedCloud, options.maxPoints) : readPointCloud(file, options)}), selectedCloudEntries = new Set();
@@ -64,35 +65,9 @@ initializeLocale();
   }
   function error(message) { $('error').hidden = !message; $('error').querySelector('span').textContent = message || ''; }
   function activeViewerCount() { return !isWire || !$('compare-mode').checked ? 1 : Number($('compare-count').value) === 3 ? 3 : 2; }
-  function copyCamera(source, target) {
-    target.navigation?.reset();
-    target.camera = { ...source.camera, pan: [...source.camera.pan] };
-    target.target = [...source.target]; target.baseHeight = source.baseHeight;
-    target.projection=source.projection;target.distance=source.distance;target.fov=source.fov;target.near=source.near;
-    target.flyPose=source.flyPose?{eye:[...source.flyPose.eye],basis:source.flyPose.basis.map(v=>[...v])}:null;
-  }
-  function installSync() {
-    for (const viewer of viewers) originals.set(viewer, viewer.render.bind(viewer));
-    for (const viewer of viewers) {
-      const ownRender = originals.get(viewer);
-      viewer.render = function syncedRender() {
-        const result = ownRender();
-        if (!syncEnabled || syncGuard || this.flyPose&&!this.fly?.active || viewers.some(v=>v!==this&&v.fly?.active)) return result;
-        syncGuard = true;
-        try {
-          for (const other of viewers.slice(0, activeViewerCount())) {
-            if (other === viewer) continue;
-            copyCamera(viewer, other); originals.get(other)();
-          }
-        } finally { syncGuard = false; }
-        return result;
-      };
-    }
-  }
-  function pauseSync(callback) {
-    const previous = syncEnabled; syncEnabled = false;
-    try { return callback(); } finally { syncEnabled = previous; }
-  }
+  const comparison=createViewerComparison(()=>viewers.slice(0,activeViewerCount()),()=>syncEnabled&&(!isWire||$('wire-sync-camera').checked));
+  function installSync(){for(const viewer of viewers)comparison.install(viewer);}
+  function pauseSync(callback){return comparison.pause(callback);}
   function initViewers() {
     if (viewers.length) return;
     const ids = isWire ? ['scene', 'scene-2', 'scene-3'] : ['scene'];
@@ -134,6 +109,7 @@ initializeLocale();
     if (!isWire) return;
     const enabled = $('compare-mode').checked && !$('compare-mode').disabled;
     const count = enabled && Number($('compare-count').value) === 3 ? 3 : enabled ? 2 : 1;
+    $('wire-compare-layout').value=String(count);$('wire-compare-layout').querySelector('option[value="2"]').disabled=$('compare-mode').disabled;$('wire-compare-layout').querySelector('option[value="3"]').disabled=$('compare-count').querySelector('option[value="3"]').disabled||$('compare-mode').disabled;$('wire-sync-row').hidden=count===1;
     $('compare-controls').hidden = !enabled; $('wire-slot-3').hidden = count < 3;
     $('wire-file-2').disabled = !enabled || !wireChoices.wires.length;
     $('wire-file-3').disabled = count < 3 || !wireChoices.wires.length;
@@ -640,6 +616,8 @@ initializeLocale();
     $('select-all-wires').onclick=()=>batchWireSelection(); $('invert-wire-selection').onclick=()=>batchWireSelection(true);
     $('previous-wire-id').onclick=()=>navigateWire(-1); $('next-wire-id').onclick=()=>navigateWire(1);
     for (const id of ['wire-file-2', 'wire-file-3']) $(id).onchange = event => { preventDuplicateSelection(event.target); rememberWireChoices(event.target.id);load(); };
+    $('wire-sync-camera').onchange=()=>{if($('wire-sync-camera').checked)comparison.sync();};
+    $('wire-compare-layout').onchange=()=>{const count=Number($('wire-compare-layout').value);$('compare-mode').checked=count>1;$('compare-count').value=String(Math.max(2,count));rememberWireChoices();setComparisonUI();load({preserveCamera:false});};
     $('compare-mode').onchange = () => { rememberWireChoices('compare-mode');setComparisonUI(); load({ preserveCamera: true }); };
     $('compare-count').onchange = () => { rememberWireChoices('compare-count');setComparisonUI(); load({ preserveCamera: true }); };
   }

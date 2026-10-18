@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>网格模型查看器</title><!-- site-meta:start -->
-<meta name="application-build" content="e88c661e5ad034af">
+<meta name="application-build" content="d4d38d89f9d33b48">
 <meta name="description" content="本地 OBJ 网格查看器：多模型排列、实体与线框、相对高度和面朝向着色、相机书签。Local OBJ mesh viewer with multi-model layouts, solid/wireframe display, relative-height and face-orientation colors, and camera bookmarks.">
 <meta name="application-name" content="BuildingWebViewer">
-<meta name="application-version" content="1.9.0">
+<meta name="application-version" content="1.10.0">
 <link rel="canonical" href="https://sen2maker.github.io/BuildingWebViewer/lod.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="网格模型查看器 / Mesh Viewer · BuildingWebViewer">
@@ -105,7 +105,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <!-- boot-head:end -->
   <link rel="icon" href="favicon.ico?v=9db3e16ad754" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=57fe6ee6fffe"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=6fa2af78d567"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=c5a7b3551b38">
   <link rel="stylesheet" href="assets/css/styles.css?v=e5f35201e2a7">
-<link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=c0bb61a496c0"><link rel="stylesheet" href="assets/css/project-tree.css?v=9fe2a270f63d"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"><link rel="stylesheet" href="assets/css/camera-navigation.css?v=f1f7db3ac58c"><link rel="stylesheet" href="assets/css/camera-animation.css?v=6c1f995ce22c">
+<link rel="stylesheet" href="assets/css/viewer-controls.css?v=d106bf3f79ab"><link rel="stylesheet" href="assets/css/camera-controls.css?v=2b966fa0c05c"><link rel="stylesheet" href="assets/css/viewer-layout.css?v=402127940157"><link rel="stylesheet" href="assets/css/project-tree.css?v=9fe2a270f63d"><link rel="stylesheet" href="assets/css/site-footer.css?v=906b241788ad"><link rel="stylesheet" href="assets/css/camera-navigation.css?v=f1f7db3ac58c"><link rel="stylesheet" href="assets/css/camera-animation.css?v=6c1f995ce22c">
 </head>
 <body data-tool="lod"><!-- boot-body:start -->
 <div id="page-boot" role="status" aria-live="polite" data-no-i18n>
@@ -126,7 +126,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
 <aside class="sidebar project-sidebar point-drop-zone" id="point-drop-zone" aria-label="项目文件" aria-describedby="drop-hint">
   <div class="sidebar-heading"><h2>项目文件</h2><span id="item-count">共 0 项</span><button id="collapse-project" type="button" aria-label="收起项目栏" title="收起项目栏">‹</button></div>
   <div class="folder-section project-import">
-    <div class="project-import-buttons"><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept=".obj,.zip" multiple hidden><button id="choose-folder">＋ 文件夹</button><input id="folder-input" type="file" webkitdirectory multiple hidden></div>
+    <div class="project-import-buttons"><button id="choose-file">＋ 文件</button><input id="file-input" type="file" accept=".obj,.xyz,.txt,.csv,.pts,.ply,.pcd,.zip" multiple hidden><button id="choose-folder">＋ 文件夹</button><input id="folder-input" type="file" webkitdirectory multiple hidden></div>
     <p id="drop-hint" class="point-drop-hint">拖入文件或文件夹</p>
     <p id="drop-status" class="point-drop-status" role="status" hidden></p>
   </div>
@@ -148,7 +148,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
         <div class="button-row"><button class="primary" id="replace-selection">查看这些模型</button><button id="add-selection">追加</button><button id="random-selection">随机看 6 个</button></div>
       </div>
       </details>
-<details class="format-help"><summary>格式与管理说明</summary><p>支持 ID.obj 或 ID 文件夹中的 OBJ。单个 ID 可切换，多个 ID 可批选；同一 ID 内可选择 OBJ 版本。</p><p id="folder-status">选择含 OBJ 的目录 · 文件仅在本机读取</p><p id="source-path"></p><p>新建文件夹和移动仅影响本次页面，不修改磁盘文件。</p></details>
+<details class="format-help"><summary>格式与管理说明</summary><p>支持 ID.obj 或 ID 文件夹中的 OBJ；同名或同目录点云按 ID 配对。数据面板可选版本、点云图层与 2 / 3 视窗对比。</p><p id="folder-status">导入模型或点云 · 文件仅在本机读取</p><p id="source-path"></p><p>新建文件夹和移动仅影响本次页面，不修改磁盘文件。</p></details>
 
 </aside>
 <!-- project-sidebar:end -->
@@ -159,6 +159,7 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
         <div class="segmented" aria-label="视角"><button data-view="iso" class="active" aria-pressed="true">立体</button><button data-view="top" aria-pressed="false">俯视</button><button data-view="front" aria-pressed="false">正视</button></div>
         <button id="fit-view" title="快捷键 F">适应窗口</button>
         <div class="inspector-shortcuts" aria-label="查看器设置入口"><button type="button" data-open-settings="display" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="19" r="2" fill="currentColor" stroke="none"/></svg><span>显示</span></button><button type="button" data-open-settings="camera" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l2-3h4l2 3h4v14H4V6z"/><circle cx="12" cy="12" r="4"/></svg><span>相机</span></button><button type="button" data-open-settings="bookmarks" aria-controls="viewer-inspector" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span>书签</span></button></div></div>
+      <div id="viewer-grid" class="viewer-grid" data-panels="1"><section class="viewer-panel"><div id="mesh-panel-heading-1" class="comparison-heading" hidden><strong id="mesh-panel-label-1"></strong></div>
       <div class="viewport" id="viewport">
         <canvas id="scene" aria-label="所选模型的三维模型；拖动旋转、滚轮缩放、右键拖动平移"></canvas>
         <div class="scene-note"><strong id="layout-title">等比例陈列</strong><span id="layout-note">独立模型重新排列 · 非实际地理位置</span></div>
@@ -168,8 +169,11 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
         <div id="error" class="error-banner" role="alert" hidden><span></span><button id="retry">重新加载</button><button id="dismiss-error" aria-label="关闭提示">×</button></div>
         <div class="viewport-bottom"><div id="height-legend" class="scalar-legend" hidden><span>相对高度</span><i></i><span id="height-min"></span><span>—</span><span id="height-max"></span></div><div class="legend" id="legend"><span><i class="roof"></i>非竖直面</span><span><i class="wall"></i>近竖直面</span></div><div class="zoom-controls"><button id="zoom-out" aria-label="缩小">−</button><button id="zoom-in" aria-label="放大">+</button></div></div>
       </div>
+      </section>
+      <section id="mesh-panel-2" class="viewer-panel" hidden><div class="comparison-heading"><strong id="mesh-panel-label-2"></strong></div><div class="viewport"><canvas id="mesh-scene-2" aria-label="第二个网格三维预览"></canvas></div></section>
+      <section id="mesh-panel-3" class="viewer-panel" hidden><div class="comparison-heading"><strong id="mesh-panel-label-3"></strong></div><div class="viewport"><canvas id="mesh-scene-3" aria-label="第三个网格三维预览"></canvas></div></section></div>
       <footer><span class="desktop-hint">拖动旋转 <b>·</b> 滚轮缩放 <b>·</b> 右键 / Shift 拖动平移 <b>·</b> F 适应窗口</span><span class="touch-hint">单指旋转 · 双指缩放与平移</span><span class="footer-detail">点击编号可单独查看</span><!-- site-footer:start -->
-<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.9.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.9.0</a></nav>
+<nav class="project-links" aria-label="项目信息"><a href="https://github.com/Sen2Maker" target="_blank" rel="noopener noreferrer">Sen2Maker ↗</a><a href="https://github.com/Sen2Maker/BuildingWebViewer" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a><a class="project-version" href="https://github.com/Sen2Maker/BuildingWebViewer/releases/tag/v1.10.0" target="_blank" rel="noopener noreferrer" aria-label="版本更新记录">v1.10.0</a></nav>
 
 <!-- site-footer:end --></footer>
     </main>
@@ -177,7 +181,12 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   <div class="inspector-heading"><div><p>VIEW SETTINGS</p><h2>查看器设置</h2></div><button type="button" data-close-settings aria-label="收起设置面板" title="收起 · Esc">×</button></div>
   <div class="inspector-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="settings-tab-display" data-settings-tab="display" aria-controls="settings-panel-display" aria-selected="true" tabindex="0">显示</button><button type="button" role="tab" id="settings-tab-camera" data-settings-tab="camera" aria-controls="settings-panel-camera" aria-selected="false" tabindex="-1">相机</button><button type="button" role="tab" id="settings-tab-bookmarks" data-settings-tab="bookmarks" aria-controls="settings-panel-bookmarks" aria-selected="false" tabindex="-1">书签</button></div>
   <div class="inspector-content">
-    <section role="tabpanel" id="settings-panel-display" data-settings-panel="display" aria-labelledby="settings-tab-display"><section class="inspector-section"><h3>模型显示</h3><div class="inspector-options"><label>显示 <select id="display-mode"><option value="solid">实体</option><option value="solid-wire">实体 + 三角网</option><option value="wire">线框</option></select></label>
+    <section role="tabpanel" id="settings-panel-display" data-settings-panel="display" aria-labelledby="settings-tab-display"><section class="inspector-section" data-data-controls><h3>数据与对比</h3><div class="inspector-options">
+<label>视窗布局<select id="mesh-compare-count"><option value="1">单视窗</option><option value="2">双视窗对比</option><option value="3">三视窗对比</option></select></label>
+<label class="check-label"><input id="mesh-sync-camera" type="checkbox" checked>同步相机</label>
+<label>叠加点云<select id="mesh-cloud-file"><option value="auto">按 ID 自动配对</option><option value="none">不加载点云</option></select></label>
+<p class="presentation-help">点云与网格共用变换；对比各栏使用一致的比例与布局。</p><p class="presentation-help">相机动画使用视窗 1；图片可导出全部视窗。</p>
+<fieldset id="mesh-slot-1" class="mesh-slot"><legend>视窗 1</legend><label>OBJ 版本<select id="mesh-variant-1" aria-label="视窗 1 OBJ 版本"></select></label><label>图层<select id="mesh-layers-1" aria-label="视窗 1 图层"><option value="both">网格与点云</option><option value="mesh">仅网格</option><option value="cloud">仅点云</option></select></label></fieldset><fieldset id="mesh-slot-2" class="mesh-slot"><legend>视窗 2</legend><label>OBJ 版本<select id="mesh-variant-2" aria-label="视窗 2 OBJ 版本"></select></label><label>图层<select id="mesh-layers-2" aria-label="视窗 2 图层"><option value="both">网格与点云</option><option value="mesh">仅网格</option><option value="cloud">仅点云</option></select></label></fieldset><fieldset id="mesh-slot-3" class="mesh-slot"><legend>视窗 3</legend><label>OBJ 版本<select id="mesh-variant-3" aria-label="视窗 3 OBJ 版本"></select></label><label>图层<select id="mesh-layers-3" aria-label="视窗 3 图层"><option value="both">网格与点云</option><option value="mesh">仅网格</option><option value="cloud">仅点云</option></select></label></fieldset></div></section><section class="inspector-section"><h3>点云显示</h3><div class="inspector-options"><label>着色依据<select id="mesh-point-color-mode"><option value="height">高度 Z</option><option value="rgb">RGB</option><option value="solid">单色</option></select></label><label>单色颜色<input id="mesh-point-color" type="color" value="#547d99"></label><label>点大小<input id="mesh-point-size" type="range" min="1" max="16" step="0.5" value="2"><output id="mesh-point-size-value">2</output></label><label>透明度<input id="mesh-point-opacity" type="range" min="0.1" max="1" step="0.05" value="1"><output id="mesh-point-opacity-value">100%</output></label><label>点的样式<select id="mesh-point-style"><option value="disc">圆点</option><option value="square">方点</option><option value="sphere">球形光照</option></select></label></div><p class="presentation-help">色带与固定范围共用；自动范围按网格和点云分别计算。</p><p id="mesh-point-note" class="presentation-help" role="status"></p></section><section class="inspector-section"><h3>模型显示</h3><div class="inspector-options"><label>显示 <select id="display-mode"><option value="solid">实体</option><option value="solid-wire">实体 + 三角网</option><option value="wire">线框</option></select></label>
         <label>比例 <select id="scale-mode"><option value="real">实际比例</option><option value="normalized">统一展示大小</option></select></label>
         <label>配色 <select id="color-mode"><option value="surface">面朝向</option><option value="height">高度色带</option><option value="building">按模型</option></select></label>
         <label class="check-label"><input id="show-edges" type="checkbox" checked>轮廓边</label>
@@ -188,6 +197,6 @@ html[lang=en] #page-boot .boot-zh{display:none}html[lang=en] #page-boot .boot-en
   </div><p class="inspector-footer">设置即时生效 · 按 Esc 收起面板</p>
 </aside>
   </div>
-  <script data-viewer-src="assets/js/lod.bundle.js?v=74d8999a2b8c"></script>
+  <script data-viewer-src="assets/js/lod.bundle.js?v=42e6d0502c7e"></script>
 </body>
 </html>

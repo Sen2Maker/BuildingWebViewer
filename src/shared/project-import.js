@@ -60,7 +60,7 @@ function appendObjectFiles(entries,project,files,paths,mesh) {
   const groups=new Map(entries.filter(e=>e.sourceIdentity).map(e=>[e.sourceIdentity,e])),names=new Set(entries.map(e=>e.id));
   let added=0,duplicates=0;
   for(const file of files) {
-    if(!(mesh?/\.obj$/i:/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i).test(file.name))continue;
+    if(!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name))continue;
     const source=objectFileSource(file,paths);let entry=groups.get(source.identity);
     if(!entry){
       entry={id:projectUniqueId(source.base,names),sourceIdentity:source.identity,sourceGroup:source.sourceGroup,sourceLayout:source.folder?'folder':'file',files:[],wires:[],clouds:[],fileKeys:new Set(),sourceKeys:new Map()};
@@ -69,7 +69,7 @@ function appendObjectFiles(entries,project,files,paths,mesh) {
     }
     if(entry.fileKeys.has(source.key)){duplicates++;continue;}
     entry.fileKeys.add(source.key);entry.sourceKeys.set(file,source.key);entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file);
-    if(mesh){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
+    if(mesh && /\.obj$/i.test(file.name)){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
     added++;
   }
   return {added,duplicates};

@@ -47,3 +47,13 @@ Portable preferences exclude sampling and dataset-specific scalar ranges. Shared
 `object-selection.js` 共用文件名版本偏好、自然顺序的 ID 导航与快捷键隔离；Wireframe 保留旧函数名适配调用。Mesh 多 ID 继续独立陈列，Wireframe 多 ID 继续按原始坐标叠加，不改变各自坐标语义。
 
 `object-import-state.js` 仅在旧 App 项目恢复时按实际 File 对象建立旧 / 新条目对应；保留选择与虚拟树，必要时从旧单项批量条目转为多 ID。Mesh 旧的单文件条目合并时，已移除版本通过源文件键保持排除。该元数据不修改磁盘文件或原生接口。
+
+## 点云叠加与对比
+
+- `mesh-point-layer.js` 在网格 WebGL 上下文中绘制点云，共用深度、相机和图片导出目标；原始双精度坐标先减去每个 ID 的原点再转为 GPU 浮点，避免大坐标抖动。
+- `mesh-data.js` 汇总各版本与点云的联合边界，使同一 ID 在所有视窗内具有一致变换。Mesh 仍为独立排列，Wireframe 仍为原始坐标叠加。
+- `point-display-colors.js` 复用 RGB、数值字段和缺失字段回退规则；`CloudFileCache` 复用读取结果。叠加不修改原数据；属性编辑、计算与合并继续在点云工具中完成。
+- `viewer-comparison.js` 管理相机同步与数据重建 / 导出期间的暂停；关闭同步可分别操作各栏。Mesh 的相机动画仅输出第一视窗，静态图片可拼接全部视窗。
+- `inspector-navigation.js` 统一五个工具的数据、显示、相机、书签入口与顺序，工具专属模块仍保留独立实现。Android 原生高斯是独立界面适配，不加载网页编辑工具。
+
+Point overlays share the mesh depth buffer and export target. Comparison panes use union reference bounds and shared camera synchronization. Processing and attribute editing remain in the point-cloud tool; native Gaussian stays a separate renderer/UI adapter.

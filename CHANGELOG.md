@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-18
+
+- 本地验证：148 项网页回归、5 个工具导航测试、23 个 Android 脚本兼容检查和 Android Debug 编译 / 单元测试通过；已核对中英文、390 像素布局及三栏 PNG 导出。未进行真机触摸与大数据压力测试。
+
+- Mesh 支持按 ID 配对点云，提供高度、RGB、数值字段着色、点大小、透明度与点样式；网格和点云共用排列变换与深度遮挡，默认读取全部点。
+- Mesh 增加双 / 三视窗版本对比、独立图层选择和相机同步开关；图片支持导出全部视窗，相机动画仍使用第一视窗。
+- 五个网页工具统一「数据、显示、相机、书签」入口与设置顺序，专属处理 / 编辑 / 诊断收进工具菜单；线框使用同一套单 / 双 / 三视窗入口，手机对比区可横向滑动。
+- Android 原生高斯将显示设置移到主工具栏；网页 App 工具复用同一套界面与 Mesh 点云 / 对比功能。原生高斯 UI 更改需新 APK。
+- Add ID-paired point overlays and two/three-pane Mesh comparison with shared transforms, independent layer visibility, synchronized cameras and multi-pane image export. All five web tools share inspector navigation; Wireframe shares the layout selector. Android Gaussian exposes Display on its native toolbar.
+
 ## [1.9.0] - 2026-10-18
 
 - Mesh 与线框的显示模式、ID 切换和版本选择统一移至预览标题区；多 ID 隐藏逐项切换，仅有多个版本时显示 OBJ 选择，说明按需展开，项目栏留给文件列表。

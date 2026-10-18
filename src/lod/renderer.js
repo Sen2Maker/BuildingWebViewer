@@ -1,3 +1,4 @@
+import { MeshPointLayer } from '../shared/mesh-point-layer.js';
 import { installCameraNavigation, navigationBasis, navigationMatrix, pickMeshNavigationDepth } from '../shared/navigation-adapter.js';
 import { currentPresentation } from '../shared/render-style.js';
 import { updateSceneGuides } from '../shared/scene-guides.js';
@@ -123,6 +124,7 @@ export class MeshViewer {
     }
     this.program = program;
     this.styledLines = new StyledLineRenderer(gl);
+    this.pointLayer = null;
     this.locations = {
       surfaceStyle: gl.getUniformLocation(program,'surfaceStyle'), viewDirection:gl.getUniformLocation(program,'viewDirection'),
       position: gl.getAttribLocation(program, 'position'),
@@ -189,7 +191,7 @@ export class MeshViewer {
       try {
         this.buffers = {};
         this.initGL();
-        this.setModels(this.models);
+        this.setModels(this.models,this.sceneData);
         this.onError('');
       } catch (error) { this.onError(error.message); }
     });
@@ -207,13 +209,15 @@ export class MeshViewer {
     return { buffer, count: values.length / 10, byteLength: values.length * 4 };
   }
 
-  setModels(models) {
+  setModels(models, {referenceModels=models, clouds=[]} = {}) {
+    this.sceneData={referenceModels,clouds};
     this.stopNavigation();
     if (!Array.isArray(models)) throw new TypeError(t('setModels 需要模型数组。'));
-    const prepared = models.map(model => {
+    const prepared = referenceModels.map(reference => {
+      const model=models.find(item=>String(item.id)===String(reference.id))||{...reference,faces:[]};
       if (!model.vertices?.length || !Array.isArray(model.faces)) throw new Error(t("模型 {0} 缺少有效网格。", [model.id]));
       const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-      for (const point of model.vertices) {
+      for (const point of reference.vertices) {
         if (point.length < 3 || !point.slice(0, 3).every(Number.isFinite)) throw new Error(t("模型 {0} 包含无效坐标。", [model.id]));
         for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], point[i]); max[i] = Math.max(max[i], point[i]); }
       }
@@ -238,16 +242,21 @@ export class MeshViewer {
     const xCenters = centers(widths), yCenters = centers(depths);
     const triangles = [], featureEdges = [], allEdges = [], labels = [];
     let maxHeight = 0, maxOriginalHeight = 0;
+    const placements=new Map();
     const vertexOut = (array, position, normal, color, height = 0) => array.push(...position, ...normal, ...color, height);
     const featureCosine = Math.cos(10 * DEG);
     for (let modelIndex = 0; modelIndex < prepared.length; modelIndex++) {
       const { model, min, max, scale } = prepared[modelIndex];
       const cx = xCenters[modelIndex % columns] - totalWidth / 2;
       const cy = totalDepth / 2 - yCenters[Math.floor(modelIndex / columns)];
+      placements.set(String(model.id),{origin:[(min[0]+max[0])/2,(min[1]+max[1])/2,min[2]],center:[cx,cy,0],scale});
       const vertices = model.vertices.map(v => [(v[0] - (min[0] + max[0]) / 2) * scale + cx, (v[1] - (min[1] + max[1]) / 2) * scale + cy, (v[2] - min[2]) * scale]);
       const height = (max[2] - min[2]) * scale;
       maxHeight = Math.max(maxHeight, height);
-      maxOriginalHeight = Math.max(maxOriginalHeight, max[2] - min[2]);
+      let meshMinZ=Infinity,meshMaxZ=-Infinity;
+      for(const point of model.vertices){meshMinZ=Math.min(meshMinZ,point[2]);meshMaxZ=Math.max(meshMaxZ,point[2]);}
+      const meshHeightOffset=min[2]-meshMinZ;
+      if(model.faces.length)maxOriginalHeight=Math.max(maxOriginalHeight,meshMaxZ-meshMinZ);
       labels.push({ id: model.id, bounds: [[cx - prepared[modelIndex].width / 2, cy - prepared[modelIndex].depth / 2, 0],
         [cx + prepared[modelIndex].width / 2, cy + prepared[modelIndex].depth / 2, height]] });
       let hash = 0;
@@ -267,7 +276,7 @@ export class MeshViewer {
         const length = Math.hypot(...normal);
         if (length < 1e-12) continue;
         for (let i = 0; i < 3; i++) normal[i] /= length;
-        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color, point[2] / scale);
+        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color, point[2] / scale + meshHeightOffset);
         for (let i = 0; i < 3; i++) {
           const ai = welded[face[i]], bi = welded[face[(i + 1) % 3]];
           const key = ai < bi ? `${ai}:${bi}` : `${bi}:${ai}`;
@@ -276,13 +285,13 @@ export class MeshViewer {
         }
       }
       for (const edge of edges.values()) {
-        vertexOut(allEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
-        vertexOut(allEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
+        vertexOut(allEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale + meshHeightOffset);
+        vertexOut(allEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale + meshHeightOffset);
         const normals = edge.normals;
         const feature = normals.length !== 2 || Math.abs(dot(normals[0], normals[1])) < featureCosine;
         if (feature) {
-          vertexOut(featureEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
-          vertexOut(featureEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
+          vertexOut(featureEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale + meshHeightOffset);
+          vertexOut(featureEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale + meshHeightOffset);
         }
       }
     }
@@ -315,6 +324,9 @@ export class MeshViewer {
     };
     this.edgePositions = {all: retainPositions(allEdges), feature: retainPositions(featureEdges)};
     this.navigationTriangles=retainPositions(triangles);
+    if(clouds.length&&!this.pointLayer)this.pointLayer=new MeshPointLayer(this.gl);
+    this.pointLayer?.setItems(clouds,placements);this.pointLayer?.setOptions(this.options);
+    this.pointCount=clouds.reduce((n,item)=>n+item.cloud.count,0);
     this.models = models;
     this.labelAnchors = labels;
     this.triangleCount = triangles.length / 30;
@@ -334,8 +346,8 @@ export class MeshViewer {
     if(next.lineStyle!=='native'&&!this.styledLines?.ext)throw Error(t('此浏览器不支持立体线，请使用细线。'));
     const rebuild = next.scale !== this.options.scale;
     this.options = next;
-    if (rebuild) this.setModels(this.models);
-    else this.render();
+    if (rebuild) this.setModels(this.models,this.sceneData);
+    else {this.pointLayer?.setOptions(next);this.render();}
   }
 
   vectorSegments() {
@@ -427,16 +439,17 @@ export class MeshViewer {
       gl.drawArrays(primitive, 0, buffer.count);
     };
     if (this.options.grid && this.models.length) draw(this.buffers.grid, 2, gl.LINES);
-    if (this.options.mode !== 'wire') {
+    if (this.options.showMesh!==false && this.options.mode !== 'wire') {
       gl.enable(gl.POLYGON_OFFSET_FILL);
       gl.polygonOffset(1, 1);
       draw(this.buffers.triangles, 0, gl.TRIANGLES);
       gl.disable(gl.POLYGON_OFFSET_FILL);
     }
     const all = this.options.mode === 'wire' || this.options.mode === 'solid-wire';
-    const edgeBuffer=all?this.buffers.allEdges:this.options.edges?this.buffers.featureEdges:null;
+    const edgeBuffer=this.options.showMesh===false?null:all?this.buffers.allEdges:this.options.edges?this.buffers.featureEdges:null;
     if(this.options.lineStyle==='native')draw(edgeBuffer,all?3:1,gl.LINES);
     else this.styledLines.draw({buffer:edgeBuffer,stride:40,matrix,radius:this.options.lineWidth/2*this.baseHeight/this.camera.zoom/Math.max(1,rect.height),style:this.options.lineStyle,color:[.23,.36,.43],endColor:this.options.lineGradient?this.options.lineEndColor:null});
+    this.pointLayer?.draw(matrix,dpr);
     if(this.exportTarget)return;
     updateSceneGuides(this);
     this.onLabels(this.options.labels ? this.labelAnchors.map(({ id, bounds: [min, max] }) => {
@@ -457,7 +470,7 @@ export class MeshViewer {
   }
 
   getState() {
-    return { buildingCount: this.models.length, triangleCount: this.triangleCount,
+    return { buildingCount: this.models.length, triangleCount: this.triangleCount, pointCount:this.pointLayer?.entries.reduce((n,e)=>n+e.count,0)||0,
       featureEdgeCount: (this.buffers.featureEdges?.count || 0) / 2,
       allEdgeCount: (this.buffers.allEdges?.count || 0) / 2,
       syntheticArrangement: true, heightMeaning: 'height-above-building-min-z',
@@ -473,7 +486,7 @@ export class MeshViewer {
     this.resizeObserver.disconnect();
     for (const [name, fn, options] of this.listeners) this.canvas.removeEventListener(name, fn, options);
     for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
-    this.styledLines?.dispose();this.guideCanvas?.remove();
+    this.styledLines?.dispose();this.pointLayer?.dispose();this.guideCanvas?.remove();
     this.gl.deleteProgram(this.program);
     this.onLabels([]);
   }

@@ -73,7 +73,7 @@ export function mountImageExport({root=document,getViewers,pauseSync=callback=>c
   function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
   const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
   const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'||root.body.dataset.tool==='gaussian'?[]:[['svg','SVG · 线框矢量']])]));
-  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
+  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(['wireframe','lod'].includes(root.body.dataset.tool)?[['1','视窗 2'],['2','视窗 3']]:[])]));
   const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
   const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));
   const number=(value)=>{const node=el('input');node.type='number';node.min='16';node.max='8192';node.step='1';node.value=value;return node;};

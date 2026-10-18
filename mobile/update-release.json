@@ -1,11 +1,11 @@
 {
-  "version": "1.9.0",
+  "version": "1.10.0",
   "keyId": "bwv-update-p256-2026",
-  "sequence": 23,
-  "issuedAt": 1792292926,
-  "expiresAt": 1807844926,
+  "sequence": 24,
+  "issuedAt": 1792305883,
+  "expiresAt": 1807857883,
   "notes": {
-    "zh": "Mesh 与线框统一支持 ID 文件和 ID 文件夹，增加网格单个/多个 ID 与版本沿用；显示控制移至预览区，项目栏更简洁。保留旧项目组织与选择；提供同版本完整 APK。",
-    "en": "Unify ID-file and ID-folder imports across Mesh and Wireframe, with Mesh single/multiple IDs and remembered OBJ variants. Compact viewing controls preserve space for project files. Migrate existing project organization and selection; matching complete APK included."
+    "zh": "Mesh 新增按 ID 配对点云与双/三视窗对比，支持高度、RGB、数值着色和全部视窗图片导出；各工具统一设置入口，手机对比区可横向滑动。原生高斯显示设置移到主工具栏，需安装同版本 APK 生效。",
+    "en": "Mesh adds ID-paired point clouds, two/three-pane comparison, height/RGB/scalar coloring and multi-pane image export. All tools share settings navigation with horizontally scrollable mobile comparisons. Install the matching APK for the native Gaussian Display toolbar change."
   }
 }

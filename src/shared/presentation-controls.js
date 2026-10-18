@@ -25,7 +25,7 @@ export function mountPresentationControls({root=document,getViewers,pauseSync=ca
   }
   field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');
   if(root.body.dataset.tool!=='gaussian')field('legend','颜色图例','checkbox');
-  if(root.body.dataset.tool!=='lod')field('pointCountLabel','显示点数','checkbox');
+  field('pointCountLabel','显示点数','checkbox');
   if(root.body.dataset.tool!=='lod' && root.body.dataset.tool!=='gaussian'){
     field('pointStyle','点的样式','select',[['disc','圆点'],['square','方点'],['sphere','球形光照']]);
     const ratio=field('pointRatio','显示点比例（%）','number',[1,100,1]);

@@ -5,6 +5,32 @@
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  "支持 ID.obj 或 ID 文件夹中的 OBJ；同名或同目录点云按 ID 配对。数据面板可选版本、点云图层与 2 / 3 视窗对比。": "Load ID.obj or OBJ files in ID folders. Points pair by matching ID names or folders. Choose variants, point layers and 2/3 viewports in Data.",
+  "导入模型或点云 · 文件仅在本机读取": "Import meshes or points · files stay local",
+  "色带与固定范围共用；自动范围按网格和点云分别计算。": "Palette and fixed limits are shared; automatic ranges are calculated separately for meshes and points.",
+  "数据与对比": "Data & comparison",
+  "视窗布局": "Viewport layout",
+  "单视窗": "Single viewport",
+  "双视窗对比": "Two viewports",
+  "三视窗对比": "Three viewports",
+  "同步相机": "Sync cameras",
+  "按 ID 自动配对": "Pair by ID",
+  "点云与网格共用变换；对比各栏使用一致的比例与布局。": "Points and meshes share transforms; comparison panes use the same scale and layout.",
+  "相机动画使用视窗 1；图片可导出全部视窗。": "Camera animation uses viewport 1. Images can include all viewports.",
+  "图层": "Layers",
+  "网格与点云": "Mesh & points",
+  "仅网格": "Mesh only",
+  "仅点云": "Points only",
+  "{0} 个 ID · {1} 三角面 · {2} 点": "{0} IDs · {1} triangles · {2} points",
+  "未找到支持的模型或点云文件。": "No supported mesh or point cloud files found.",
+  "第二个网格三维预览": "Second mesh viewport",
+  "第三个网格三维预览": "Third mesh viewport",
+  "视窗 1 OBJ 版本": "Viewport 1 OBJ variant",
+  "视窗 1 图层": "Viewport 1 layers",
+  "视窗 2 OBJ 版本": "Viewport 2 OBJ variant",
+  "视窗 2 图层": "Viewport 2 layers",
+  "视窗 3 OBJ 版本": "Viewport 3 OBJ variant",
+  "视窗 3 图层": "Viewport 3 layers",
   "显示模式说明": "Display mode help",
   "上一个 ID": "Previous ID",
   "下一个 ID": "Next ID",
@@ -3016,7 +3042,7 @@ function appendObjectFiles(entries,project,files,paths,mesh) {
   const groups=new Map(entries.filter(e=>e.sourceIdentity).map(e=>[e.sourceIdentity,e])),names=new Set(entries.map(e=>e.id));
   let added=0,duplicates=0;
   for(const file of files) {
-    if(!(mesh?/\.obj$/i:/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i).test(file.name))continue;
+    if(!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name))continue;
     const source=objectFileSource(file,paths);let entry=groups.get(source.identity);
     if(!entry){
       entry={id:projectUniqueId(source.base,names),sourceIdentity:source.identity,sourceGroup:source.sourceGroup,sourceLayout:source.folder?'folder':'file',files:[],wires:[],clouds:[],fileKeys:new Set(),sourceKeys:new Map()};
@@ -3025,7 +3051,7 @@ function appendObjectFiles(entries,project,files,paths,mesh) {
     }
     if(entry.fileKeys.has(source.key)){duplicates++;continue;}
     entry.fileKeys.add(source.key);entry.sourceKeys.set(file,source.key);entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file);
-    if(mesh){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
+    if(mesh && /\.obj$/i.test(file.name)){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
     added++;
   }
   return {added,duplicates};
@@ -3345,6 +3371,37 @@ function mountGaussianEditor({viewer,getModels,onError,onStatus,onChange=()=>{},
 }
 
 
+// Source: src/shared/inspector-navigation.js
+
+/** One category order and one shortcut style for every web viewer, including App pages. */
+function prepareInspectorNavigation(root=document){
+  const panel=root.getElementById('viewer-inspector');if(!panel)return;
+  const tabs=panel.querySelector('.inspector-tabs'),content=panel.querySelector('.inspector-content'),shortcuts=root.querySelector('.inspector-shortcuts');
+  const dataControls=root.querySelector('[data-data-controls]')||root.getElementById('wire-controls')?.closest('.inspector-section');
+  let data=panel.querySelector('[data-settings-panel="data"]');
+  if(dataControls&&!data){
+    data=root.createElement('section');data.id='settings-panel-data';data.dataset.settingsPanel='data';data.hidden=true;data.setAttribute('role','tabpanel');data.setAttribute('aria-labelledby','settings-tab-data');content.prepend(data);
+    const tab=root.createElement('button');tab.type='button';tab.id='settings-tab-data';tab.dataset.settingsTab='data';tab.setAttribute('role','tab');tab.setAttribute('aria-controls',data.id);tab.setAttribute('aria-selected','false');tab.tabIndex=-1;tab.textContent=t('数据');tabs.prepend(tab);
+  }
+  if(dataControls)data.append(dataControls);
+  // Studio's tools/attributes are its data workspace; keep its stable saved identifiers.
+  const labels={data:'数据',tools:'数据',display:'显示',camera:'相机',bookmarks:'书签',processing:'处理',diagnostics:'诊断',edit:'编辑'};
+  const icons={data:'<path d="M4 5h16v14H4zM4 10h16M9 5v14"/>',tools:'<path d="M4 5h16v14H4zM4 10h16M9 5v14"/>',display:'<path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 3v4M16 10v4M10 17v4"/>',camera:'<path d="M8 6l2-3h4l2 3h4v14H4V6z"/><circle cx="12" cy="12" r="4"/>',bookmarks:'<path d="M6 3h12v18l-6-4-6 4z"/>'};
+  const order=['data','tools','display','camera','bookmarks','processing','diagnostics','edit'];
+  const all=[...tabs.querySelectorAll('[data-settings-tab]')].sort((a,b)=>{const rank=x=>order.includes(x)?order.indexOf(x):99;return rank(a.dataset.settingsTab)-rank(b.dataset.settingsTab);});
+  for(const tab of all){const key=tab.dataset.settingsTab;if(labels[key])tab.textContent=t(labels[key]);tabs.append(tab);}
+  const actions=[...shortcuts.querySelectorAll('button')].filter(button=>!button.dataset.openSettings);
+  shortcuts.replaceChildren();let extra=null;
+  function addExtra(button){if(!extra){extra=root.createElement('details');extra.className='viewer-extra-tools';const summary=root.createElement('summary');summary.textContent=t('工具');extra.append(summary);const menu=root.createElement('div');menu.className='viewer-extra-menu';extra.append(menu);shortcuts.append(extra);extra.addEventListener('keydown',event=>{if(event.key==='Escape'){extra.open=false;summary.focus();}});root.addEventListener('pointerdown',event=>{if(!extra.contains(event.target))extra.open=false;});}extra.querySelector('.viewer-extra-menu').append(button);button.addEventListener('click',()=>{extra.open=false;});}
+  for(const tab of all){const key=tab.dataset.settingsTab,button=root.createElement('button');button.type='button';button.dataset.openSettings=key;button.setAttribute('aria-controls',panel.id);button.setAttribute('aria-expanded','false');
+    const icon=root.createElement('span');icon.className='settings-icon';icon.setAttribute('aria-hidden','true');icon.innerHTML=icons[key]?`<svg viewBox="0 0 24 24">${icons[key]}</svg>`:'·';const label=root.createElement('span');label.textContent=tab.textContent;button.append(icon,label);
+    if(order.indexOf(key)>4||!order.includes(key))addExtra(button);else shortcuts.append(button);
+  }
+  for(const button of actions)addExtra(button);
+  root.querySelector('.main-heading')?.classList.add('viewer-heading');
+}
+
+
 // Source: src/shared/object-browser-controls.js
 /** Keep file management in the sidebar and viewing choices beside the preview. */
 function mountObjectBrowserControls({root = document} = {}) {
@@ -3515,21 +3572,22 @@ function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
   }
   const available=Math.max(80,width/scale-32);
   if(options.pointCountLabel && viewer.pointCount){
-    const count=options.showPoints?(viewer.activeClouds||[]).reduce((sum,e)=>sum+Math.floor(e.count*(options.pointRatio??100)/100),0):0;
+    const count=options.showPoints?(viewer.pointLayer?.entries||viewer.activeClouds||[]).reduce((sum,e)=>sum+Math.floor(e.count*(options.pointRatio??100)/100),0):0;
     ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillStyle='#526d66';
     ctx.fillText(t('显示 {0} / {1} 点',[count.toLocaleString(),viewer.pointCount.toLocaleString()]),Math.min(150,available/2),h-48,available/2);
   }
   if(options.legend){
-    const scalar=viewer.activeClouds ? options.showPoints && viewer.activeClouds.some(e=>!e.item?.displayColor) : options.colors==='height' && options.mode!=='wire';
-    const range=scalar?(viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
+    const overlay=viewer.pointLayer&&options.showMesh===false&&options.showPoints!==false;
+    const scalar=overlay?!!viewer.pointLayer.colorRange:viewer.activeClouds ? options.showPoints && viewer.activeClouds.some(e=>!e.item?.displayColor) : options.showMesh!==false && options.colors==='height' && options.mode!=='wire';
+    const range=scalar?(overlay?viewer.pointLayer.colorRange:viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
     ctx.textAlign='left';ctx.font='10px sans-serif';ctx.fillStyle='#526d66';
     if(range && Number.isFinite(range.min) && Number.isFinite(range.max)){
-      const label=options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
+      const label=overlay?(viewer.pointLayer.effectiveColorMode==='height'?t('高度 Z'):viewer.pointLayer.effectiveColorMode.replace(/^field:/,'')):options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
       const barWidth=Math.min(90,available*.26),barX=16,barY=h-24,gradient=ctx.createLinearGradient(barX,0,barX+barWidth,0);
       for(let i=0;i<=8;i++)gradient.addColorStop(i/8,`rgb(${samplePalette(i/8,options.palette,options.reverse).map(v=>Math.round(v*255)).join(',')})`);
       ctx.fillStyle=gradient;ctx.fillRect(barX,barY,barWidth,8);ctx.fillStyle='#526d66';
       ctx.fillText(`${label} · ${Number(range.min.toPrecision(5))} — ${Number(range.max.toPrecision(5))}`,barX+barWidth+8,h-17,Math.max(10,available-barWidth-8));
-    } else if(options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
+    } else if(options.showMesh!==false && options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
       ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('非竖直面'),31,h-17);
       ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('近竖直面'),147,h-17);
     }
@@ -3627,7 +3685,7 @@ function mountImageExport({root=document,getViewers,pauseSync=callback=>callback
   function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
   const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
   const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'||root.body.dataset.tool==='gaussian'?[]:[['svg','SVG · 线框矢量']])]));
-  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
+  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(['wireframe','lod'].includes(root.body.dataset.tool)?[['1','视窗 2'],['2','视窗 3']]:[])]));
   const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
   const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));
   const number=(value)=>{const node=el('input');node.type='number';node.min='16';node.max='8192';node.step='1';node.value=value;return node;};
@@ -3698,7 +3756,7 @@ function mountPresentationControls({root=document,getViewers,pauseSync=callback=
   }
   field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');
   if(root.body.dataset.tool!=='gaussian')field('legend','颜色图例','checkbox');
-  if(root.body.dataset.tool!=='lod')field('pointCountLabel','显示点数','checkbox');
+  field('pointCountLabel','显示点数','checkbox');
   if(root.body.dataset.tool!=='lod' && root.body.dataset.tool!=='gaussian'){
     field('pointStyle','点的样式','select',[['disc','圆点'],['square','方点'],['sphere','球形光照']]);
     const ratio=field('pointRatio','显示点比例（%）','number',[1,100,1]);
@@ -3813,6 +3871,7 @@ function viewerResourceStats(viewers) {
     if (!viewer || viewer.disposed) continue;
     totals.contextLost ||= Boolean(viewer.contextLost);
     totals.models += viewer.models?.length || 0; totals.triangles += viewer.triangleCount || 0;
+    for(const entry of viewer.pointLayer?.entries||[])totals.bufferBytes+=entry.bytes||0;
     totals.points += viewer.pointCount || 0; totals.edges += viewer.edgeCount || 0;
     for (const buffer of Object.values(viewer.buffers || {})) addBuffer(buffer);
     for (const buffer of Object.values(viewer.styledLines?.shapes || {})) addBuffer(buffer);
@@ -3888,6 +3947,7 @@ function mountResourceMonitor({root=document, getViewers=()=>[]}) {
 
 
 
+
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
   const primary=getViewers()[0],cameraPanel=root.getElementById('camera-controls');
@@ -3904,6 +3964,7 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }
+  prepareInspectorNavigation(root);
   mountObjectBrowserControls({root});
   mountResourceMonitor({root, getViewers});
   mountImageExport({root,getViewers,pauseSync});

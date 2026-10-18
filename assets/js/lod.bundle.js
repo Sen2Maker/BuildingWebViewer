@@ -2,9 +2,48 @@
 (() => {
 'use strict';
 
+// Source: src/lod/mesh-data.js
+/** Shared reference boxes keep OBJ variants and point overlays aligned across panes. */
+function meshReferenceModels(panes,clouds){
+ const boxes=new Map();
+ function add(id,bounds){if(!bounds||bounds.length!==2||bounds.some(p=>p.length!==3||!Array.from(p).every(Number.isFinite)))return;
+   id=String(id);if(!boxes.has(id))boxes.set(id,[[Infinity,Infinity,Infinity],[-Infinity,-Infinity,-Infinity]]);const b=boxes.get(id);
+   for(let a=0;a<3;a++){b[0][a]=Math.min(b[0][a],bounds[0][a]);b[1][a]=Math.max(b[1][a],bounds[1][a]);}}
+ for(const pane of panes)for(const model of pane)add(model.id,model.bounds);
+ for(const item of clouds)add(item.id,item.cloud.bounds);
+ return [...boxes].sort(([a],[b])=>a.localeCompare(b,undefined,{numeric:true})).map(([id,bounds])=>({id,bounds,vertices:bounds,faces:[]}));
+}
+
+
 // Source: src/locales/en.js
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 const EN_MESSAGES = {
+  "支持 ID.obj 或 ID 文件夹中的 OBJ；同名或同目录点云按 ID 配对。数据面板可选版本、点云图层与 2 / 3 视窗对比。": "Load ID.obj or OBJ files in ID folders. Points pair by matching ID names or folders. Choose variants, point layers and 2/3 viewports in Data.",
+  "导入模型或点云 · 文件仅在本机读取": "Import meshes or points · files stay local",
+  "色带与固定范围共用；自动范围按网格和点云分别计算。": "Palette and fixed limits are shared; automatic ranges are calculated separately for meshes and points.",
+  "数据与对比": "Data & comparison",
+  "视窗布局": "Viewport layout",
+  "单视窗": "Single viewport",
+  "双视窗对比": "Two viewports",
+  "三视窗对比": "Three viewports",
+  "同步相机": "Sync cameras",
+  "按 ID 自动配对": "Pair by ID",
+  "点云与网格共用变换；对比各栏使用一致的比例与布局。": "Points and meshes share transforms; comparison panes use the same scale and layout.",
+  "相机动画使用视窗 1；图片可导出全部视窗。": "Camera animation uses viewport 1. Images can include all viewports.",
+  "图层": "Layers",
+  "网格与点云": "Mesh & points",
+  "仅网格": "Mesh only",
+  "仅点云": "Points only",
+  "{0} 个 ID · {1} 三角面 · {2} 点": "{0} IDs · {1} triangles · {2} points",
+  "未找到支持的模型或点云文件。": "No supported mesh or point cloud files found.",
+  "第二个网格三维预览": "Second mesh viewport",
+  "第三个网格三维预览": "Third mesh viewport",
+  "视窗 1 OBJ 版本": "Viewport 1 OBJ variant",
+  "视窗 1 图层": "Viewport 1 layers",
+  "视窗 2 OBJ 版本": "Viewport 2 OBJ variant",
+  "视窗 2 图层": "Viewport 2 layers",
+  "视窗 3 OBJ 版本": "Viewport 3 OBJ variant",
+  "视窗 3 图层": "Viewport 3 layers",
   "显示模式说明": "Display mode help",
   "上一个 ID": "Previous ID",
   "下一个 ID": "Next ID",
@@ -1319,6 +1358,780 @@ function initializeLocale(doc = document) {
 }
 
 
+// Source: src/cloud/point-io.js
+
+/** Local point / line readers. Coordinates stay Float64 until the renderer recenters them. */
+const POINT_TYPES = {
+  char: ['getInt8', 1], int8: ['getInt8', 1], uchar: ['getUint8', 1], uint8: ['getUint8', 1],
+  short: ['getInt16', 2], int16: ['getInt16', 2], ushort: ['getUint16', 2], uint16: ['getUint16', 2],
+  int: ['getInt32', 4], int32: ['getInt32', 4], uint: ['getUint32', 4], uint32: ['getUint32', 4],
+  float: ['getFloat32', 4], float32: ['getFloat32', 4], double: ['getFloat64', 8], float64: ['getFloat64', 8],
+};
+const POINT_DECODER = new TextDecoder('utf-8');
+const POINT_TEXT_CHUNK_BYTES = 1024 * 1024;
+const POINT_TEXT_MAX_LINE_CHARS = 1024 * 1024;
+
+function pointBounds() { return [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]]; }
+function extendPointBounds(bounds, xyz) {
+  for (let a = 0; a < 3; a++) { bounds[0][a] = Math.min(bounds[0][a], xyz[a]); bounds[1][a] = Math.max(bounds[1][a], xyz[a]); }
+}
+function pointError(message) { throw Error(message); }
+function pointNames(names) {
+  const used = new Set();
+  return names.map((raw, i) => {
+    const name = String(raw).trim().replace(/^['"]|['"]$/g, '').toLowerCase() || `column_${i + 1}`;
+    if (used.has(name)) pointError(t("点云字段名称重复：{0}", [name]));
+    used.add(name); return name;
+  });
+}
+function numericPoint(value, where) {
+  const text = String(value).trim().replace(/^['"]|['"]$/g, '');
+  if (text === '') pointError(t("{0}：缺少数值", [where]));
+  const number = Number(text);
+  if (!Number.isFinite(number)) pointError(t("{0}：存在无效或非有限数值", [where]));
+  return number;
+}
+
+/** Read OBJ polylines. Face boundary edges are used only when no l records exist. */
+function parseWireOBJ(text, id = '') {
+  const vertices = [], lineEdges = [], faceEdges = [], bounds = pointBounds();
+  let hasContent = false, hasKnownRecord = false;
+  let lineNumber = 0;
+  for (const line of String(text).replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    lineNumber++;
+    const fields = line.split('#')[0].trim().split(/\s+/);
+    if (fields[0]) hasContent = true;
+    if (/^(v|vt|vn|vp|l|f|o|g|s|mtllib|usemtl)$/.test(fields[0])) hasKnownRecord = true;
+    if (fields[0] === 'v') {
+      if (fields.length < 4) pointError(t("OBJ 第 {0} 行：顶点缺少 XYZ", [lineNumber]));
+      const vertex = fields.slice(1, 4).map(value => numericPoint(value, t("OBJ 第 {0} 行", [lineNumber])));
+      vertices.push(vertex); extendPointBounds(bounds, vertex);
+    } else if (fields[0] === 'l' || fields[0] === 'f') {
+      const isFace = fields[0] === 'f';
+      if (fields.length < (isFace ? 4 : 3)) pointError(t("OBJ 第 {0} 行：索引数量不足", [lineNumber]));
+      const indices = fields.slice(1).map(token => {
+        const raw = token.split('/')[0];
+        if (!/^[+-]?\d+$/.test(raw)) pointError(t("OBJ 第 {0} 行：面或线索引无效", [lineNumber]));
+        const index = Number(raw);
+        if (!Number.isSafeInteger(index) || index === 0) pointError(t("OBJ 第 {0} 行：索引无效", [lineNumber]));
+        const resolved = index > 0 ? index - 1 : vertices.length + index;
+        if (resolved < 0) pointError(t("OBJ 第 {0} 行：负索引越界", [lineNumber]));
+        return resolved;
+      });
+      const target = isFace ? faceEdges : lineEdges;
+      for (let i = 1; i < indices.length; i++) target.push([indices[i - 1], indices[i]]);
+      if (isFace) target.push([indices[indices.length - 1], indices[0]]);
+    }
+  }
+  if ([...lineEdges, ...faceEdges].some(edge => edge.some(i => i >= vertices.length))) pointError(t('OBJ 索引超出顶点范围'));
+  const source = lineEdges.length ? lineEdges : faceEdges;
+  if (!source.length) {
+    if (hasContent && !hasKnownRecord) pointError(t('OBJ 没有可识别的顶点或线框记录'));
+    return {id, vertices, edges: [], bounds: vertices.length ? bounds : null, empty: true};
+  }
+  const seen = new Set(), edges = [];
+  for (const [a, b] of source) {
+    const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+    if (a !== b && !seen.has(key)) { seen.add(key); edges.push([a, b]); }
+  }
+  if (!edges.length) pointError(t('OBJ 只含退化线段'));
+  return {id, vertices, edges, bounds, empty: false};
+}
+
+const POINT_STORAGE_CHUNK_POINTS = 16384;
+const POINT_RESERVOIR_SEED = 0x9e3779b9;
+
+function pointLimit(maxPoints) {
+  if (!Number.isSafeInteger(maxPoints) || maxPoints < 0) pointError(t('maxPoints 必须为非负整数；0 表示全量'));
+  return maxPoints;
+}
+
+function pointRandom() {
+  let state = POINT_RESERVOIR_SEED;
+  return () => {
+    state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+    return (state >>> 0) / 4294967296;
+  };
+}
+
+/** Algorithm R with a fixed seed. The selected rows are sorted back into source order. */
+function pointSampleIndices(totalCount, maxPoints) {
+  const count = Math.min(totalCount, maxPoints), indices = new Float64Array(count), random = pointRandom();
+  for (let i = 0; i < totalCount; i++) {
+    if (i < count) indices[i] = i;
+    else {
+      const slot = Math.floor(random() * (i + 1));
+      if (slot < count) indices[slot] = i;
+    }
+  }
+  indices.sort();
+  return indices;
+}
+
+/** Unknown-size input grows in TypedArray blocks, never in per-point JS object arrays. */
+function pointCollector(names, expectedCount, maxPoints, notes, hints = {}) {
+  pointLimit(maxPoints);
+  names = pointNames(names);
+  if (expectedCount !== null && (!Number.isSafeInteger(expectedCount) || expectedCount < 1)) pointError(t('点云没有有效点，或点数无效'));
+  const axes = ['x', 'y', 'z'].map(name => names.indexOf(name));
+  if (axes.some(i => i < 0)) pointError(t('点云表头必须包含 x、y、z 字段'));
+  const rgbNames = [['r', 'g', 'b'], ['red', 'green', 'blue'], ['diffuse_red', 'diffuse_green', 'diffuse_blue']].find(group => group.every(name => names.includes(name)));
+  const rgbAxes = rgbNames?.map(name => names.indexOf(name));
+  const packedName = !rgbNames && ['rgb', 'rgba'].find(name => names.includes(name));
+  const packedAxis = packedName ? names.indexOf(packedName) : -1;
+  const hasRGB = Boolean(rgbNames || packedName), chunks = [], bounds = pointBounds(), random = pointRandom();
+  let totalCount = 0, count = 0, maxRGB = 0, invalidRGB = false;
+  const capacity = Math.min(POINT_STORAGE_CHUNK_POINTS, maxPoints || Infinity, expectedCount || Infinity);
+  function newChunk() {
+    const chunk = {positions: new Float64Array(capacity * 3), fields: names.map(() => new Float64Array(capacity))};
+    if (maxPoints) chunk.indices = new Float64Array(capacity);
+    if (hasRGB) chunk.rgb = new Float32Array(capacity * 3);
+    chunks.push(chunk);
+    return chunk;
+  }
+  function rowSource(slot) { return chunks[Math.floor(slot / capacity)].indices[slot % capacity]; }
+  return {
+    add(values, index = totalCount) {
+      if (index !== totalCount) pointError(t('点云行序不连续'));
+      if (values.length !== names.length) pointError(t("点 {0} 的字段数量不一致", [index + 1]));
+      for (let axis = 0; axis < 3; axis++) {
+        const value = values[axes[axis]];
+        if (!Number.isFinite(value)) pointError(t("点 {0} 的 XYZ 无效或非有限", [index + 1]));
+        bounds[0][axis] = Math.min(bounds[0][axis], value); bounds[1][axis] = Math.max(bounds[1][axis], value);
+      }
+      // Inspect every original RGB value, including rows not retained by the reservoir.
+      if (rgbAxes) for (const axis of rgbAxes) {
+        const value = values[axis];
+        if (!Number.isFinite(value) || value < 0 || value > 255) invalidRGB = true;
+        maxRGB = Math.max(maxRGB, value);
+      }
+      else if (packedName) {
+        const raw = values[packedAxis];
+        if (!Number.isInteger(raw) || raw < 0 || raw > 0xffffffff) invalidRGB = true;
+      }
+      totalCount++;
+      if (!Number.isSafeInteger(totalCount)) pointError(t('点云点数超出可表示范围'));
+      let slot = index;
+      if (maxPoints && index >= maxPoints) {
+        slot = Math.floor(random() * totalCount);
+        if (slot >= maxPoints) return;
+      } else count++;
+      const chunkIndex = Math.floor(slot / capacity), local = slot % capacity;
+      const chunk = chunks[chunkIndex] || newChunk(), base = local * 3;
+      for (let axis = 0; axis < 3; axis++) chunk.positions[base + axis] = values[axes[axis]];
+      for (let field = 0; field < names.length; field++) chunk.fields[field][local] = values[field];
+      if (chunk.indices) chunk.indices[local] = index;
+      if (rgbAxes) for (let channel = 0; channel < 3; channel++) chunk.rgb[base + channel] = values[rgbAxes[channel]];
+      else if (packedName) {
+        const packed = values[packedAxis] >>> 0;
+        chunk.rgb[base] = (packed >>> 16 & 255) / 255;
+        chunk.rgb[base + 1] = (packed >>> 8 & 255) / 255;
+        chunk.rgb[base + 2] = (packed & 255) / 255;
+      }
+    },
+    finish() {
+      if (!totalCount) pointError(t('点云文件为空'));
+      if (expectedCount !== null && totalCount !== expectedCount) pointError(t("点云截断：期望 {0} 点，读取 {1} 点", [expectedCount, totalCount]));
+      const sampled = count < totalCount, fields = Object.create(null);
+      let positions, rgb = hasRGB && !invalidRGB ? new Float32Array(count * 3) : null;
+      let sampleIndices;
+      if (!sampled && chunks.length === 1) {
+        // No consolidation copy is needed for a single block.
+        positions = chunks[0].positions.subarray(0, count * 3);
+        names.forEach((name, i) => { fields[name] = chunks[0].fields[i].subarray(0, count); });
+        if (rgb) rgb = chunks[0].rgb.subarray(0, count * 3);
+      } else {
+        positions = new Float64Array(count * 3);
+        for (const name of names) fields[name] = new Float64Array(count);
+        if (sampled) {
+          const order = new Uint32Array(count);
+          for (let i = 0; i < count; i++) order[i] = i;
+          order.sort((a, b) => rowSource(a) - rowSource(b));
+          sampleIndices = new Float64Array(count);
+          for (let target = 0; target < count; target++) {
+            const slot = order[target], chunk = chunks[Math.floor(slot / capacity)], local = slot % capacity;
+            for (let axis = 0; axis < 3; axis++) positions[target * 3 + axis] = chunk.positions[local * 3 + axis];
+            names.forEach((name, i) => { fields[name][target] = chunk.fields[i][local]; });
+            if (rgb) for (let channel = 0; channel < 3; channel++) rgb[target * 3 + channel] = chunk.rgb[local * 3 + channel];
+            sampleIndices[target] = chunk.indices[local];
+          }
+        } else {
+          for (let i = 0; i < chunks.length; i++) {
+            const start = i * capacity, take = Math.min(capacity, count - start), chunk = chunks[i];
+            positions.set(chunk.positions.subarray(0, take * 3), start * 3);
+            names.forEach((name, field) => fields[name].set(chunk.fields[field].subarray(0, take), start));
+            if (rgb) rgb.set(chunk.rgb.subarray(0, take * 3), start * 3);
+            chunks[i] = null;
+          }
+        }
+      }
+      chunks.length = 0;
+      if (invalidRGB) notes.push(t('RGB 字段超出有效范围，已保留属性并停用原始颜色。'));
+      else if (rgbAxes) {
+        const divisor = rgbNames.some(name => hints[name] === 'byte') || maxRGB > 1 ? 255 : 1;
+        for (let i = 0; i < rgb.length; i++) rgb[i] /= divisor;
+        notes.push(t("RGB 按 0–{0} 范围归一化。", [divisor]));
+      }
+      if (sampled) notes.push(t("总计 {0} 点，使用固定种子蓄水池采样显示 {1} 点；坐标范围仍覆盖全部原始点。", [totalCount.toLocaleString(), count.toLocaleString()]));
+      else notes.push(t("完整读取 {0} 点；范围为全部点范围。", [totalCount.toLocaleString()]));
+      const result = {positions, count, totalCount, bounds, fields, rgb, notes, columnOrder:[...names]};
+      if (sampleIndices) result.sampleIndices = sampleIndices;
+      return result;
+    },
+  };
+}
+
+/** Reuse a parsed cloud in memory; 0 or a non-reducing limit returns the same object. */
+function samplePointCloud(cloud, maxPoints = 0) {
+  pointLimit(maxPoints);
+  if (!cloud || !Number.isSafeInteger(cloud.count) || cloud.count < 1 || !cloud.positions || cloud.positions.length !== cloud.count * 3) pointError(t('内存点云的点数或 XYZ 数组无效'));
+  if (!maxPoints || maxPoints >= cloud.count) return cloud;
+  const selected = pointSampleIndices(cloud.count, maxPoints), count = selected.length;
+  const positions = new Float64Array(count * 3), fields = Object.create(null), rgb = cloud.rgb ? new Float32Array(count * 3) : null;
+  const sampleIndices = new Float64Array(count);
+  for (const [name, values] of Object.entries(cloud.fields || {})) {
+    if (!values || values.length !== cloud.count) pointError(t("属性 {0} 长度与点数不一致", [name]));
+    fields[name] = new Float64Array(count);
+  }
+  if (cloud.rgb && cloud.rgb.length !== cloud.count * 3) pointError(t('RGB 数组长度与点数不一致'));
+  for (let target = 0; target < count; target++) {
+    const source = selected[target];
+    for (let axis = 0; axis < 3; axis++) positions[target * 3 + axis] = cloud.positions[source * 3 + axis];
+    for (const name of Object.keys(fields)) fields[name][target] = cloud.fields[name][source];
+    if (rgb) for (let channel = 0; channel < 3; channel++) rgb[target * 3 + channel] = cloud.rgb[source * 3 + channel];
+    sampleIndices[target] = cloud.sampleIndices ? cloud.sampleIndices[source] : source;
+  }
+  const notes = [...(cloud.notes || []), t("从已读取的 {0} 点中使用固定种子蓄水池采样显示 {1} 点；未重新读取文件，坐标范围仍覆盖全部原始点。", [cloud.count.toLocaleString(), count.toLocaleString()])];
+  const result = {...cloud, positions, fields, rgb, count, sampleIndices, bounds: cloud.bounds.map(point => Array.from(point)), notes};
+  if (cloud.sources) {
+    let cursor = 0;
+    result.sources = cloud.sources.map(source => {
+      const start = cursor, end = source.start + source.count;
+      while (cursor < count && selected[cursor] < end) cursor++;
+      return {...source, start, count: cursor - start};
+    }).filter(source => source.count);
+  }
+  return result;
+}
+
+function* pointTextLines(text) {
+  let start = 0, line = 1;
+  while (start < text.length) {
+    const newline = text.indexOf('\n', start);
+    const end = newline < 0 ? text.length : newline;
+    yield {text: text.slice(start, end), line};
+    start = end + 1; line++;
+  }
+}
+
+function pointTextTokens(line) {
+  return /[;,]/.test(line) ? line.trim().split(/[;,]/).map(value => value.trim()) : line.trim().split(/\s+/);
+}
+
+function pointTextCheckLine(record) {
+  if (record.text.length > POINT_TEXT_MAX_LINE_CHARS) pointError(t("第 {0} 行过长（超过 1,048,576 字符）；请检查换行符或文件格式", [record.line]));
+}
+
+/** Consume each text line once, infer its schema, validate, and retain typed point blocks. */
+// Optional application metadata is data only: whitelist roles/ranges and known columns.
+function pointColumnMetadata(cloud, text) {
+  if(!text)return cloud;
+  try {
+    const value=JSON.parse(text), roles=new Set(['scalar','red','green','blue','hue','saturation','value','nx','ny','nz','intensity','classification','return_number','gps_time','custom']);
+    const tags=Object.create(null),custom=Object.create(null);
+    for(const key of Object.keys(cloud.fields)) {
+      const tag=value.tags?.[key];tags[key]=roles.has(tag)?tag:'scalar';
+      if(tags[key]==='custom') {custom[key]=String(value.custom?.[key]||key).slice(0,80);}
+    }
+    cloud.semantics={order:[...cloud.columnOrder],tags,custom,rgbScale:['auto','1','255','65535'].includes(value.rgbScale)?value.rgbScale:'auto',hsvScale:['degrees','unit','opencv'].includes(value.hsvScale)?value.hsvScale:'degrees',colorSpace:['auto','rgb','hsv'].includes(value.colorSpace)?value.colorSpace:'auto'};
+  } catch {} return cloud;
+}
+
+function pointTextParser(filename, maxPoints) {
+  const notes = [];
+  let header = null, declared = null, collector = null, values = null, totalCount = 0, columnMetadata=null;
+  return {
+    add(record) {
+      pointTextCheckLine(record);
+      let line = record.text.trim();
+      if (!line) return;
+      if (line.startsWith('#') || line.startsWith('//')) {
+        if(line.startsWith('# bwv_columns '))columnMetadata=line.slice(14);
+        if (!collector && !header) {
+          const possible = pointTextTokens(line.replace(/^(#|\/\/)\s*/, '')).map(value => value.replace(/^['"]|['"]$/g, '').toLowerCase());
+          if (!/[{}\[\]]/.test(line) && ['x', 'y', 'z'].every(name => possible.includes(name))) header = pointNames(possible);
+        }
+        return;
+      }
+      line = line.split('#')[0].trim();
+      if (!line) return;
+      const parts = pointTextTokens(line);
+      if (!collector) {
+        if (!header && declared === null && /\.pts$/i.test(filename) && parts.length === 1 && /^\d+$/.test(parts[0])) {
+          declared = Number(parts[0]);
+          if (!Number.isSafeInteger(declared) || declared < 0) pointError(t('PTS 声明点数无效'));
+          return;
+        }
+        if (!header && parts.some(value => !Number.isFinite(Number(value.replace(/^['"]|['"]$/g, ''))))) {
+          const candidate = pointNames(parts);
+          if (!['x', 'y', 'z'].every(name => candidate.includes(name))) pointError(t("第 {0} 行不是 XYZ 数值或有效的 x/y/z 表头", [record.line]));
+          header = candidate;
+          return;
+        }
+        if (!header) {
+          if (parts.length < 3) pointError(t('点云每行至少需要 XYZ 三列'));
+          header = parts.map((_, index) => ['x', 'y', 'z'][index] || `column_${index + 1}`);
+          if (header.length > 3) notes.push(t('无属性表头：额外列保留为 column_4、column_5 等，不自动认定为 RGB 或强度。'));
+        }
+        collector = pointCollector(header, null, maxPoints, notes);
+        values = new Float64Array(header.length);
+      }
+      if (parts.length !== header.length) pointError(t("第 {0} 行：字段数量不一致（需要 {1} 列，读取 {2} 列）", [record.line, header.length, parts.length]));
+      for (let i = 0; i < parts.length; i++) {
+        // Explicit missing scalar values round-trip from merged/derived exports; XYZ stays strict.
+        values[i] = !['x', 'y', 'z'].includes(header[i]) && /^nan$/i.test(parts[i]) ? NaN : numericPoint(parts[i], t("第 {0} 行", [record.line]));
+      }
+      collector.add(values); totalCount++;
+    },
+    finish() {
+      if (!collector) pointError(t('点云文件为空'));
+      if (declared !== null && declared !== totalCount) pointError(t("PTS 声明 {0} 点，实际读取 {1} 点", [declared, totalCount]));
+      return pointColumnMetadata(collector.finish(),columnMetadata);
+    },
+  };
+}
+
+function parsePointText(bytes, filename, maxPoints) {
+  const text = POINT_DECODER.decode(bytes).replace(/^\uFEFF/, '');
+  const parser = pointTextParser(filename, maxPoints);
+  for (const record of pointTextLines(text)) parser.add(record);
+  return parser.finish();
+}
+
+function pointAbort(signal) {
+  if (signal?.aborted) throw new DOMException(t('点云读取已取消'), 'AbortError');
+}
+
+async function pointTextScanFile(file, firstChunk, consume, signal, onProgress) {
+  const decoder = new TextDecoder('utf-8');
+  let carry = '', lineNumber = 1, offset = 0;
+  const progress = loaded => { if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded, total: file.size}); };
+  pointAbort(signal); progress(0);
+  while (offset < file.size) {
+    pointAbort(signal);
+    const end = Math.min(offset + POINT_TEXT_CHUNK_BYTES, file.size);
+    const bytes = offset === 0 ? firstChunk : new Uint8Array(await file.slice(offset, end).arrayBuffer());
+    pointAbort(signal);
+    if (bytes.byteLength !== end - offset) pointError(t("文件读取不完整：需要 {0} 字节，实际读取 {1} 字节", [end - offset, bytes.byteLength]));
+    const block = carry + decoder.decode(bytes, {stream: true});
+    let start = 0, newline;
+    while ((newline = block.indexOf('\n', start)) !== -1) {
+      consume({text: block.slice(start, newline), line: lineNumber++});
+      start = newline + 1;
+    }
+    carry = block.slice(start);
+    pointTextCheckLine({text: carry, line: lineNumber});
+    offset = end;
+    progress(offset);
+    // Yield between bounded chunks so progress, rendering and cancellation can run.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    pointAbort(signal);
+  }
+  carry += decoder.decode();
+  if (carry.length) consume({text: carry, line: lineNumber});
+  pointAbort(signal);
+}
+
+/** Extract a newline-terminated ASCII header while leaving the binary payload untouched. */
+function pointHeader(bytes, lastLine) {
+  const lines = [];
+  let start = 0;
+  for (let i = 0; i < bytes.length && i < 1024 * 1024; i++) {
+    if (bytes[i] !== 10) continue;
+    const line = POINT_DECODER.decode(bytes.subarray(start, i)).replace(/\r$/, '');
+    lines.push(line); start = i + 1;
+    if (lastLine(line.trim())) return {lines, offset: start};
+  }
+  pointError(t('点云文件缺少完整表头（或表头超过 1 MB）'));
+}
+function pointBinaryReader(bytes, offset, little) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    read(type) {
+      const spec = POINT_TYPES[type];
+      if (!spec) pointError(t("不支持二进制数值类型：{0}", [type]));
+      if (offset + spec[1] > view.byteLength) pointError(t('二进制点云数据截断'));
+      const value = view[spec[0]](offset, little); offset += spec[1]; return value;
+    },
+    get offset() { return offset; },
+  };
+}
+
+function parsePointPLY(bytes, maxPoints) {
+  const {lines, offset} = pointHeader(bytes, line => line === 'end_header');
+  if (lines[0].trim().replace(/^\uFEFF/, '') !== 'ply') pointError(t('PLY 文件头无效'));
+  const elements = [], notes = [];
+  let format = null, current = null;
+  for (const line of lines.slice(1)) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === 'format') format = parts[1];
+    else if (parts[0] === 'element') {
+      const count = Number(parts[2]);
+      if (!Number.isSafeInteger(count) || count < 0) pointError(t('PLY element 点数无效'));
+      current = {name: parts[1], count, properties: []}; elements.push(current);
+    } else if (parts[0] === 'property') {
+      if (!current) pointError(t('PLY property 缺少 element'));
+      const list = parts[1] === 'list';
+      const property = list ? {name: parts[4], list: true, countType: parts[2], type: parts[3]} : {name: parts[2], type: parts[1], list: false};
+      if (!property.name || !POINT_TYPES[property.type] || (list && !POINT_TYPES[property.countType])) pointError(t('PLY property 类型无效或不受支持'));
+      current.properties.push(property);
+    }
+  }
+  if (!['ascii', 'binary_little_endian', 'binary_big_endian'].includes(format)) pointError(t("不支持的 PLY 格式：{0}", [format]));
+  const vertexElements = elements.filter(element => element.name === 'vertex');
+  if (vertexElements.length !== 1) pointError(t('PLY 需要且只允许一个 vertex element'));
+  const vertex = vertexElements[0], properties = vertex.properties.filter(property => !property.list);
+  const hints = Object.fromEntries(properties.filter(p => ['uchar', 'uint8'].includes(p.type)).map(p => [p.name.toLowerCase(), 'byte']));
+  if (vertex.properties.some(property => property.list)) notes.push(t('PLY 顶点的可变长度列表属性已跳过，保留所有标量属性。'));
+  const collector = pointCollector(properties.map(p => p.name), vertex.count, maxPoints, notes, hints);
+  const asciiRows = format === 'ascii' ? POINT_DECODER.decode(bytes.subarray(offset)).split(/\r?\n/).map(line => line.trim()).filter(Boolean) : null;
+  let rowIndex = 0;
+  const binary = format === 'ascii' ? null : pointBinaryReader(bytes, offset, format === 'binary_little_endian');
+  for (const element of elements) {
+    for (let i = 0; i < element.count; i++) {
+      const fields = asciiRows ? asciiRows[rowIndex++]?.split(/\s+/) : null;
+      if (asciiRows && !fields) pointError(t('PLY ASCII 数据截断'));
+      let token = 0;
+      const read = type => binary ? binary.read(type) : numericPoint(fields[token++], t("PLY 数据行 {0}", [rowIndex]));
+      const values = [];
+      for (const property of element.properties) {
+        if (property.list) {
+          const length = read(property.countType);
+          if (!Number.isSafeInteger(length) || length < 0 || length > bytes.length) pointError(t('PLY list 长度无效'));
+          for (let n = 0; n < length; n++) read(property.type);
+        } else {
+          const value = read(property.type);
+          if (element === vertex) values.push(value);
+        }
+      }
+      if (fields && token !== fields.length) pointError(t("PLY 数据行 {0} 字段数量不匹配", [rowIndex]));
+      if (element === vertex) collector.add(values, i);
+    }
+  }
+  return pointColumnMetadata(collector.finish(),lines.find(line=>line.startsWith('comment bwv_columns '))?.slice(20));
+}
+
+function parsePointPCD(bytes, maxPoints) {
+  const {lines, offset} = pointHeader(bytes, line => /^DATA\s+/i.test(line));
+  const header = Object.create(null), notes = [];
+  for (const line of lines) {
+    const parts = line.split('#')[0].trim().split(/\s+/);
+    if (parts[0]) header[parts[0].toUpperCase()] = parts.slice(1);
+  }
+  const mode = header.DATA?.[0]?.toLowerCase();
+  if (mode === 'binary_compressed') pointError(t('暂不支持 PCD binary_compressed；请转为 ASCII 或未压缩 binary PCD'));
+  if (!['ascii', 'binary'].includes(mode)) pointError(t("不支持的 PCD DATA 类型：{0}", [mode]));
+  const names = header.FIELDS || header.FIELD, sizes = header.SIZE?.map(Number), types = header.TYPE;
+  const counts = header.COUNT ? header.COUNT.map(Number) : names?.map(() => 1);
+  if (!names?.length || !sizes || !types || [sizes, types, counts].some(values => values.length !== names.length)) pointError(t('PCD FIELDS/SIZE/TYPE/COUNT 表头不匹配'));
+  const declared = header.POINTS?.[0];
+  const totalCount = declared === undefined ? Number(header.WIDTH?.[0]) * Number(header.HEIGHT?.[0] || 1) : Number(declared);
+  const descriptors = [], flatNames = [], hints = {};
+  names.forEach((rawName, index) => {
+    const name = rawName.toLowerCase(), size = sizes[index], kind = types[index].toUpperCase(), count = counts[index];
+    if (![1, 2, 4, 8].includes(size) || !Number.isSafeInteger(count) || count < 1 || count > 10000) pointError(t('PCD SIZE/COUNT 无效'));
+    const type = {F: {4: 'float', 8: 'double'}, U: {1: 'uchar', 2: 'ushort', 4: 'uint'}, I: {1: 'char', 2: 'short', 4: 'int'}}[kind]?.[size];
+    if (!type) pointError(t("不支持的 PCD 字段类型 {0}{1}", [kind, size]));
+    if (['x', 'y', 'z'].includes(name) && count !== 1) pointError(t('PCD XYZ 字段 COUNT 必须为 1'));
+    for (let component = 0; component < count; component++) {
+      const fieldName = count === 1 ? name : `${name}_${component + 1}`;
+      flatNames.push(fieldName); descriptors.push({name: fieldName, type, packedFloat: ['rgb', 'rgba'].includes(fieldName) && kind === 'F' && size === 4});
+      if (type === 'uchar') hints[fieldName] = 'byte';
+    }
+  });
+  const collector = pointCollector(flatNames, totalCount, maxPoints, notes, hints);
+  const bitBuffer = new ArrayBuffer(4), bitView = new DataView(bitBuffer);
+  const packed = value => { bitView.setFloat32(0, value, true); return bitView.getUint32(0, true); };
+  if (mode === 'ascii') {
+    const rows = POINT_DECODER.decode(bytes.subarray(offset)).split(/\r?\n/).map(line => line.split('#')[0].trim()).filter(Boolean);
+    if (rows.length !== totalCount) pointError(t("PCD 声明 {0} 点，实际读取 {1} 点", [totalCount, rows.length]));
+    rows.forEach((line, index) => {
+      const tokens = line.split(/\s+/);
+      if (tokens.length !== descriptors.length) pointError(t("PCD 点 {0} 字段数量不一致", [index + 1]));
+      const values = descriptors.map((descriptor, field) => {
+        const value = numericPoint(tokens[field], t("PCD 点 {0}", [index + 1]));
+        return descriptor.packedFloat ? packed(value) : value;
+      });
+      collector.add(values, index);
+    });
+  } else {
+    const stride = descriptors.reduce((sum, descriptor) => sum + POINT_TYPES[descriptor.type][1], 0);
+    if (totalCount * stride > bytes.length - offset) pointError(t('PCD binary 数据截断'));
+    // PCL's common uncompressed binary format stores interleaved little-endian records.
+    const binary = pointBinaryReader(bytes, offset, true);
+    for (let index = 0; index < totalCount; index++) {
+      const values = descriptors.map(descriptor => descriptor.packedFloat ? binary.read('uint') : binary.read(descriptor.type));
+      collector.add(values, index);
+    }
+    notes.push(t('PCD binary 按常见 PCL 小端、逐点交错布局读取。'));
+  }
+  return collector.finish();
+}
+
+function pointCloudFormat(filename, start) {
+  const extension = String(filename).split('.').pop().toLowerCase();
+  if (['las', 'laz'].includes(extension)) pointError(t('当前查看器暂不支持 LAS/LAZ，请先导出 XYZ、PLY 或 PCD'));
+  if (extension === 'ply' || /^ply\r?\n/.test(start)) return 'ply';
+  if (extension === 'pcd' || /^#.*\.PCD/i.test(start) || /^VERSION\s+\.7/m.test(start)) return 'pcd';
+  if (['xyz', 'txt', 'csv', 'pts'].includes(extension) || !filename) return 'text';
+  pointError(t("不支持的点云格式 .{0}；请选择 XYZ、TXT、CSV、PTS、PLY 或 PCD", [extension]));
+}
+
+/** XYZ/TXT/CSV/PTS, ASCII/binary PLY, and ASCII/uncompressed-binary PCD. No LAS/LAZ. */
+function parsePointCloud(arrayBuffer, filename = '', {maxPoints = 0} = {}) {
+  pointLimit(maxPoints);
+  const bytes = arrayBuffer instanceof ArrayBuffer ? new Uint8Array(arrayBuffer) : ArrayBuffer.isView(arrayBuffer) ? new Uint8Array(arrayBuffer.buffer, arrayBuffer.byteOffset, arrayBuffer.byteLength) : null;
+  if (!bytes) pointError(t('点云读取器需要 ArrayBuffer'));
+  if (!bytes.byteLength) pointError(t('点云文件为空'));
+  const start = POINT_DECODER.decode(bytes.subarray(0, Math.min(256, bytes.length))).replace(/^\uFEFF/, '');
+  const format = pointCloudFormat(filename, start);
+  if (format === 'ply') return parsePointPLY(bytes, maxPoints);
+  if (format === 'pcd') return parsePointPCD(bytes, maxPoints);
+  return parsePointText(bytes, filename, maxPoints);
+}
+
+/** One-pass bounded text reads; 0 means unlimited points. PLY/PCD use the buffer parser. */
+async function readPointCloud(file, {maxPoints = 0, signal, onProgress} = {}) {
+  pointLimit(maxPoints); pointAbort(signal);
+  if (!file || typeof file.slice !== 'function' || !Number.isSafeInteger(file.size) || file.size < 0) pointError(t('点云读取器需要 File 或 Blob'));
+  if (!file.size) pointError(t('点云文件为空'));
+  const filename = String(file.name || '');
+  // This first chunk is passed into the text scanner, not read again after sniffing.
+  const firstSize = Math.min(POINT_TEXT_CHUNK_BYTES, file.size);
+  const first = new Uint8Array(await file.slice(0, firstSize).arrayBuffer());
+  pointAbort(signal);
+  if (first.byteLength !== firstSize) pointError(t('文件头读取不完整，请重新选择文件'));
+  const start = POINT_DECODER.decode(first.subarray(0, Math.min(256, first.length))).replace(/^\uFEFF/, '');
+  const format = pointCloudFormat(filename, start);
+  if (format !== 'text') {
+    if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: 0, total: file.size});
+    pointAbort(signal);
+    let buffer = first;
+    if (first.byteLength !== file.size) {
+      buffer = new Uint8Array(file.size); buffer.set(first);
+      const rest = new Uint8Array(await file.slice(firstSize, file.size).arrayBuffer());
+      pointAbort(signal);
+      if (rest.byteLength !== file.size - firstSize) pointError(t('点云文件读取不完整，请重新选择文件'));
+      buffer.set(rest, firstSize);
+    }
+    if (typeof onProgress === 'function') onProgress({phase: 'parse', loaded: file.size, total: file.size});
+    await new Promise(resolve => setTimeout(resolve, 0)); pointAbort(signal);
+    return parsePointCloud(buffer, filename, {maxPoints});
+  }
+  const parser = pointTextParser(filename, maxPoints);
+  await pointTextScanFile(file, first, record => parser.add(record), signal, onProgress);
+  const result = parser.finish();
+  pointAbort(signal);
+  return result;
+}
+
+
+// Source: src/cloud/cloud-cache.js
+
+
+function cloudCacheAbort(reason) {
+  return reason instanceof Error ? reason : new DOMException(t('点云读取已取消'), 'AbortError');
+}
+function cloudCacheSupports(available, requested) {
+  return available === 0 || (requested > 0 && available >= requested);
+}
+
+// Completed data and in-flight reads belong to Files; UI consumers own only subscriptions.
+class CloudFileCache {
+  constructor({budget = 256 * 1024 * 1024, readCloud = readPointCloud, readWire = async file => parseWireOBJ(await file.text(), file.name)} = {}) {
+    this.budget = budget; this.readCloud = readCloud; this.readWire = readWire;
+    this.records = new Map(); this.pending = new Map(); this.active = new Set(); this.stats = {reads: 0, hits: 0};
+  }
+  setActive(files) {
+    this.active = new Set(files.filter(Boolean));
+    for (const task of [...this.pending.values()]) if (!this.active.has(task.file)) this.cancelTask(task);
+    this.trim();
+  }
+  clear() {
+    this.active.clear();
+    for (const task of [...this.pending.values()]) this.cancelTask(task);
+    this.records.clear();
+  }
+  forget(file) {
+    this.active.delete(file);
+    const pending = this.pending.get(file); if (pending) this.cancelTask(pending);
+    this.records.delete(file);
+  }
+  bytes(value) {
+    const buffers = new Set();
+    for (const array of [value.positions, value.rgb, value.sampleIndices, ...Object.values(value.fields || {})]) {
+      if (array?.buffer) buffers.add(array.buffer);
+    }
+    return [...buffers].reduce((sum, buffer) => sum + buffer.byteLength, 0)
+      + (value.vertices?.length || 0) * 24 + (value.edges?.length || 0) * 16 + (value.faces?.length || 0) * 24;
+  }
+  trim() {
+    let total = [...this.records.values()].reduce((sum, record) => sum + record.bytes, 0);
+    for (const [file, record] of this.records) {
+      if (total <= this.budget && this.records.size <= 64) break;
+      if (this.active.has(file)) continue;
+      this.records.delete(file); total -= record.bytes;
+    }
+  }
+  view(record, maxPoints) {
+    let result = record.value;
+    if (record.kind === 'cloud' && maxPoints > 0 && maxPoints < result.count) {
+      if (!record.views.has(maxPoints)) {
+        record.views.clear(); record.views.set(maxPoints, samplePointCloud(result, maxPoints));
+        record.bytes = this.bytes(record.value) + this.bytes(record.views.get(maxPoints));
+      }
+      result = record.views.get(maxPoints);
+    }
+    return result;
+  }
+  stopIfUnowned(task) {
+    if (!task.done && !task.subscribers.size && !this.active.has(task.file)) this.cancelTask(task);
+  }
+  settle(subscriber, error, value) {
+    if (subscriber.done) return;
+    subscriber.done = true;
+    subscriber.signal?.removeEventListener('abort', subscriber.onAbort);
+    subscriber.task.subscribers.delete(subscriber);
+    if (error) subscriber.reject(error); else subscriber.resolve(value);
+    this.stopIfUnowned(subscriber.task);
+  }
+  cancelTask(task, {transfer = false} = {}) {
+    if (task.done) return [];
+    task.done = true;
+    if (this.pending.get(task.file) === task) this.pending.delete(task.file);
+    const subscribers = [...task.subscribers];
+    if (transfer) task.subscribers.clear();
+    task.controller.abort();
+    if (!transfer) for (const subscriber of subscribers) this.settle(subscriber, cloudCacheAbort());
+    return transfer ? subscribers : [];
+  }
+  notify(task, progress) {
+    if (task.done || task.controller.signal.aborted) return;
+    task.progress = progress;
+    for (const subscriber of [...task.subscribers]) {
+      if (subscriber.done || subscriber.signal?.aborted) continue;
+      try { subscriber.onProgress?.(progress); }
+      catch (error) { this.settle(subscriber, error); }
+    }
+  }
+  start(file, kind, maxPoints, transferred = []) {
+    const task = {file, kind, limit: maxPoints, controller: new AbortController(), subscribers: new Set(), progress: null, done: false, promise: null};
+    for (const subscriber of transferred) {
+      if (subscriber.done) continue;
+      subscriber.task = task;
+      task.subscribers.add(subscriber);
+    }
+    this.pending.set(file, task); this.stats.reads++;
+    // Start in a microtask so the initiating consumer can subscribe before progress begins.
+    task.promise = Promise.resolve().then(() => {
+      if (task.controller.signal.aborted) throw cloudCacheAbort();
+      const readOptions = {maxPoints, signal: task.controller.signal, onProgress: event => this.notify(task, event)};
+      return kind === 'cloud' ? this.readCloud(file, readOptions) : this.readWire(file, readOptions);
+    }).then(value => {
+      // Even readers that ignore AbortSignal may never publish a stale/cancelled result.
+      if (task.done || task.controller.signal.aborted || this.pending.get(file) !== task) throw cloudCacheAbort();
+      const record = {kind, value, limit: maxPoints, bytes: this.bytes(value), views: new Map()};
+      this.records.delete(file); this.records.set(file, record);
+      this.pending.delete(file); task.done = true;
+      for (const subscriber of [...task.subscribers]) {
+        if (subscriber.signal?.aborted) this.settle(subscriber, cloudCacheAbort(subscriber.signal.reason));
+        else {
+          try { this.settle(subscriber, null, this.view(record, subscriber.maxPoints)); }
+          catch (error) { this.settle(subscriber, error); }
+        }
+      }
+      this.trim(); return record;
+    }).catch(error => {
+      if (!task.done) {
+        task.done = true;
+        if (this.pending.get(file) === task) this.pending.delete(file);
+        for (const subscriber of [...task.subscribers]) this.settle(subscriber, error);
+      }
+      throw error;
+    });
+    // Consumers have their own promises. Handle this owner promise even with no subscribers.
+    task.promise.catch(() => {});
+    return task;
+  }
+  subscribe(task, {maxPoints, signal, onProgress}) {
+    return new Promise((resolve, reject) => {
+      const subscriber = {task, maxPoints, signal, onProgress, resolve, reject, done: false, onAbort: null};
+      subscriber.onAbort = () => this.settle(subscriber, cloudCacheAbort(signal?.reason));
+      task.subscribers.add(subscriber);
+      signal?.addEventListener('abort', subscriber.onAbort, {once: true});
+      if (signal?.aborted) subscriber.onAbort();
+      else if (task.progress !== null && onProgress) {
+        try { onProgress(task.progress); } catch (error) { this.settle(subscriber, error); }
+      }
+    });
+  }
+  async read(file, kind, {maxPoints = 0, signal, onProgress} = {}) {
+    if (!file) return null;
+    if (signal?.aborted) throw cloudCacheAbort(signal.reason);
+    if (!Number.isSafeInteger(maxPoints) || maxPoints < 0) throw Error(t('maxPoints 必须为非负整数；0 表示全量'));
+    const record = this.records.get(file);
+    const sufficient = record && record.kind === kind && (kind === 'wire' || record.value.count === record.value.totalCount
+      || cloudCacheSupports(record.limit, maxPoints));
+    if (sufficient) {
+      this.stats.hits++; this.records.delete(file); this.records.set(file, record);
+      const result = this.view(record, maxPoints); this.trim(); return result;
+    }
+    let task = this.pending.get(file);
+    if (task && task.kind === kind && (kind === 'wire' || cloudCacheSupports(task.limit, maxPoints))) this.stats.hits++;
+    else {
+      // A higher detail request replaces an insufficient parser but keeps live consumers.
+      const transferred = task ? this.cancelTask(task, {transfer: task.kind === kind}) : [];
+      task = this.start(file, kind, maxPoints, transferred);
+    }
+    return this.subscribe(task, {maxPoints, signal, onProgress});
+  }
+}
+
+
+// Source: src/shared/viewer-comparison.js
+/** Camera synchronization shared by Mesh and Wireframe. Call pause during data rebuild/export. */
+function copyViewerCamera(source,target){
+  target.navigation?.reset();target.camera={...source.camera,pan:[...source.camera.pan]};target.target=[...source.target];target.baseHeight=source.baseHeight;
+  for(const key of ['projection','distance','fov','near'])target[key]=source[key];
+  target.flyPose=source.flyPose?{eye:[...source.flyPose.eye],basis:source.flyPose.basis.map(v=>[...v])}:null;
+}
+function createViewerComparison(getViewers,isEnabled=()=>true){
+  let paused=0,guard=false;const originals=new WeakMap();
+  const pause=fn=>{paused++;try{return fn();}finally{paused--;}};
+  function install(viewer){if(originals.has(viewer))return;const original=viewer.render.bind(viewer);originals.set(viewer,original);
+    viewer.render=function(){const result=original(),all=getViewers();if(paused||guard||!isEnabled()||this.flyPose&&!this.fly?.active||all.some(v=>v!==this&&v.fly?.active))return result;
+      guard=true;try{for(const other of all)if(other!==viewer){copyViewerCamera(viewer,other);(originals.get(other)||other.render.bind(other))();}}finally{guard=false;}return result;};
+  }
+  return {install,pause,sync(source=getViewers()[0]){if(source)pause(()=>{for(const v of getViewers())if(v!==source){copyViewerCamera(source,v);v.render();}});}};
+}
+
+
+// Source: src/shared/name-summary.js
+/** Bounded labels for multi-file scenes; source names remain in the project tree. */
+function compactNames(names, {maxItems=2,maxChars=96,separator=' + '}={}) {
+  const values=Array.from(names||[],name=>String(name??'')).filter(Boolean);
+  if(!values.length)return '';
+  const shown=values.slice(0,maxItems),remaining=values.length-shown.length;
+  const suffix=remaining?` … (+${remaining})`:'';
+  const budget=Math.max(1,Math.floor((maxChars-Array.from(suffix).length-(shown.length-1)*Array.from(separator).length)/shown.length));
+  return shown.map(name=>{const points=Array.from(name);return points.length>budget?points.slice(0,Math.max(0,budget-1)).join('')+'…':name;}).join(separator)+suffix;
+}
+function setNameSummary(element,names,empty='') {
+  element.textContent=compactNames(names)||empty;
+  element.title=compactNames(names,{maxItems:8,maxChars:1024,separator:'\n'});
+}
+
+
 // Source: src/shared/project-model.js
 
 // Project groups are virtual: source identity and disk paths never change on a move.
@@ -1483,7 +2296,7 @@ function appendObjectFiles(entries,project,files,paths,mesh) {
   const groups=new Map(entries.filter(e=>e.sourceIdentity).map(e=>[e.sourceIdentity,e])),names=new Set(entries.map(e=>e.id));
   let added=0,duplicates=0;
   for(const file of files) {
-    if(!(mesh?/\.obj$/i:/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i).test(file.name))continue;
+    if(!/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(file.name))continue;
     const source=objectFileSource(file,paths);let entry=groups.get(source.identity);
     if(!entry){
       entry={id:projectUniqueId(source.base,names),sourceIdentity:source.identity,sourceGroup:source.sourceGroup,sourceLayout:source.folder?'folder':'file',files:[],wires:[],clouds:[],fileKeys:new Set(),sourceKeys:new Map()};
@@ -1492,7 +2305,7 @@ function appendObjectFiles(entries,project,files,paths,mesh) {
     }
     if(entry.fileKeys.has(source.key)){duplicates++;continue;}
     entry.fileKeys.add(source.key);entry.sourceKeys.set(file,source.key);entry[/\.obj$/i.test(file.name)?'wires':'clouds'].push(file);
-    if(mesh){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
+    if(mesh && /\.obj$/i.test(file.name)){entry.files.push(file);if(!entry.file){entry.file=file;entry.key=source.key;entry.bytes=file.size;}}
     added++;
   }
   return {added,duplicates};
@@ -2696,21 +3509,22 @@ function drawSceneGuides(ctx, viewer, width, height, scale = 1) {
   }
   const available=Math.max(80,width/scale-32);
   if(options.pointCountLabel && viewer.pointCount){
-    const count=options.showPoints?(viewer.activeClouds||[]).reduce((sum,e)=>sum+Math.floor(e.count*(options.pointRatio??100)/100),0):0;
+    const count=options.showPoints?(viewer.pointLayer?.entries||viewer.activeClouds||[]).reduce((sum,e)=>sum+Math.floor(e.count*(options.pointRatio??100)/100),0):0;
     ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillStyle='#526d66';
     ctx.fillText(t('显示 {0} / {1} 点',[count.toLocaleString(),viewer.pointCount.toLocaleString()]),Math.min(150,available/2),h-48,available/2);
   }
   if(options.legend){
-    const scalar=viewer.activeClouds ? options.showPoints && viewer.activeClouds.some(e=>!e.item?.displayColor) : options.colors==='height' && options.mode!=='wire';
-    const range=scalar?(viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
+    const overlay=viewer.pointLayer&&options.showMesh===false&&options.showPoints!==false;
+    const scalar=overlay?!!viewer.pointLayer.colorRange:viewer.activeClouds ? options.showPoints && viewer.activeClouds.some(e=>!e.item?.displayColor) : options.showMesh!==false && options.colors==='height' && options.mode!=='wire';
+    const range=scalar?(overlay?viewer.pointLayer.colorRange:viewer.activeClouds?viewer.colorRange:options.range||viewer.heightRange):null;
     ctx.textAlign='left';ctx.font='10px sans-serif';ctx.fillStyle='#526d66';
     if(range && Number.isFinite(range.min) && Number.isFinite(range.max)){
-      const label=options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
+      const label=overlay?(viewer.pointLayer.effectiveColorMode==='height'?t('高度 Z'):viewer.pointLayer.effectiveColorMode.replace(/^field:/,'')):options.colors==='height'?t('相对高度'):viewer.effectiveColorMode==='height'?t('高度 Z'):viewer.effectiveColorMode?.replace(/^field:/,'')||'';
       const barWidth=Math.min(90,available*.26),barX=16,barY=h-24,gradient=ctx.createLinearGradient(barX,0,barX+barWidth,0);
       for(let i=0;i<=8;i++)gradient.addColorStop(i/8,`rgb(${samplePalette(i/8,options.palette,options.reverse).map(v=>Math.round(v*255)).join(',')})`);
       ctx.fillStyle=gradient;ctx.fillRect(barX,barY,barWidth,8);ctx.fillStyle='#526d66';
       ctx.fillText(`${label} · ${Number(range.min.toPrecision(5))} — ${Number(range.max.toPrecision(5))}`,barX+barWidth+8,h-17,Math.max(10,available-barWidth-8));
-    } else if(options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
+    } else if(options.showMesh!==false && options.colors==='surface' && options.mode!=='wire' && viewer.triangleCount){
       ctx.fillStyle='#7596ab';ctx.fillRect(16,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('非竖直面'),31,h-17);
       ctx.fillStyle='#e8e3d6';ctx.fillRect(132,h-25,9,9);ctx.fillStyle='#526d66';ctx.fillText(t('近竖直面'),147,h-17);
     }
@@ -2808,7 +3622,7 @@ function mountImageExport({root=document,getViewers,pauseSync=callback=>callback
   function field(label,input){input.setAttribute('aria-label',t(label));const node=el('label',label);node.append(input);details.append(node);return input;}
   const select=(values)=>{const node=el('select');for(const [value,label] of values){const o=el('option',label);o.value=value;node.append(o);}return node;};
   const format=field('格式',select([['png','PNG · 无损'],['jpeg','JPEG · 较小文件'],['webp','WebP'],...(root.body.dataset.tool==='pointcloud'||root.body.dataset.tool==='gaussian'?[]:[['svg','SVG · 线框矢量']])]));
-  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(root.body.dataset.tool==='wireframe'?[['1','视窗 2'],['2','视窗 3']]:[])]));
+  const scope=field('导出视窗',select([['all','所有可见视窗'],['0','视窗 1'],...(['wireframe','lod'].includes(root.body.dataset.tool)?[['1','视窗 2'],['2','视窗 3']]:[])]));
   const preset=field('分辨率',select([['1920x1080','1920 × 1080'],['3840x2160','3840 × 2160'],['current','当前渲染尺寸'],['custom','自定义像素']]));
   const antialias=field('抗锯齿',select([['1','标准'],['2','2× 超采样']]));
   const number=(value)=>{const node=el('input');node.type='number';node.min='16';node.max='8192';node.step='1';node.value=value;return node;};
@@ -3370,6 +4184,37 @@ function mountPointDrop({ zone, status, accepts, onFiles, host = window }) {
 }
 
 
+// Source: src/shared/inspector-navigation.js
+
+/** One category order and one shortcut style for every web viewer, including App pages. */
+function prepareInspectorNavigation(root=document){
+  const panel=root.getElementById('viewer-inspector');if(!panel)return;
+  const tabs=panel.querySelector('.inspector-tabs'),content=panel.querySelector('.inspector-content'),shortcuts=root.querySelector('.inspector-shortcuts');
+  const dataControls=root.querySelector('[data-data-controls]')||root.getElementById('wire-controls')?.closest('.inspector-section');
+  let data=panel.querySelector('[data-settings-panel="data"]');
+  if(dataControls&&!data){
+    data=root.createElement('section');data.id='settings-panel-data';data.dataset.settingsPanel='data';data.hidden=true;data.setAttribute('role','tabpanel');data.setAttribute('aria-labelledby','settings-tab-data');content.prepend(data);
+    const tab=root.createElement('button');tab.type='button';tab.id='settings-tab-data';tab.dataset.settingsTab='data';tab.setAttribute('role','tab');tab.setAttribute('aria-controls',data.id);tab.setAttribute('aria-selected','false');tab.tabIndex=-1;tab.textContent=t('数据');tabs.prepend(tab);
+  }
+  if(dataControls)data.append(dataControls);
+  // Studio's tools/attributes are its data workspace; keep its stable saved identifiers.
+  const labels={data:'数据',tools:'数据',display:'显示',camera:'相机',bookmarks:'书签',processing:'处理',diagnostics:'诊断',edit:'编辑'};
+  const icons={data:'<path d="M4 5h16v14H4zM4 10h16M9 5v14"/>',tools:'<path d="M4 5h16v14H4zM4 10h16M9 5v14"/>',display:'<path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 3v4M16 10v4M10 17v4"/>',camera:'<path d="M8 6l2-3h4l2 3h4v14H4V6z"/><circle cx="12" cy="12" r="4"/>',bookmarks:'<path d="M6 3h12v18l-6-4-6 4z"/>'};
+  const order=['data','tools','display','camera','bookmarks','processing','diagnostics','edit'];
+  const all=[...tabs.querySelectorAll('[data-settings-tab]')].sort((a,b)=>{const rank=x=>order.includes(x)?order.indexOf(x):99;return rank(a.dataset.settingsTab)-rank(b.dataset.settingsTab);});
+  for(const tab of all){const key=tab.dataset.settingsTab;if(labels[key])tab.textContent=t(labels[key]);tabs.append(tab);}
+  const actions=[...shortcuts.querySelectorAll('button')].filter(button=>!button.dataset.openSettings);
+  shortcuts.replaceChildren();let extra=null;
+  function addExtra(button){if(!extra){extra=root.createElement('details');extra.className='viewer-extra-tools';const summary=root.createElement('summary');summary.textContent=t('工具');extra.append(summary);const menu=root.createElement('div');menu.className='viewer-extra-menu';extra.append(menu);shortcuts.append(extra);extra.addEventListener('keydown',event=>{if(event.key==='Escape'){extra.open=false;summary.focus();}});root.addEventListener('pointerdown',event=>{if(!extra.contains(event.target))extra.open=false;});}extra.querySelector('.viewer-extra-menu').append(button);button.addEventListener('click',()=>{extra.open=false;});}
+  for(const tab of all){const key=tab.dataset.settingsTab,button=root.createElement('button');button.type='button';button.dataset.openSettings=key;button.setAttribute('aria-controls',panel.id);button.setAttribute('aria-expanded','false');
+    const icon=root.createElement('span');icon.className='settings-icon';icon.setAttribute('aria-hidden','true');icon.innerHTML=icons[key]?`<svg viewBox="0 0 24 24">${icons[key]}</svg>`:'·';const label=root.createElement('span');label.textContent=tab.textContent;button.append(icon,label);
+    if(order.indexOf(key)>4||!order.includes(key))addExtra(button);else shortcuts.append(button);
+  }
+  for(const button of actions)addExtra(button);
+  root.querySelector('.main-heading')?.classList.add('viewer-heading');
+}
+
+
 // Source: src/shared/object-browser-controls.js
 /** Keep file management in the sidebar and viewing choices beside the preview. */
 function mountObjectBrowserControls({root = document} = {}) {
@@ -3665,7 +4510,7 @@ function mountPresentationControls({root=document,getViewers,pauseSync=callback=
   }
   field('axes','XYZ 朝向','checkbox');field('ruler','坐标比例尺','checkbox');
   if(root.body.dataset.tool!=='gaussian')field('legend','颜色图例','checkbox');
-  if(root.body.dataset.tool!=='lod')field('pointCountLabel','显示点数','checkbox');
+  field('pointCountLabel','显示点数','checkbox');
   if(root.body.dataset.tool!=='lod' && root.body.dataset.tool!=='gaussian'){
     field('pointStyle','点的样式','select',[['disc','圆点'],['square','方点'],['sphere','球形光照']]);
     const ratio=field('pointRatio','显示点比例（%）','number',[1,100,1]);
@@ -3780,6 +4625,7 @@ function viewerResourceStats(viewers) {
     if (!viewer || viewer.disposed) continue;
     totals.contextLost ||= Boolean(viewer.contextLost);
     totals.models += viewer.models?.length || 0; totals.triangles += viewer.triangleCount || 0;
+    for(const entry of viewer.pointLayer?.entries||[])totals.bufferBytes+=entry.bytes||0;
     totals.points += viewer.pointCount || 0; totals.edges += viewer.edgeCount || 0;
     for (const buffer of Object.values(viewer.buffers || {})) addBuffer(buffer);
     for (const buffer of Object.values(viewer.styledLines?.shapes || {})) addBuffer(buffer);
@@ -3879,6 +4725,7 @@ function setViewerProjection(viewers, projection, pauseSync = callback => callba
 
 
 
+
 /** A shared, non-modal inspector: the canvas remains usable while editing. */
 function mountViewerLayout({root = document, getViewers = () => [], pauseSync = callback => callback()} = {}) {
   const primary=getViewers()[0],cameraPanel=root.getElementById('camera-controls');
@@ -3895,6 +4742,7 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
     label.append(select);cameraPanel.append(label);
     const old=primary.onViewChange;primary.onViewChange=(...args)=>{select.value=primary.projection;old?.(...args);};
   }
+  prepareInspectorNavigation(root);
   mountObjectBrowserControls({root});
   mountResourceMonitor({root, getViewers});
   mountImageExport({root,getViewers,pauseSync});
@@ -3984,6 +4832,126 @@ function mountViewerLayout({root = document, getViewers = () => [], pauseSync = 
   });
   select(current);
   return {open, close};
+}
+
+
+// Source: src/shared/point-display-colors.js
+
+
+const pointColorClamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+/** Same RGB/scalar fallback rules for standalone clouds and mesh overlays. */
+function pointDisplayColors(cloud,count,options){
+    const values = new Float32Array(count * 3), fields = cloud?.fields || {};
+    let mode = options.colorMode, fallback = null, range = null;
+    // Explicit field selection also supports attributes named height, solid, rgb, or file.
+    const fieldName = mode.startsWith('field:') ? mode.slice(6) : mode;
+    if (!cloud || !count) return { values, mode, fallback, range };
+    const validField = name => fields[name] && fields[name].length >= count;
+    let rgb = null, channels = null, sources = null;
+    if (mode === 'file') {
+      sources = Array.isArray(cloud.sources) ? [...cloud.sources].sort((a, b) => (a?.start ?? 0) - (b?.start ?? 0)) : [];
+      let covered = 0;
+      const valid = sources.length > 0 && sources.every(source => {
+        if (!source || !Number.isSafeInteger(source.start) || !Number.isSafeInteger(source.count) || source.start !== covered || source.count < 0 || source.count > count - covered) return false;
+        if ((!Array.isArray(source.color) && !ArrayBuffer.isView(source.color)) || source.color.length !== 3 || !Array.from(source.color).every(Number.isFinite)) return false;
+        covered += source.count;
+        return true;
+      });
+      if (!valid || covered !== count) { mode = 'height'; fallback = t('未找到完整的点云文件来源信息，已按高度着色。'); }
+    } else if (mode === 'rgb') {
+      if (options.rgbFields?.length === 3 && options.rgbFields.every(validField)) channels = options.rgbFields.map(name => fields[name]);
+      else if (cloud.rgb?.length >= count * 3) rgb = cloud.rgb;
+      else { mode = 'height'; fallback = t('未找到可用的 RGB 数据，已按高度着色。'); }
+    } else if (!['height', 'solid'].includes(mode) && !validField(fieldName)) {
+      fallback = t("字段 {0} 不存在，已按高度着色。", [fieldName]); mode = 'height';
+    }
+    if (mode === 'file') {
+      for (const source of sources) {
+        const color = Array.from(source.color, value => pointColorClamp(value, 0, 1));
+        for (let i = source.start; i < source.start + source.count; i++) {
+          values[i * 3] = color[0]; values[i * 3 + 1] = color[1]; values[i * 3 + 2] = color[2];
+        }
+      }
+    } else if (mode === 'rgb') {
+      let maximum = 0;
+      for (let i = 0; i < count; i++) for (let channel = 0; channel < 3; channel++) {
+        const value = channels ? channels[channel][i] : rgb[i * 3 + channel];
+        if (Number.isFinite(value)) maximum = Math.max(maximum, value);
+      }
+      const divisor = maximum <= 1 ? 1 : maximum <= 255 ? 255 : maximum <= 65535 ? 65535 : maximum;
+      for (let i = 0; i < count; i++) for (let channel = 0; channel < 3; channel++) {
+        const value = channels ? channels[channel][i] : rgb[i * 3 + channel];
+        values[i * 3 + channel] = Number.isFinite(value) ? pointColorClamp(value / divisor, 0, 1) : .55;
+      }
+    } else if (mode !== 'solid') {
+      const scalar = mode === 'height' ? index => cloud.positions[index * 3 + 2] : index => fields[fieldName][index];
+      let min = Infinity, max = -Infinity;
+      for (let i = 0; i < count; i++) { const value = scalar(i); if (Number.isFinite(value)) { min = Math.min(min, value); max = Math.max(max, value); } }
+      if (min !== Infinity) range = options.range ? {...options.range} : { min, max };
+      if (range) { min = range.min; max = range.max; }
+      for (let i = 0; i < count; i++) {
+        const value = scalar(i);
+        if (!Number.isFinite(value)) { values.set([.55, .59, .61], i * 3); continue; }
+        const t = max > min ? pointColorClamp((value - min) / (max - min), 0, 1) : .5;
+        values.set(samplePalette(t, options.palette, options.reverse), i * 3);
+      }
+    }
+    return { values, mode, fallback, range };
+  }
+
+
+// Source: src/shared/mesh-point-layer.js
+
+
+/** A point pass in the mesh WebGL context: shared depth, camera and export target. */
+class MeshPointLayer {
+  constructor(gl) {
+    this.gl=gl;this.entries=[];this.colorKey='';
+    const shaders=[
+      [gl.VERTEX_SHADER,'attribute vec3 position;attribute vec3 color;uniform mat4 matrix;uniform float size;varying vec3 rgb;void main(){gl_Position=matrix*vec4(position,1.0);gl_PointSize=size;rgb=color;}'],
+      [gl.FRAGMENT_SHADER,'precision mediump float;varying vec3 rgb;uniform float opacity;uniform int style;void main(){float r=length(gl_PointCoord-vec2(.5));if(style!=1&&r>.5)discard;float a=style==1?1.:1.-smoothstep(.4,.5,r);vec3 c=rgb;if(style==2){vec2 xy=(gl_PointCoord-vec2(.5))*2.;vec3 n=vec3(xy,-sqrt(max(0.,1.-dot(xy,xy))));c*=.4+.6*abs(dot(n,normalize(vec3(-.4,.6,1.))));}gl_FragColor=vec4(c,opacity*a);}']
+    ].map(([type,source])=>{const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){const error=gl.getShaderInfoLog(shader);gl.deleteShader(shader);throw Error(error);}return shader;});
+    this.program=gl.createProgram();for(const s of shaders)gl.attachShader(this.program,s);gl.linkProgram(this.program);for(const s of shaders)gl.deleteShader(s);
+    if(!gl.getProgramParameter(this.program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(this.program));
+    this.loc={};for(const k of ['matrix','size','opacity','style'])this.loc[k]=gl.getUniformLocation(this.program,k);for(const k of ['position','color'])this.loc[k]=gl.getAttribLocation(this.program,k);
+    this.maxSize=gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1];this.attributes=gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+  }
+  clear(){for(const e of this.entries){this.gl.deleteBuffer(e.position);this.gl.deleteBuffer(e.color);}this.entries=[];this.colorKey='';}
+  buffer(values){const gl=this.gl,b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,values,gl.STATIC_DRAW);if(gl.getError()===gl.OUT_OF_MEMORY){gl.deleteBuffer(b);throw Error('点云显存不足 / Point buffer allocation failed');}return b;}
+  setItems(items,placements){
+    const gl=this.gl,next=[];
+    try{for(const item of items){const transform=placements.get(String(item.id));if(!transform)continue;
+      const old=this.entries.find(e=>e.item.cloud===item.cloud&&e.item.id===item.id&&JSON.stringify(e.transform)===JSON.stringify(transform));
+      if(old){old.item=item;next.push(old);continue;}
+      const position=new Float32Array(item.cloud.count*3);
+      for(let i=0;i<position.length;i++)position[i]=(item.cloud.positions[i]-transform.origin[i%3])*transform.scale+transform.center[i%3];
+      const e={item,transform,position:this.buffer(position),color:null,count:item.cloud.count,bytes:position.byteLength*2};next.push(e);e.color=this.buffer(new Float32Array(position.length));
+    }}catch(error){for(const e of next)if(!this.entries.includes(e)){gl.deleteBuffer(e.position);if(e.color)gl.deleteBuffer(e.color);}throw error;}
+    for(const e of this.entries)if(!next.includes(e)){gl.deleteBuffer(e.position);gl.deleteBuffer(e.color);}this.entries=next;this.colorKey='';
+  }
+  setOptions(options){
+    this.options=options;
+    const key=JSON.stringify([options.pointColorMode,options.pointColor,options.palette,options.reverse,options.pointRgbFields,options.range]);if(key===this.colorKey)return;
+    const mode=options.pointColorMode||'height',field=mode.startsWith('field:')?mode.slice(6):null;
+    let min=Infinity,max=-Infinity;
+    if(mode==='height'||field)for(const e of this.entries){const cloud=e.item.cloud,values=field?cloud.fields?.[field]:null;if(field&&!values)continue;for(let i=0;i<cloud.count;i++){const v=field?values[i]:cloud.positions[i*3+2];if(Number.isFinite(v)){min=Math.min(min,v);max=Math.max(max,v);}}}
+    this.fallbacks=[];this.colorRange=min<=max?(options.range?{...options.range}:{min,max}):null;this.effectiveColorMode=mode;
+    for(const e of this.entries){const result=pointDisplayColors(e.item.cloud,e.count,{colorMode:mode,rgbFields:options.pointRgbFields,palette:options.palette,reverse:options.reverse,range:this.colorRange});
+      if(mode==='solid'){const color=rgbHex(options.pointColor||'#547d99');for(let i=0;i<e.count;i++)result.values.set(color,i*3);}
+      if(result.fallback)this.fallbacks.push(result.fallback);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER,e.color);this.gl.bufferData(this.gl.ARRAY_BUFFER,result.values,this.gl.STATIC_DRAW);
+    }this.colorKey=key;
+  }
+  draw(matrix,dpr){
+    const gl=this.gl,o=this.options||{},l=this.loc;if(o.showPoints===false||!this.entries.length)return;
+    // Mesh and styled-line passes may have other enabled attributes with shorter buffers.
+    for(let i=0;i<this.attributes;i++)gl.disableVertexAttribArray(i);
+    gl.useProgram(this.program);gl.uniformMatrix4fv(l.matrix,false,matrix);gl.uniform1f(l.size,Math.min(this.maxSize,Math.max(.5,Number(o.pointSize)||2)*dpr));gl.uniform1f(l.opacity,o.pointOpacity??1);gl.uniform1i(l.style,o.pointStyle==='square'?1:o.pointStyle==='sphere'?2:0);
+    gl.enable(gl.DEPTH_TEST);gl.depthMask((o.pointOpacity??1)>=1);gl.enableVertexAttribArray(l.position);gl.enableVertexAttribArray(l.color);
+    for(const e of this.entries){gl.bindBuffer(gl.ARRAY_BUFFER,e.position);gl.vertexAttribPointer(l.position,3,gl.FLOAT,false,12,0);gl.bindBuffer(gl.ARRAY_BUFFER,e.color);gl.vertexAttribPointer(l.color,3,gl.FLOAT,false,12,0);gl.drawArrays(gl.POINTS,0,e.count);}
+    gl.disableVertexAttribArray(l.position);gl.disableVertexAttribArray(l.color);gl.depthMask(true);
+  }
+  dispose(){this.clear();this.gl.deleteProgram(this.program);}
 }
 
 
@@ -4160,6 +5128,7 @@ function mountTouchCamera(viewer, listen, {minElevation = -89} = {}) {
 
 
 
+
 /** Local, dependency-free mesh renderer. Building placement is synthetic; geometry and scale are preserved. */
 const DEG = Math.PI / 180;
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -4278,6 +5247,7 @@ class MeshViewer {
     }
     this.program = program;
     this.styledLines = new StyledLineRenderer(gl);
+    this.pointLayer = null;
     this.locations = {
       surfaceStyle: gl.getUniformLocation(program,'surfaceStyle'), viewDirection:gl.getUniformLocation(program,'viewDirection'),
       position: gl.getAttribLocation(program, 'position'),
@@ -4344,7 +5314,7 @@ class MeshViewer {
       try {
         this.buffers = {};
         this.initGL();
-        this.setModels(this.models);
+        this.setModels(this.models,this.sceneData);
         this.onError('');
       } catch (error) { this.onError(error.message); }
     });
@@ -4362,13 +5332,15 @@ class MeshViewer {
     return { buffer, count: values.length / 10, byteLength: values.length * 4 };
   }
 
-  setModels(models) {
+  setModels(models, {referenceModels=models, clouds=[]} = {}) {
+    this.sceneData={referenceModels,clouds};
     this.stopNavigation();
     if (!Array.isArray(models)) throw new TypeError(t('setModels 需要模型数组。'));
-    const prepared = models.map(model => {
+    const prepared = referenceModels.map(reference => {
+      const model=models.find(item=>String(item.id)===String(reference.id))||{...reference,faces:[]};
       if (!model.vertices?.length || !Array.isArray(model.faces)) throw new Error(t("模型 {0} 缺少有效网格。", [model.id]));
       const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-      for (const point of model.vertices) {
+      for (const point of reference.vertices) {
         if (point.length < 3 || !point.slice(0, 3).every(Number.isFinite)) throw new Error(t("模型 {0} 包含无效坐标。", [model.id]));
         for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], point[i]); max[i] = Math.max(max[i], point[i]); }
       }
@@ -4393,16 +5365,21 @@ class MeshViewer {
     const xCenters = centers(widths), yCenters = centers(depths);
     const triangles = [], featureEdges = [], allEdges = [], labels = [];
     let maxHeight = 0, maxOriginalHeight = 0;
+    const placements=new Map();
     const vertexOut = (array, position, normal, color, height = 0) => array.push(...position, ...normal, ...color, height);
     const featureCosine = Math.cos(10 * DEG);
     for (let modelIndex = 0; modelIndex < prepared.length; modelIndex++) {
       const { model, min, max, scale } = prepared[modelIndex];
       const cx = xCenters[modelIndex % columns] - totalWidth / 2;
       const cy = totalDepth / 2 - yCenters[Math.floor(modelIndex / columns)];
+      placements.set(String(model.id),{origin:[(min[0]+max[0])/2,(min[1]+max[1])/2,min[2]],center:[cx,cy,0],scale});
       const vertices = model.vertices.map(v => [(v[0] - (min[0] + max[0]) / 2) * scale + cx, (v[1] - (min[1] + max[1]) / 2) * scale + cy, (v[2] - min[2]) * scale]);
       const height = (max[2] - min[2]) * scale;
       maxHeight = Math.max(maxHeight, height);
-      maxOriginalHeight = Math.max(maxOriginalHeight, max[2] - min[2]);
+      let meshMinZ=Infinity,meshMaxZ=-Infinity;
+      for(const point of model.vertices){meshMinZ=Math.min(meshMinZ,point[2]);meshMaxZ=Math.max(meshMaxZ,point[2]);}
+      const meshHeightOffset=min[2]-meshMinZ;
+      if(model.faces.length)maxOriginalHeight=Math.max(maxOriginalHeight,meshMaxZ-meshMinZ);
       labels.push({ id: model.id, bounds: [[cx - prepared[modelIndex].width / 2, cy - prepared[modelIndex].depth / 2, 0],
         [cx + prepared[modelIndex].width / 2, cy + prepared[modelIndex].depth / 2, height]] });
       let hash = 0;
@@ -4422,7 +5399,7 @@ class MeshViewer {
         const length = Math.hypot(...normal);
         if (length < 1e-12) continue;
         for (let i = 0; i < 3; i++) normal[i] /= length;
-        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color, point[2] / scale);
+        for (const point of [a, b, c]) vertexOut(triangles, point, normal, color, point[2] / scale + meshHeightOffset);
         for (let i = 0; i < 3; i++) {
           const ai = welded[face[i]], bi = welded[face[(i + 1) % 3]];
           const key = ai < bi ? `${ai}:${bi}` : `${bi}:${ai}`;
@@ -4431,13 +5408,13 @@ class MeshViewer {
         }
       }
       for (const edge of edges.values()) {
-        vertexOut(allEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
-        vertexOut(allEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
+        vertexOut(allEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale + meshHeightOffset);
+        vertexOut(allEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale + meshHeightOffset);
         const normals = edge.normals;
         const feature = normals.length !== 2 || Math.abs(dot(normals[0], normals[1])) < featureCosine;
         if (feature) {
-          vertexOut(featureEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale);
-          vertexOut(featureEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale);
+          vertexOut(featureEdges, edge.a, [0, 0, 1], color, edge.a[2] / scale + meshHeightOffset);
+          vertexOut(featureEdges, edge.b, [0, 0, 1], color, edge.b[2] / scale + meshHeightOffset);
         }
       }
     }
@@ -4470,6 +5447,9 @@ class MeshViewer {
     };
     this.edgePositions = {all: retainPositions(allEdges), feature: retainPositions(featureEdges)};
     this.navigationTriangles=retainPositions(triangles);
+    if(clouds.length&&!this.pointLayer)this.pointLayer=new MeshPointLayer(this.gl);
+    this.pointLayer?.setItems(clouds,placements);this.pointLayer?.setOptions(this.options);
+    this.pointCount=clouds.reduce((n,item)=>n+item.cloud.count,0);
     this.models = models;
     this.labelAnchors = labels;
     this.triangleCount = triangles.length / 30;
@@ -4489,8 +5469,8 @@ class MeshViewer {
     if(next.lineStyle!=='native'&&!this.styledLines?.ext)throw Error(t('此浏览器不支持立体线，请使用细线。'));
     const rebuild = next.scale !== this.options.scale;
     this.options = next;
-    if (rebuild) this.setModels(this.models);
-    else this.render();
+    if (rebuild) this.setModels(this.models,this.sceneData);
+    else {this.pointLayer?.setOptions(next);this.render();}
   }
 
   vectorSegments() {
@@ -4582,16 +5562,17 @@ class MeshViewer {
       gl.drawArrays(primitive, 0, buffer.count);
     };
     if (this.options.grid && this.models.length) draw(this.buffers.grid, 2, gl.LINES);
-    if (this.options.mode !== 'wire') {
+    if (this.options.showMesh!==false && this.options.mode !== 'wire') {
       gl.enable(gl.POLYGON_OFFSET_FILL);
       gl.polygonOffset(1, 1);
       draw(this.buffers.triangles, 0, gl.TRIANGLES);
       gl.disable(gl.POLYGON_OFFSET_FILL);
     }
     const all = this.options.mode === 'wire' || this.options.mode === 'solid-wire';
-    const edgeBuffer=all?this.buffers.allEdges:this.options.edges?this.buffers.featureEdges:null;
+    const edgeBuffer=this.options.showMesh===false?null:all?this.buffers.allEdges:this.options.edges?this.buffers.featureEdges:null;
     if(this.options.lineStyle==='native')draw(edgeBuffer,all?3:1,gl.LINES);
     else this.styledLines.draw({buffer:edgeBuffer,stride:40,matrix,radius:this.options.lineWidth/2*this.baseHeight/this.camera.zoom/Math.max(1,rect.height),style:this.options.lineStyle,color:[.23,.36,.43],endColor:this.options.lineGradient?this.options.lineEndColor:null});
+    this.pointLayer?.draw(matrix,dpr);
     if(this.exportTarget)return;
     updateSceneGuides(this);
     this.onLabels(this.options.labels ? this.labelAnchors.map(({ id, bounds: [min, max] }) => {
@@ -4612,7 +5593,7 @@ class MeshViewer {
   }
 
   getState() {
-    return { buildingCount: this.models.length, triangleCount: this.triangleCount,
+    return { buildingCount: this.models.length, triangleCount: this.triangleCount, pointCount:this.pointLayer?.entries.reduce((n,e)=>n+e.count,0)||0,
       featureEdgeCount: (this.buffers.featureEdges?.count || 0) / 2,
       allEdgeCount: (this.buffers.allEdges?.count || 0) / 2,
       syntheticArrangement: true, heightMeaning: 'height-above-building-min-z',
@@ -4628,7 +5609,7 @@ class MeshViewer {
     this.resizeObserver.disconnect();
     for (const [name, fn, options] of this.listeners) this.canvas.removeEventListener(name, fn, options);
     for (const item of Object.values(this.buffers)) this.gl.deleteBuffer(item.buffer);
-    this.styledLines?.dispose();this.guideCanvas?.remove();
+    this.styledLines?.dispose();this.pointLayer?.dispose();this.guideCanvas?.remove();
     this.gl.deleteProgram(this.program);
     this.onLabels([]);
   }
@@ -4771,9 +5752,40 @@ function mountPaletteControls({container, onChange = () => {}, getOptions = () =
 
 
 
+
+
+
+
 initializeLocale();
 const $ = (id) => document.getElementById(id);
 let animationControls=null,meshMode='multiple',meshPreference=null,lastMeshId=null;
+let meshPendingColorMode=null;
+let meshPaneCount=1,meshVariants=[null,null,null],meshCloudPreference=null,meshCloudItems=[],paneModels=[[],[],[]],meshViewers=[];
+const meshFileCache=new CloudFileCache({readWire:async file=>parseOBJ(await file.text(),file.name,file.size)});
+const activeMeshViewers=()=>meshViewers.slice(0,meshPaneCount);
+const meshComparison=createViewerComparison(activeMeshViewers,()=>$('mesh-sync-camera').checked);
+function meshCloudFiles(entry){return (entry?.clouds||[]).filter(file=>!entry.excludedFileKeys?.includes(entry.sourceKeys?.get(file)));}
+function paneOptions(i){const layer=$(`mesh-layers-${i+1}`).value;return {...options,showMesh:layer!=='cloud',showPoints:layer!=='mesh'};}
+function updateMeshDataControls(){
+ const active=catalogById.get(lastMeshId),files=meshFiles(active),clouds=meshCloudFiles(active);
+ $('mesh-compare-count').value=String(meshPaneCount);$('mesh-sync-camera').closest('label').hidden=meshPaneCount===1;
+ for(let i=0;i<3;i++){const select=$(`mesh-variant-${i+1}`),chosen=resolveObjectFile(files,i===0?meshPreference:meshVariants[i],i);select.replaceChildren();
+   if(!files.length){const o=document.createElement('option');o.textContent=t('未加载模型');o.value='';select.append(o);}
+   files.forEach((file,index)=>{const o=document.createElement('option');o.value=String(index);o.textContent=file.name;select.append(o);});select.value=chosen?String(files.indexOf(chosen)):'';select.disabled=!files.length;$(`mesh-slot-${i+1}`).hidden=i>=meshPaneCount;
+ }
+ const select=$('mesh-cloud-file');select.replaceChildren();for(const[value,label]of [['auto',t('按 ID 自动配对')],['none',t('不加载点云')],...clouds.map((file,i)=>[String(i),file.name])]){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o);}
+ const cloud=resolveObjectFile(clouds,meshCloudPreference);select.value=meshCloudPreference?.none?'none':meshCloudPreference&&cloud?String(clouds.indexOf(cloud)):'auto';
+}
+function configureMeshPanes(){
+ $('viewer-grid').dataset.panels=String(meshPaneCount);$('mesh-panel-heading-1').hidden=meshPaneCount===1;
+ for(let i=1;i<3;i++){$(`mesh-panel-${i+1}`).hidden=i>=meshPaneCount;if(i<meshPaneCount&&!meshViewers[i]){meshViewers[i]=new MeshViewer($(`mesh-scene-${i+1}`),{onError:showError});meshComparison.install(meshViewers[i]);}if(i>=meshPaneCount&&meshViewers[i]){meshViewers[i].destroy();meshViewers[i]=null;}}
+ updateMeshDataControls();
+}
+function meshPointFields(){
+ const select=$('mesh-point-color-mode'),previous=meshPendingColorMode||select.value;meshPendingColorMode=null;select.replaceChildren();const keys=[...new Set(meshCloudItems.flatMap(item=>Object.keys(item.cloud.fields||{})))];
+ for(const[value,label]of [['height',t('高度 Z')],['rgb','RGB'],['solid',t('单色')],...keys.map(k=>['field:'+k,k])]){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o);}select.value=[...select.options].some(o=>o.value===previous)?previous:'height';
+}
+
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
 let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
@@ -4844,6 +5856,7 @@ function renderMeshMode(){
   const files=meshFiles(active);$('mesh-file-select').replaceChildren();
   for(const [index,file] of files.entries()){const option=document.createElement('option');option.value=String(index);option.textContent=file.name;$('mesh-file-select').append(option);}
   $('mesh-file-select').closest('label').hidden=files.length<2;
+  updateMeshDataControls();
   $('mesh-file-select').disabled=!files.length;$('mesh-file-select').value=String(Math.max(0,files.indexOf(active?.file)));
 }
 function navigateMesh(direction){if(meshMode!=='single')return;const entry=adjacentObjectEntry(filteredModels(),catalogById.get(lastMeshId),direction);if(entry)selectIds([entry.id]);}
@@ -4884,66 +5897,34 @@ function applyBatch(append) {
   catch (error) { showError(error.message); }
 }
 async function loadSelection() {
-  const version = ++generation;
-  controller?.abort(); controller = new AbortController();
-  const signal = controller.signal, ids = orderedIds();
-  if (!ids.length) {
-    currentModels = [];
-    viewer?.setModels([]);
-    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
-    renderLabels([]);
-    $('loading').hidden = true; $('empty-state').hidden = false; $('screenshot').disabled = true;
-    $('scene-stats').textContent = catalog.length ? t('未选择模型') : t('请先在项目栏添加文件或文件夹');
-    return;
-  }
-  $('loading').hidden = !ids.length;
-  $('empty-state').hidden = !!ids.length;
-  $('screenshot').disabled = true;
-  $('scene-stats').textContent = ids.length ? t("正在读取 {0} 个模型…", [ids.length]) : t('未选择模型');
-  const sameIds=currentModels.map(model=>String(model.id)).sort().join('\0')===[...ids].sort().join('\0');
-  const batchProgress=createBatchProgress($('loading'),{total:ids.length,unit:'个模型',current:()=>version===generation});
-  const results = new Map(), failures = []; let next = 0, completed = 0;
-  const worker = async () => {
-    while (next < ids.length && !signal.aborted) {
-      const id = ids[next++];
-      try {
-        let model = cache.get(id);
-        if (!model) {
-          const file = localFiles.get(id);
-          if (!file) throw Error(t('本地文件已不可用，请重新选择文件夹'));
-          const text = await file.text();
-          if (signal.aborted || version !== generation) return;
-          model = parseOBJ(text, id, file.size);
-          if (signal.aborted || version !== generation) return;
-          cache.set(id, model);
-          if (cache.size > 64) cache.delete(cache.keys().next().value);
-        }
-        results.set(id, model);
-      } catch (error) {
-        if (error.name !== 'AbortError') failures.push(`#${id}：${error.message}`);
-      }
-      completed++;
-      batchProgress.report(completed,failures.length);
-    }
-  };
-  await Promise.all(Array.from({length: Math.min(4, ids.length)}, worker));
-  if (version !== generation) return;
-  batchProgress.prepare();
-  const savedView = cameraControls?.preserveView && (meshMode==='multiple'||sameIds) ? cameraControls.capture() : null;
-  currentModels = ids.map(id => results.get(id)).filter(Boolean);
-  try {
-    viewer?.setModels(currentModels);
-    if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
-    cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
-    const triangles = currentModels.reduce((sum, m) => sum + m.faces.length, 0);
-    const vertices = currentModels.reduce((sum, m) => sum + m.vertices.length, 0);
-    $('scene-stats').textContent = currentModels.length ? t("已显示 {0} / {1} 个 · {2} 三角面 · {3} 顶点", [currentModels.length, ids.length, number(triangles), number(vertices)]) : t('未显示模型');
-    $('screenshot').disabled = !currentModels.length || !viewer;
-    $('empty-state').hidden = !!currentModels.length;
-    if (failures.length) showError(t('部分模型读取失败。') + failures.join('；'), true);
-    renderSelection(false);
-  } catch (error) { showError(t("模型渲染失败：{0}", [error.message]), true); }
-  finally { if(version===generation){$('loading').hidden = true;mobileSession?.schedule();} }
+ const version=++generation;controller?.abort();controller=new AbortController();const signal=controller.signal,ids=orderedIds();
+ configureMeshPanes();
+ if(!ids.length){meshFileCache.setActive([]);currentModels=[];paneModels=[[],[],[]];meshCloudItems=[];meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.setModels([])));cameraControls?.refresh();animationControls?.refresh();renderLabels([]);updateHeightLegend();$('loading').hidden=true;$('empty-state').hidden=false;$('screenshot').disabled=true;$('scene-stats').textContent=t('未选择模型');for(let i=1;i<=3;i++)$(`mesh-panel-label-${i}`).textContent='';return;}
+ const plans=ids.map(id=>{const entry=catalogById.get(id),files=meshFiles(entry);return {id,entry,meshes:Array.from({length:meshPaneCount},(_,i)=>resolveObjectFile(files,i===0?meshPreference:meshVariants[i],i)),cloud:resolveObjectFile(meshCloudFiles(entry),meshCloudPreference)};});
+ meshFileCache.setActive(plans.flatMap(plan=>[...plan.meshes,plan.cloud]));
+ const sameIds=currentModels.map(m=>String(m.id)).sort().join('\0')===[...ids].sort().join('\0');
+ const progress=createBatchProgress($('loading'),{total:ids.length,unit:'个对象',current:()=>version===generation});$('loading').hidden=false;$('empty-state').hidden=true;$('screenshot').disabled=true;clearError();
+ const results=new Map(),failures=[];let next=0,complete=0,failed=0;
+ const read=async(file,kind)=>file?meshFileCache.read(file,kind,{maxPoints:0,signal}):null;
+ async function worker(){while(next<plans.length&&!signal.aborted){const plan=plans[next++];const values=await Promise.allSettled([...plan.meshes.map(file=>read(file,'wire')),read(plan.cloud,'cloud')]);if(version!==generation)return;
+   const data=values.map((r,i)=>{if(r.status==='fulfilled')return r.value;if(r.reason?.name!=='AbortError')failures.push(`${plan.id} / ${(plan.meshes[i]||plan.cloud)?.name||''}: ${r.reason?.message}`);return null;});results.set(plan.id,data);if(values.some(v=>v.status==='rejected'))failed++;progress.report(++complete,failed);
+ }}
+ try{await Promise.all(Array.from({length:Math.min(3,plans.length)},worker));if(version!==generation)return;progress.prepare();
+   const saved=cameraControls?.preserveView&&(meshMode==='multiple'||sameIds)?cameraControls.capture():null;
+   paneModels=Array.from({length:meshPaneCount},()=>[]);meshCloudItems=[];cache.clear();
+   for(const plan of plans){const values=results.get(plan.id)||[];for(let i=0;i<meshPaneCount;i++)if(values[i])paneModels[i].push({...values[i],id:plan.id,name:plan.meshes[i].name});const cloud=values[meshPaneCount];if(cloud)meshCloudItems.push({id:plan.id,key:plan.cloud,name:plan.cloud.name,cloud});}
+   currentModels=paneModels[0];for(const m of currentModels)cache.set(m.id,m);
+   const referenceModels=meshReferenceModels(paneModels,meshCloudItems);meshPointFields();
+   meshComparison.pause(()=>activeMeshViewers().forEach((v,i)=>{v.setModels(paneModels[i],{referenceModels,clouds:meshCloudItems});v.setOptions(paneOptions(i));}));
+   if(saved&&referenceModels.length)cameraControls.restore(saved,{checkScene:false});else meshComparison.sync();
+   updateOptions();cameraControls?.refresh();animationControls?.refresh();
+   const triangles=paneModels.flat().reduce((n,m)=>n+m.faces.length,0),points=meshCloudItems.reduce((n,item)=>n+item.cloud.count,0);
+   $('scene-stats').textContent=t('{0} 个 ID · {1} 三角面 · {2} 点',[referenceModels.length,number(triangles),number(points)]);
+   updateMeshPaneLabels();
+   $('screenshot').disabled=!referenceModels.length;$('empty-state').hidden=!!referenceModels.length;
+   if(failures.length)showError(failures.join('；'),true);renderSelection(false);
+ }catch(error){if(version===generation&&error.name!=='AbortError')showError(t('显示失败：{0}',[error.message]),true);}
+ finally{if(version===generation){$('loading').hidden=true;mobileSession?.schedule();}}
 }
 function updateHeightLegend() {
   const legend = $('height-legend'); if (!legend) return;
@@ -4957,12 +5938,18 @@ function updateHeightLegend() {
     paletteControls?.setDataRange?.(range);
   }
 }
+function updateMeshPaneLabels(){for(let i=0;i<meshPaneCount;i++)setNameSummary($(`mesh-panel-label-${i+1}`),orderedIds().map(id=>{const model=paneModels[i]?.find(m=>String(m.id)===String(id));return `${id} / ${paneOptions(i).showMesh?(model?.name||t('仅点云')):t('仅点云')}`;}),t('未加载数据'));}
 function updateOptions() {
   const savedView = cameraControls?.preserveView && $('scale-mode').value !== options.scale ? cameraControls.capture() : null;
-  options = {mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
-  viewer?.setOptions(options);
+  options = {...options,mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
+  options={...options,pointColorMode:$('mesh-point-color-mode').value,pointColor:$('mesh-point-color').value,pointSize:Number($('mesh-point-size').value),pointOpacity:Number($('mesh-point-opacity').value),pointStyle:$('mesh-point-style').value};
+  meshComparison.pause(()=>activeMeshViewers().forEach((v,i)=>v.setOptions(paneOptions(i))));
+  $('mesh-point-size-value').value=options.pointSize;$('mesh-point-opacity-value').value=Math.round(options.pointOpacity*100)+'%';
+  updateMeshPaneLabels();
+  $('mesh-point-note').textContent=[...new Set(activeMeshViewers().flatMap(v=>v.pointLayer?.fallbacks||[]))].join(' ');
   if (savedView && currentModels.length) cameraControls.restore(savedView, {checkScene: false});
-  paletteControls?.setScalarEnabled(options.colors === 'height');
+  paletteControls?.setScalarEnabled(options.colors==='height'||meshCloudItems.length>0&&(options.pointColorMode==='height'||options.pointColorMode?.startsWith('field:')));
+  if(options.colors!=='height')paletteControls?.setDataRange(viewer?.pointLayer?.colorRange);
   cameraControls?.refresh(); animationControls?.refresh(); updateHeightLegend();
   $('layout-title').textContent = options.scale === 'real' ? t('等比例陈列') : t('统一展示大小');
   $('layout-note').textContent = options.scale === 'real' ? t('独立模型重新排列 · 非实际地理位置') : t('各模型独立等比缩放 · 不可比较实际大小');
@@ -4990,26 +5977,26 @@ $('random-selection').onclick = () => {
 };
 $('previous-group').onclick = () => nextGroup(-1);
 $('next-group').onclick = () => nextGroup(1);
-$('fit-view').onclick = () => viewer?.fit();
-$('zoom-in').onclick = () => viewer?.zoomBy(1.2);
-$('zoom-out').onclick = () => viewer?.zoomBy(1 / 1.2);
+$('fit-view').onclick = () => meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.fit()));
+$('zoom-in').onclick = () => meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.zoomBy(1.2)));
+$('zoom-out').onclick = () => meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.zoomBy(1 / 1.2)));
 
 $('retry').onclick = () => { clearError(); if (!catalog.length || !viewer) init(); else loadSelection(); };
 $('dismiss-error').onclick = clearError;
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => {
-  viewer?.setView(button.dataset.view);
+  meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.setView(button.dataset.view)));
   for (const other of document.querySelectorAll('[data-view]')) { other.classList.toggle('active', other === button); other.setAttribute('aria-pressed', String(other === button)); }
 };
 for (const id of ['display-mode', 'scale-mode', 'color-mode', 'show-edges', 'show-labels', 'show-grid']) $(id).onchange = updateOptions;
 document.addEventListener('keydown', event => {
   if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(event.target.tagName)) return;
-  if (event.key.toLowerCase() === 'f') { event.preventDefault(); viewer?.fit(); }
+  if (event.key.toLowerCase() === 'f') { event.preventDefault(); meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.fit())); }
 });
 
 function ensureViewer() {
-  if (!viewer) viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});
+  if (!viewer){viewer = new MeshViewer($('scene'), {onLabels: renderLabels, onError: message => message ? showError(String(message), true) : clearError()});meshViewers=[viewer];meshComparison.install(viewer);}
   if (!paletteControls && $('palette-controls')) paletteControls = mountPaletteControls({container: $('palette-controls'), getOptions: () => options, onChange: updateOptions});
-  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: () => viewer ? [viewer] : [], space: 'lod-arrangement', getScene: () => ({ids: currentModels.map(model => String(model.id)), scale: options.scale})});
+  if (!cameraControls && $('camera-controls')) cameraControls = mountCameraControls({container: $('camera-controls'), bookmarkContainer: $('bookmark-controls'), getViewers: activeMeshViewers,pauseSync:meshComparison.pause, space: 'lod-arrangement', getScene: () => ({ids:(viewer?.sceneData?.referenceModels||currentModels).map(model=>String(model.id)),scale:options.scale})});
   options = {...options, ...paletteControls?.getOptions()};
   viewer.setOptions(options); paletteControls?.setScalarEnabled(options.colors === 'height');
 }
@@ -5022,7 +6009,7 @@ function folderReady(fileList, paths = null) {
   $('source-path').textContent = t('文件留在本机 · 分组仅保留在本次页面');
   $('folder-status').textContent = t('{0} 个 ID · {1} 个 OBJ · 按需读取',[number(catalog.length),number(catalog.reduce((sum,entry)=>sum+meshFiles(entry).length,0))]);
   $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
-  if (!result.added && !result.duplicates) showError(t('这个文件夹中没有 OBJ 文件，请选择包含 .obj 模型的目录。'));
+  if (!result.added && !result.duplicates) showError(t('未找到支持的模型或点云文件。'));
   else clearError();
   renderList();if(selected.size&&result.added)loadSelection(); return result;
 }
@@ -5035,13 +6022,13 @@ function changeModelVisibility(members, checked) {
 function removeModelEntries(members) {
   const removed = new Set(members);
   ++generation; controller?.abort();
-  for (const model of members) { cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
+  for (const model of members) { for(const file of [...meshFiles(model),...meshCloudFiles(model)])meshFileCache.forget(file);cache.delete(model.id); localFiles.delete(model.id); catalogById.delete(model.id); selected.delete(model.id); }
   catalog = catalog.filter(model => !removed.has(model));
   $('total-count').textContent = t("{0} 个模型", [number(catalog.length)]);
   $('folder-status').textContent = t('{0} 个 ID · {1} 个 OBJ · 按需读取',[number(catalog.length),number(catalog.reduce((sum,entry)=>sum+meshFiles(entry).length,0))]);
   selectIds([...selected]);
 }
-const importLodRecords=archiveImportQueue({accepts:name=>/\.obj$/i.test(name),
+const importLodRecords=archiveImportQueue({accepts:name=>/\.(obj|xyz|txt|csv|pts|ply|pcd)$/i.test(name),
   receive:records=>folderReady(records.map(item=>item.file),new Map(records.map(item=>[item.file,item.path]))),
   onProgress:message=>{$('drop-status').hidden=false;$('drop-status').textContent=message;},onError:showError});
 const pickLodFiles=event=>{const records=Array.from(event.target.files,file=>({file,path:file.webkitRelativePath||file.name}));event.target.value='';importLodRecords(records).catch(()=>{});};
@@ -5051,7 +6038,7 @@ $('folder-input').onchange = pickLodFiles;
 function init() {
   try {
     ensureViewer();
-    mountViewerLayout({getViewers: () => viewer ? [viewer] : []});
+    mountViewerLayout({getViewers: activeMeshViewers,pauseSync:meshComparison.pause});
     if(!isMobileApp()&&!animationControls)animationControls=mountCameraAnimation({adapter:createMeshAnimationAdapter({getViewer:()=>viewer,getModels:()=>currentModels,getScene:()=>({ids:currentModels.map(m=>String(m.id)),scale:options.scale})}),toolbar:document.querySelector('.viewer-toolbar'),anchor:$('viewport')});
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
@@ -5059,9 +6046,9 @@ function init() {
       getMode: () => meshMode, getQuery: () => $('search').value.trim().replace(/^#/,''),
       onToggle: model => changeModelVisibility([model],!selected.has(model.id)),
       onGroupSelection: (members,checked)=>{if(meshMode==='multiple')changeModelVisibility(members,checked);}, onVisibility: changeModelVisibility,
-      onRemove: removeModelEntries, onChange: renderList, detail: model => `${meshFiles(model).length} OBJ · ${(model.bytes / 1024).toFixed(1)} KB`,
+      onRemove: removeModelEntries, onChange: renderList, detail: model => `${meshFiles(model).length} OBJ · ${meshCloudFiles(model).length} PC`,
     });
-    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name), onFiles: importLodRecords});
+    mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|xyz|txt|csv|pts|ply|pcd|zip)$/i.test(name), onFiles: importLodRecords});
     $('select-all-models').onclick = () => selectIds([...selected, ...filteredModels().map(model => model.id)]);
     $('invert-model-selection').onclick = () => {
       const next = new Set(selected);
@@ -5072,14 +6059,14 @@ function init() {
     $('file-input').onchange = pickLodFiles;
     $('total-count').textContent = t('尚未选择文件夹');
     $('source-path').textContent = t('尚未选择文件夹。关闭或刷新网页后，请手动重新选择。');
-    $('folder-status').textContent = t('选择含 OBJ 的目录 · 文件仅在本机读取');
+    $('folder-status').textContent = t('导入模型或点云 · 文件仅在本机读取');
     selectIds([]);
-    mountMobileProject({receive:importLodRecords,getState:()=>({objectImportVersion:2,mode:meshMode,meshPreference,tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length?cameraControls?.capture():null}),restoreState:async (state,records)=>{
+    mountMobileProject({receive:importLodRecords,getState:()=>({objectImportVersion:2,mode:meshMode,meshPreference,pointColorMode:meshPendingColorMode||$('mesh-point-color-mode').value,comparison:{count:meshPaneCount,variants:meshVariants,cloud:meshCloudPreference},tree:{...snapshotProjectTree(modelProject,catalog),knownIds:mobileKnownIds},selected:[...selected],inputs:captureMobileInputs(),camera:currentModels.length||meshCloudItems.length?cameraControls?.capture():null}),restoreState:async (state,records)=>{
       state=migrateObjectImportState(state,records,catalog,'mesh');
       mobileKnownIds=[...new Set([...(state?.tree?.knownIds||[]),...catalog.map(e=>e.id)])];
-      if(state){meshMode=state.mode==='single'?'single':'multiple';meshPreference=state.meshPreference?.none?null:state.meshPreference||null;catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));lastMeshId=[...selected].at(-1)||null;syncMeshFiles();restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&currentModels.length)cameraControls.restore(state.camera,{checkScene:false});}
+      if(state){meshPendingColorMode=typeof state.pointColorMode==='string'?state.pointColorMode:null;meshPaneCount=[2,3].includes(state.comparison?.count)?state.comparison.count:1;meshVariants=Array.from({length:3},(_,i)=>state.comparison?.variants?.[i]||null);meshCloudPreference=state.comparison?.cloud||null;configureMeshPanes();meshMode=state.mode==='single'?'single':'multiple';meshPreference=state.meshPreference?.none?null:state.meshPreference||null;catalog=restoreProjectTree(modelProject,catalog,state.tree);catalogById=new Map(catalog.map(e=>[e.id,e]));localFiles=new Map(catalog.map(e=>[e.id,e.file]));selected=new Set((state.selected||[]).filter(id=>catalogById.has(id)));lastMeshId=[...selected].at(-1)||null;syncMeshFiles();restoreMobileInputs(state.inputs);updateOptions();renderSelection();renderList();await loadSelection();if(state.camera&&(currentModels.length||meshCloudItems.length))cameraControls.restore(state.camera,{checkScene:false});}
       $('source-path').textContent=t('项目自动保存在此设备');
-    },onBackground:()=>{for(const id of cache.keys())if(!selected.has(id))cache.delete(id);}}).then(session=>{mobileSession=session;});
+    },onBackground:()=>{meshFileCache.trim();for(const id of cache.keys())if(!selected.has(id))cache.delete(id);}}).then(session=>{mobileSession=session;});
   } catch (error) {
     $('scene-stats').textContent = t('查看器暂时无法启动');
     $('loading').hidden = true;
@@ -5087,6 +6074,16 @@ function init() {
     $('empty-state').hidden = false;
   }
 }
+$('mesh-compare-count').onchange=async()=>{meshPaneCount=Number($('mesh-compare-count').value);await loadSelection();const version=generation;requestAnimationFrame(()=>{if(version!==generation)return;meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.fit()));meshComparison.sync();});};
+$('mesh-sync-camera').onchange=()=>{if($('mesh-sync-camera').checked)meshComparison.sync();};
+$('mesh-cloud-file').onchange=()=>{const value=$('mesh-cloud-file').value;meshCloudPreference=value==='auto'?null:value==='none'?{none:true}:objectFilePreference(meshCloudFiles(catalogById.get(lastMeshId)),value);loadSelection();};
+for(let i=0;i<3;i++){
+ $(`mesh-variant-${i+1}`).onchange=()=>{const pref=objectFilePreference(meshFiles(catalogById.get(lastMeshId)),$(`mesh-variant-${i+1}`).value);if(i===0)meshPreference=pref;else meshVariants[i]=pref;syncMeshFiles();renderList();loadSelection();};
+ $(`mesh-layers-${i+1}`).onchange=updateOptions;
+}
+for(const id of ['mesh-point-color-mode','mesh-point-color','mesh-point-style'])$(id).onchange=updateOptions;
+for(const id of ['mesh-point-size','mesh-point-opacity'])$(id).oninput=updateOptions;
+
 init();
 
 })();

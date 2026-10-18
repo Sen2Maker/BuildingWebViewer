@@ -44,6 +44,11 @@ assert.deepEqual(viewer.getState().dataRange,{min:0,max:10});
 assert(deleted.includes(buffer.buffer));
 console.log('PASS normalized arrangement preserves the original height scale for colors');
 
+viewer.setOptions({scale:'real'});
+viewer.setModels([box('offset',2,3,100)],{referenceModels:[{id:'offset',vertices:[[-10,-10,50],[10,10,200]],faces:[]}]});
+const offsetData=buffers.get(viewer.buffers.triangles.buffer),offsetHeights=Array.from({length:offsetData.length/10},(_,i)=>offsetData[i*10+9]);
+assert.equal(Math.min(...offsetHeights),0);assert.equal(Math.max(...offsetHeights),3);assert.deepEqual(viewer.getState().dataRange,{min:0,max:3});
+console.log('PASS comparison union bounds preserve each mesh original relative-height colors');
 draws=0;viewer.setModels([]);assert.equal(draws,0);assert.deepEqual(labels,[]);assert.equal(viewer.getState().dataRange,null);assert.equal(viewer.getState().colorRange,null);
 viewer.destroy();
 console.log('PASS clearing and disposal remove previous geometry and height ranges');

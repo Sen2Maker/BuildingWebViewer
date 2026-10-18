@@ -23,6 +23,7 @@ for p in WEB.rglob('*.html'):
  p.write_text(p.read_text().replace('<head>',f'<head><script src="{prefix}assets/js/capacitor.js"></script><script src="{prefix}assets/js/app-shell.js"></script><link rel="stylesheet" href="{prefix}assets/mobile/app-shell.css">',1))
 subprocess.run(['node',str(MOBILE/'compat-build.mjs')],cwd=ROOT,check=True)
 subprocess.run(['node',str(MOBILE/'compat-test.mjs')],cwd=ROOT,check=True)
+subprocess.run(['node','--test',str(MOBILE/'test-inspector-navigation.mjs')],cwd=ROOT,check=True)
 name=f'BuildingWebViewer-Update-v{version}.bwvupdate';dest=ROOT/'dist'/name;dest.parent.mkdir(exist_ok=True)
 # Stored entries keep release hashes identical across Python/zlib versions.
 with zipfile.ZipFile(dest,'w',zipfile.ZIP_STORED) as z:

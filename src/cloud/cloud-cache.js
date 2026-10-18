@@ -35,7 +35,7 @@ export class CloudFileCache {
       if (array?.buffer) buffers.add(array.buffer);
     }
     return [...buffers].reduce((sum, buffer) => sum + buffer.byteLength, 0)
-      + (value.vertices?.length || 0) * 24 + (value.edges?.length || 0) * 16;
+      + (value.vertices?.length || 0) * 24 + (value.edges?.length || 0) * 16 + (value.faces?.length || 0) * 24;
   }
   trim() {
     let total = [...this.records.values()].reduce((sum, record) => sum + record.bytes, 0);
