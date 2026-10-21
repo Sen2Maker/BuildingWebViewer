@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 修正原生检查工作流的运行器临时目录配置；缓存路径在任务启动后设置，保留只读、无 APK 的验证范围。
+- Fix native CI runtime-cache initialization after runner startup; retain the read-only, no-APK validation scope.
+
 - 新增隔离的原生 C1 编译检查快照与只读 CI：仅使用合成网页资源检查 Java 编译、Android lint 和本地单元测试，不新增 CAD 引擎资源、不改许可证，也不签名、打包 APK 或部署。当前为未发布检查点，根应用版本不变，托管 Android 检查及真机验证尚未执行。
 - Add an isolated native C1 compile checkpoint and read-only CI with synthetic web assets only. No new CAD engine payload, license change, signing, APK packaging or deployment. This is unreleased; the root application version is unchanged, and hosted Android/device validation remains pending.
 
