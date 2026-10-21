@@ -1,9 +1,9 @@
 {
   "status": "FROZEN_NATIVE_ONLY_REVIEW",
-  "checkpoint": "C1.1-native-only-compile-source",
-  "sourceManifestSha256": "8c728d6c33acf94b233f47f8abbeb8917e5107c187a5eafab9d3d683fd5df119",
+  "checkpoint": "C1.2-native-only-compile-source",
+  "sourceManifestSha256": "f6db3090c420c029ea63f18f6f9ba9a233917c1b0c46f837a31f73ed4c7a6aa8",
   "fileCount": 140,
-  "totalBytes": 822236,
+  "totalBytes": 822773,
   "publicFixtureInventorySha256": "6a3ec8f52aec3ffe007a5d2308788fce9899b4ba01dadb4f5ab809972ff3ae38",
   "files": [
     {
@@ -153,8 +153,8 @@
     },
     {
       "path": "mobile/android/app/src/main/java/bwv/update/VerifiedZipExtractor.java",
-      "bytes": 28661,
-      "sha256": "1c9427852393d043a065c34dc70777119b4b3a6cb26766617dc5c8837a89e84f"
+      "bytes": 29198,
+      "sha256": "be4ccfafefd669cae82b16310de501c0e6ff50aa5f68c480c002f63bd0e66697"
     },
     {
       "path": "mobile/android/app/src/main/java/bwv/update/probe/FilesystemCapabilityProbe.java",

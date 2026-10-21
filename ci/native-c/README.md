@@ -1,4 +1,4 @@
-# Native C1.1 compile checkpoint
+# Native C1.2 compile checkpoint
 
 This isolated snapshot is **not a release or a full App**. Its synthetic package identity is 1.0.0/versionCode 1, but it is not an installable v1.0.0 build. The existing repository application is unchanged by this checkpoint.
 
@@ -6,7 +6,7 @@ The workflow only compiles native Java, runs Android lint, and runs local JVM un
 
 There are no signing credentials, deployment, release publication, APK/AAB tasks or artifact uploads. New transferred files contain no CAD engine WASM, CAD import wrappers, fonts or real user projects. The tiny web fixture and its shader stubs are deliberately not functional rendering tests. The core Capacitor bridge and pinned source patch retain their upstream MIT notice. Existing rights and licenses are not changed.
 
-`project/` is the exact frozen 140-file C1.1 snapshot. `native-files.json` binds every path, size and SHA256. Sources and generated synthetic assets are included together. Preparation reapplies the hash-gated Capacitor patch, generates the fixture, runs Capacitor sync and finalizes the exact post-sync asset inventory. It must reproduce the frozen source tree and the final inventory digest:
+`project/` is the exact frozen 140-file C1.2 snapshot. `native-files.json` binds every path, size and SHA256. Sources and generated synthetic assets are included together. Preparation reapplies the hash-gated Capacitor patch, generates the fixture, runs Capacitor sync and finalizes the exact post-sync asset inventory. It must reproduce the frozen source tree and the final inventory digest:
 
 `6a3ec8f52aec3ffe007a5d2308788fce9899b4ba01dadb4f5ab809972ff3ae38`
 
@@ -16,4 +16,6 @@ The first resolved Gradle graph must pass an explicit task allowlist before task
 
 The single provider instrumentation source is retained for future review but is **not compiled or run by this workflow**. No emulator or physical device is involved.
 
-C1.1 corrects a ProcessRuntime local-variable shadowing error found by the actual Android compiler and passes the already validated runtime snapshot to the renderer. Hosted compilation must be rerun; this correction is not an APK or device acceptance claim.
+C1.2 corrects a ProcessRuntime local-variable shadowing error found by the actual Android compiler and passes the already validated runtime snapshot to the renderer. Hosted compilation must be rerun; this correction is not an APK or device acceptance claim.
+
+C1.2 also replaces a newer absolute ByteBuffer bulk-read API with an API-30-compatible duplicate-buffer read. The guard and minimum SDK are unchanged; --continue permits independent unit tasks after lint failures, never a green result for a failed task.

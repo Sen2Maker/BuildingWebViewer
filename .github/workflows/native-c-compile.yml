@@ -54,15 +54,17 @@ jobs:
             -Porg.gradle.java.installations.auto-download=false \
             --dry-run \
             :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
+      # Continue eligible remaining tasks after a failure; Gradle still exits nonzero.
+      # The same exact task-graph guard remains active. No continue-on-error.
       - name: Compile native sources, lint, and run JVM unit tests only
         working-directory: ci/native-c/project/mobile/android
         run: |
-          bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache --continue \
             -I ../../../guard-native-task-graph.gradle \
             -Pandroid.builder.sdkDownload=false \
             -Porg.gradle.java.installations.auto-download=false \
             :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
-      - name: Require actual result XML and no installable output
+      - name: Report lint and JUnit independently, then require passing results and no installable output
         if: always()
         run: python3 ci/native-c/check-native-results.py ci/native-c/project
 # No upload-artifact/cache/deploy/release action. Logs contain synthetic results only.

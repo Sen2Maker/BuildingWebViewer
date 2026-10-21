@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 修正 ZIP 校验器的 Android 30 API 兼容性，不提高最低系统版本；CI 独立汇报 lint 与单元测试结果，检查失败仍保持失败。
+- Preserve API 30 ZIP-buffer compatibility and report lint/unit outcomes independently without suppressing failures.
+
 - 修正原生高斯 Activity 的资源会话变量遮蔽错误，并复用已验证的资源快照；继续原生编译验证，不发布安装包。
 - Fix native Gaussian Activity runtime-variable shadowing and reuse the validated resource snapshot; native compilation remains under verification, without APK publication.
 

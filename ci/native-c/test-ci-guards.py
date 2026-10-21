@@ -24,6 +24,7 @@ class GuardTests(unittest.TestCase):
     def run_helper(self, name, *args, ok):
         result = subprocess.run([sys.executable, str(HERE / name), *map(str, args)], text=True, capture_output=True)
         self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
+        return result
 
     def manifest(self, **changes):
         source = self.root / 'source.java'
@@ -143,6 +144,122 @@ class GuardTests(unittest.TestCase):
         self.results()
         (self.root / 'test.keystore').write_bytes(b'synthetic')
         self.run_helper('check-native-results.py', self.root, ok=False)
+
+
+    def diagnostics(self, ok=False):
+        result = self.run_helper('check-native-results.py', self.root, ok=ok)
+        parsed = {}
+        for line in result.stdout.splitlines():
+            key, value = line.split('=', 1)
+            parsed[key] = json.loads(value)
+        self.assertEqual(set(parsed), {'NATIVE_LINT_RESULT', 'NATIVE_JUNIT_RESULT',
+                                      'NATIVE_FORBIDDEN_OUTPUTS_RESULT', 'NATIVE_RESULT_GATE'})
+        return parsed, result.stdout
+
+    def test_results_missing_junit_still_exposes_lint(self):
+        app = self.results(severity='Error')
+        (app / 'test-results/testReleaseUnitTest/TEST-Synthetic.xml').unlink()
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'missing')
+        self.assertEqual(data['NATIVE_LINT_RESULT']['severity_counts'], {'Error': 1})
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'failed')
+
+    def test_results_invalid_junit_still_exposes_lint(self):
+        app = self.results(severity='Error')
+        (app / 'test-results/testReleaseUnitTest/TEST-Synthetic.xml').write_text('<broken')
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'invalid')
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'failed')
+
+    def test_results_missing_lint_still_exposes_junit(self):
+        app = self.results()
+        (app / 'reports/lint-results-release.xml').unlink()
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'missing')
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'passed')
+
+    def test_results_invalid_lint_still_exposes_junit(self):
+        app = self.results()
+        (app / 'reports/lint-results-release.xml').write_text('<broken')
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'invalid')
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'passed')
+
+    def test_results_forbidden_output_does_not_hide_xml_status(self):
+        (self.results(severity='Error') / 'unexpected.APK').write_bytes(b'synthetic')
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_FORBIDDEN_OUTPUTS_RESULT']['count'], 1)
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'passed')
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'failed')
+
+    def test_results_lint_diagnostics_are_bounded_and_blockers_first(self):
+        app = self.results()
+        locations = ''.join('<location file="' + 'x' * 1000 + '" line="212" column="7"/>' for _ in range(5))
+        warning = '<issue id="WarningId" severity="Warning" message="' + 'w' * 2000 + '">' + locations + '</issue>'
+        error = '<issue id="NewApi" severity="Error" message="Requires API 35">' + locations + '</issue>'
+        (app / 'reports/lint-results-release.xml').write_text('<issues>' + warning * 53 + error + '</issues>')
+        data, output = self.diagnostics()
+        lint = data['NATIVE_LINT_RESULT']
+        self.assertEqual(lint['severity_counts'], {'Warning': 53, 'Error': 1})
+        self.assertEqual(len(lint['issues']), 20)
+        self.assertEqual(lint['omitted_issues'], 34)
+        first = lint['issues'][0]
+        self.assertEqual(first['id'], 'NewApi')
+        self.assertEqual(first['message'], 'Requires API 35')
+        self.assertEqual(first['locations'][0]['line'], '212')
+        self.assertEqual(len(first['locations']), 3)
+        self.assertEqual(first['omitted_locations'], 2)
+        self.assertLess(len(output), 40000)
+
+    def test_results_unknown_severity_fails_closed(self):
+        self.results(severity='UnexpectedLevel')
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_LINT_RESULT']['severity_counts'], {'UNKNOWN': 1})
+
+    def test_results_oversized_lint_does_not_hide_junit(self):
+        app = self.results()
+        (app / 'reports/lint-results-release.xml').write_bytes(b' ' * (8 * 1024 * 1024 + 1))
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'invalid')
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'passed')
+
+    def test_results_entity_declaration_rejected(self):
+        app = self.results()
+        (app / 'reports/lint-results-release.xml').write_text('<!DOCTYPE issues [<!ENTITY x "content">]><issues/>')
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'invalid')
+
+    def test_results_negative_unit_counts_rejected(self):
+        self.results(tests='-1')
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'invalid')
+
+    def test_results_inconsistent_unit_counts_rejected(self):
+        self.results(skipped='3')
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'invalid')
+
+    def test_results_symlink_report_rejected(self):
+        app = self.results()
+        lint = app / 'reports/lint-results-release.xml'
+        outside = self.base / 'outside.xml'
+        outside.write_text('<issues/>')
+        lint.unlink()
+        lint.symlink_to(outside)
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'invalid')
+
+    def test_results_no_reports_reports_both_missing(self):
+        data, _ = self.diagnostics()
+        self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'missing')
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'missing')
+
+    def test_results_warning_details_preserved_on_pass(self):
+        self.results(severity='Warning')
+        data, _ = self.diagnostics(ok=True)
+        self.assertEqual(data['NATIVE_LINT_RESULT']['severity_counts'], {'Warning': 1})
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['tests'], 2)
+        self.assertEqual(data['NATIVE_RESULT_GATE']['status'], 'passed')
 
 
 if __name__ == '__main__':

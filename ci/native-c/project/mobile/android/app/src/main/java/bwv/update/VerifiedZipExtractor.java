@@ -209,7 +209,7 @@ public final class VerifiedZipExtractor {
                     InventoryVerifier.INVENTORY_NAME.length()) + 1, "ZIP filename byte limit exceeded");
             require(nameLength <= central.limit() - cursor - 46, "Truncated central filename");
             byte[] nameBytes = new byte[nameLength];
-            central.get(cursor + 46, nameBytes);
+            copyAbsolute(central, cursor + 46, nameBytes);
             String name = asciiName(nameBytes);
             boolean directory = name.endsWith("/");
             if (directory) name = name.substring(0, name.length() - 1);
@@ -455,4 +455,15 @@ public final class VerifiedZipExtractor {
     private static void require(boolean condition, String message) throws IOException {
         if (!condition) throw new IOException(message);
     }
+    /** API30-compatible absolute bulk read; source position, limit and mark are untouched. */
+    private static void copyAbsolute(ByteBuffer source, int index, byte[] destination) {
+        int length = destination.length;
+        if (index < 0 || index > source.limit() || length > source.limit() - index) {
+            throw new IndexOutOfBoundsException("Absolute bulk read outside buffer limit");
+        }
+        ByteBuffer view = source.duplicate();
+        view.position(index);
+        view.get(destination);
+    }
+
 }
