@@ -1,4 +1,4 @@
-# M1.2 + Recovery R1 integrated native compile checkpoint
+# M1.2 + Recovery R2 integrated native compile checkpoint
 
 This checkpoint compiles the reviewed CAD-free main Android source with its **real, complete offline web payload**, not a synthetic compile fixture. It is still **not an APK, release or runtime/device acceptance**. Root repository application files, main, tags and releases remain untouched.
 
@@ -8,15 +8,17 @@ Read [SOURCE_DELIVERY.md](SOURCE_DELIVERY.md) alongside the compiled browser ass
 
 ## Exact scope
 
-`project/` contains exactly 391 integrated files, 4,619,240 bytes. `native-files.json` binds every path/size/SHA256. The final Android public tree has 109 files and 1,764,820 bytes, including the real project home, five 3D/point-cloud/Gaussian tools, real paired shaders, local diagnostics and reviewed notices. No CAD engine, editor, parser, CAD vendor payload, font or real user project is included. Reviewed non-CAD video-export code and additive upstream notices retain their terms; this checkpoint does not adopt a new application license or complete outstanding source-offer review.
+`project/` contains exactly 391 integrated files, 4,619,237 bytes. `native-files.json` binds every path/size/SHA256. The final Android public tree has 109 files and 1,764,820 bytes, including the real project home, five 3D/point-cloud/Gaussian tools, real paired shaders, local diagnostics and reviewed notices. No CAD engine, editor, parser, CAD vendor payload, font or real user project is included. Reviewed non-CAD video-export code and additive upstream notices retain their terms; this checkpoint does not adopt a new application license or complete outstanding source-offer review.
 
-- Native manifest SHA256: `97ac83d18dceeeffbd805dc9457827fe53474a82a8a226d281fbccea8b2691ce`
-- Separate 807-file project source manifest: `410c5e11d65c823adb5fc26a113ff71a91a912c1d351b68fbeeaa572dbffff65`
-- New 828-entry integration snapshot manifest: `f2dec7ea62d187f83bf9d719cb6470e521e4c6d60216e78c97878af044a372ba`
+- Native manifest SHA256: `dda9af1cd0a33941d507b4c14c20acc2949d6f3153e7ab593a8e7d3b998c3574`
+- Separate 807-file project source manifest: `e44378dd99bd2a73c429e6ccdb15fdfd4426e5550ee8858c8c50778c7b39562f`
+- New 828-entry integration snapshot manifest: `3a6fb974884f18497718591430d618b7b6f22eea46e88edf6c773e8fd95ef476`
 - Real main build: `main-app-61a42ee64d2a6f14f3f90bde`
 - Final inventory: 14,681 bytes, SHA256 `44820be905063d7c279c3933f45e22e6e6d7df744d9ec1480c6454d69379e3de`
 
-This is a new integration, not byte-equivalent to frozen M1.2: only RecoveryActivity is overlaid with reviewed SHA256 `133eb4ee37d883ae35839eafa202c09b64797c6c7a9482cab0562e7961a3ba21`. The original M1.2 and Recovery R1 inputs remain frozen and unmodified. The 828-entry local integration inventory comprises the full 807-file project plus 21 reviewed host-test files; it is not the original 952-entry M1.2 checkpoint.
+R2 changes only the MainActivity save-state override from protected to public in production, matching actual Capacitor 8.5.3 BridgeActivity. The previous R1 Android run failed this compile check; no JUnit execution is attributed to that run. CI now audits all 16 MainActivity/Recovery/diagnostic-save lifecycle overrides against exact installed BridgeActivity and the preinstalled API36 Activity declarations, then compiles the actual save method against the extracted upstream signature. A protected-access mutation must reproduce the specific compiler error. The host activity runner changes only its wiring signature expectation; scenario bodies and doubles are unchanged.
+
+This is a new integration, not byte-equivalent to frozen M1.2: RecoveryActivity is overlaid with reviewed SHA256 `133eb4ee37d883ae35839eafa202c09b64797c6c7a9482cab0562e7961a3ba21`. The original M1.2 and Recovery R1 inputs remain frozen and unmodified. The 828-entry local integration inventory comprises the full 807-file project plus 21 reviewed host-test files; it is not the original 952-entry M1.2 checkpoint.
 
 This snapshot is the exact native compile subset, not the separate full Vite source tree. Its web assets have already been assembled, synchronized and finalized from the reviewed source. CI deliberately does **not** run an incomplete Vite rebuild, `cap sync`, the old fixture generators, or either assembly/finalization command. It verifies the reviewed final bytes, installs integrity-locked public mobile dependencies with lifecycle scripts disabled, and applies only the exact hash-gated M1.1 Capacitor overlay.
 
@@ -28,7 +30,7 @@ Exactly five production paths change from the M1.1 parent, including the new `Ma
 
 The 109 packaged public assets and all 32 existing JUnit sources/contracts are byte-identical to M1.1. The existing M1.1 Capacitor overlay and source-delivery notice are preserved verbatim. No new JavaScript or dependency is introduced.
 
-The additional [host ownership kit](tests/README.md) is 18 exact files from the reviewed checkpoint, separately hash-gated by `activity-tests.json`. With the preinstalled full JDK it compiles the real coordinator/guard/lease and unchanged method slices against explicit Android/AndroidX doubles. It runs 44 scenarios / 872 assertions and 13 compile-valid mutation controls, each required to fail at its intended runtime assertion. These are host regressions, not additional Android JUnit methods and not provider, OS restoration or device execution. The Gradle allowlist and its three requested targets are unchanged.
+The additional [host ownership kit](tests/README.md) is 18 files from the reviewed checkpoint with only the R2 public save-state wiring expectation adapted, separately hash-gated by `activity-tests.json`. With the preinstalled full JDK it compiles the real coordinator/guard/lease and unchanged method slices against explicit Android/AndroidX doubles. It runs 44 scenarios / 872 assertions and 13 compile-valid mutation controls, each required to fail at its intended runtime assertion. These are host regressions, not additional Android JUnit methods and not provider, OS restoration or device execution. The Gradle allowlist and its three requested targets are unchanged.
 
 ## Reviewed Recovery R1 overlay
 
@@ -48,7 +50,7 @@ The build uses preinstalled full Java 21, Android API 36 and build-tools 36.0.0.
 
 The source gate prints thirty named, actual source indicators, explicitly **not** runtime startup, document-epoch simulation or proof of security. Build-stage forensics independently report fixed step outcomes without reading user data or including environment secrets. The result gate prints up to 200 bounded lint issues, blockers first, with explicit omitted counters, and all 32 expected JUnit testcase identities/statuses across 9 suites. Missing/duplicate/substituted test records, summary-only XML, errors, failures or **any skipped test** fail. Test source hashes are bound to `expected-junit.json`. The Gradle step remains independently authoritative; `--continue` does not suppress failure.
 
-The exact parent is M1.1 commit `1c925b40d71fcccb166c1bc82b0ad52371381ed8`, tree `df05d210c1ab68e3953b9398c06dc3c5b16be9de`. Its successful workflow does **not** cover this integrated five-path production delta. Fresh actual M1.2 Android compile, lint and all 32 JUnit records remain required. Local host results are not a substitute for that run.
+The exact parent is R1 commit `083b02845f1d8913ad3c0093ba00d84accc5f626`, tree `d317decb94559e3d6efb2cf36ba94cd15b09e13a`. Run 39636150438 passed the source/host gates but failed Android Java compilation because this override reduced public access. Actual JUnit did not execute. R2 changes only that production access modifier; fresh Android compile, lint, all 32 JUnit records and the actual SDK36 visibility audit are required.
 
 Recovery backup ownership has source-review and host-regression clearance in this integration only, not Android/provider/device acceptance. Post-readiness provider-liveness/transport retention remains separate and is not changed or cleared here.
 

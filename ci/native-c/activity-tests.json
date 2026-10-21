@@ -1,9 +1,9 @@
 {
   "status": "FROZEN_NATIVE_ONLY_REVIEW",
-  "checkpoint": "M1.2-reviewed-host-activity-ownership-regressions",
-  "fullCheckpointManifestSha256": "ea4fdcd9c4a5116f01e5347a55053d427bebf4d22c2b5170c046d48d2c7a146b",
+  "checkpoint": "M1.2-reviewed-host-kit-with-R2-public-save-wiring-check",
+  "fullCheckpointManifestSha256": "3a6fb974884f18497718591430d618b7b6f22eea46e88edf6c773e8fd95ef476",
   "fileCount": 18,
-  "totalBytes": 83195,
+  "totalBytes": 83192,
   "files": [
     {
       "path": "cases.java.in",
@@ -22,8 +22,8 @@
     },
     {
       "path": "run_regression.py",
-      "bytes": 6739,
-      "sha256": "bd0251f2781ffc45d8d0fd1a8178d36d1845c586f98b66b2d58d0ad4922ae3da"
+      "bytes": 6736,
+      "sha256": "caae6ff91cd195926d9c4b455895e5e10e965b5364613c51380f2e1ee0cbead8"
     },
     {
       "path": "source_extract.py",
@@ -95,5 +95,7 @@
       "bytes": 312,
       "sha256": "8c8b1c168eca3cd65fc321a2fa8d75b29f5692efa195fbad4e029219190b470e"
     }
-  ]
+  ],
+  "originM1_2CheckpointManifestSha256": "ea4fdcd9c4a5116f01e5347a55053d427bebf4d22c2b5170c046d48d2c7a146b",
+  "adaptation": "Only run_regression.py source wiring signature changes from protected to public; all scenario bodies, harness and doubles unchanged."
 }

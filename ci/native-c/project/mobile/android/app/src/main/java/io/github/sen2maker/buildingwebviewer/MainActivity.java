@@ -44,7 +44,7 @@ public class MainActivity extends BridgeActivity {
   void invalidateOperations(){if(operations!=null)operations.invalidate();}
   private void saveOperations(Bundle state){if(operations!=null){state.putString(OPERATION_STATE_KEY,operations.savedKey());state.putString(OPERATION_COUNT_KEY,Integer.toString(operations.restoredCount()));}}
   private void closeOperations(){if(operations!=null)operations.close();}
-  @Override protected void onSaveInstanceState(Bundle state){saveOperations(state);super.onSaveInstanceState(state);}
+  @Override public void onSaveInstanceState(Bundle state){saveOperations(state);super.onSaveInstanceState(state);}
   @Override public void onPause(){super.onPause();if(bridge!=null&&!diagnostics.rendererGone)bridge.getWebView().onPause();}
   @Override public void onResume(){super.onResume();if(bridge!=null&&!diagnostics.rendererGone)bridge.getWebView().onResume();}
   void documentStarted(String url){

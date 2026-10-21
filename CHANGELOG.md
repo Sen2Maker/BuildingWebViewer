@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 修正 MainActivity 保存状态覆盖方法的访问级别为 public，与锁定版本 BridgeActivity 一致；实际 Android 编译发现该问题，先前主机检查未覆盖此继承规则。新增真实上游声明审计及会复现 protected 错误的编译负向回归，其他生产逻辑不变。
+- Fix only MainActivity's save-state override visibility to public, matching pinned BridgeActivity after actual Android compilation exposed the access reduction. Audit actual upstream lifecycle declarations and require a source-derived compile probe plus the protected-access negative control. No other production logic or task permissions change.
+
 - 在独立 M1.2 提案上集成经独立审核的单文件 Recovery R1 修正：备份结果绑定不可变请求与文件，恢复只保留无权限路由，拒绝重复、过期和错配结果。加入 21 场景 / 59 断言及四项有效编译负向控制；这是新的集成清单，不是原 M1.2 冻结清单等价物。
 - Integrate the independently reviewed one-file Recovery R1 overlay on M1.2. Bind backup results to immutable request/file ownership and restore routing without file/URI authority; add 21 host scenarios / 59 assertions and four compile-valid negative controls. Record new integration hashes, not equivalence to the original M1.2 freeze.
 - 保留真实资源、32 项精确 JUnit、只读无 APK 任务范围和源码交付说明。恢复期间可能需要关闭选择器和任务再重开；不清除数据，不承诺活动写入取消或进程死亡后续传。提供方活性与真机验证仍单独待验收。

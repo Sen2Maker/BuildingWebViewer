@@ -25,7 +25,7 @@ def run(candidate,output):
   if term in target:raise AssertionError('Mutable upstream activity-result dispatch present: '+term)
  if '@ActivityCallback' in source['projects']+source['reports']:raise AssertionError('Plugin retains upstream ActivityCallback annotation')
  wiring={}
- for signature,requirements in [('public void onCreate(',['initializeOperations(state)']),('protected void onSaveInstanceState(',['saveOperations(state);super.onSaveInstanceState(state)']),('public void onDestroy(',['closeOperations()']),('void documentStarted(',['invalidateOperations()'])]:
+ for signature,requirements in [('public void onCreate(',['initializeOperations(state)']),('public void onSaveInstanceState(',['saveOperations(state);super.onSaveInstanceState(state)']),('public void onDestroy(',['closeOperations()']),('void documentStarted(',['invalidateOperations()'])]:
   fragment=method(source['activity'],signature)
   for expected in requirements:
    if expected not in fragment.text:raise AssertionError('Missing source wiring '+signature+': '+expected)

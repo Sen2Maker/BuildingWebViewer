@@ -1,6 +1,6 @@
 # M1.2 host activity-result ownership regression kit
 
-`activity-results/` is an exact 18-file subset of the reviewed M1.2 checkpoint. `../activity-tests.json` pins all paths, sizes and SHA256 values. It contains only test code/templates and controlled Android/AndroidX doubles. No real user project, provider content, device trace, compiled artifact, reviewer notes or source archive is included.
+`activity-results/` contains the reviewed 18-file M1.2 kit with only run_regression.py adapted to expect the corrected public save-state signature; all harness/scenario/double bytes remain unchanged. `../activity-tests.json` pins all paths, sizes and SHA256 values. It contains only test code/templates and controlled Android/AndroidX doubles. No real user project, provider content, device trace, compiled artifact, reviewer notes or source archive is included.
 
 The suite compiles the complete production coordinator, authority guard and export lease plus unchanged extracted MainActivity/plugin/service/report-save methods. Lifecycle wiring checks are source checks only. The model registry exercises raw callback ordering and controlled stored-pending delivery; it is not the Android framework. Source fragment hashes and compile/test evidence are written only to the runner temporary directory.
 

@@ -1,4 +1,4 @@
-# M1.2 plus exact reviewed Recovery R1 integration with the real CAD-free offline main payload.
+# M1.2 plus exact reviewed Recovery R2 integration with the real CAD-free offline main payload.
 # Compile/lint/JVM tests only; no publishing, signing, SDK install or APK/AAB.
 name: Main M1 native compile only
 on:
@@ -27,7 +27,7 @@ jobs:
       - name: Set ephemeral Gradle cache after the runner starts
         shell: bash
         run: printf 'GRADLE_USER_HOME=%s/bwv-native-gradle\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-      - name: Verify exact frozen 391-file M1.2 plus Recovery R1 integration snapshot
+      - name: Verify exact frozen 391-file M1.2 plus Recovery R2 integration snapshot
         id: source
         run: |
           python3 -B ci/native-c/verify-native-allowlist.py ci/native-c/project ci/native-c/native-files.json
@@ -67,9 +67,11 @@ jobs:
         id: overlay
         working-directory: ci/native-c/project/mobile
         run: python3 -B scripts/apply-capacitor-root-lock.py
-      - name: Recheck real payload, installed transport and exact reviewed core bytes
+      - name: Recheck real payload, installed transport and actual lifecycle visibility
         id: installed
-        run: python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json --installed
+        run: |
+          python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json --installed
+          python3 -B ci/native-c/check-lifecycle-visibility.py ci/native-c/project "$RUNNER_TEMP/bwv-r2-lifecycle-visibility"
       - name: Review guarded compile lint local-unit task graph before actions
         id: graph
         working-directory: ci/native-c/project/mobile/android

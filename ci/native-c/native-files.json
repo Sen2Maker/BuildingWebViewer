@@ -1,11 +1,11 @@
 {
   "status": "FROZEN_NATIVE_ONLY_REVIEW",
-  "checkpoint": "M1.2+Recovery-R1-CI-integration",
-  "sourceManifestSha256": "97ac83d18dceeeffbd805dc9457827fe53474a82a8a226d281fbccea8b2691ce",
-  "projectSourceManifestSha256": "410c5e11d65c823adb5fc26a113ff71a91a912c1d351b68fbeeaa572dbffff65",
-  "fullCheckpointManifestSha256": "f2dec7ea62d187f83bf9d719cb6470e521e4c6d60216e78c97878af044a372ba",
+  "checkpoint": "M1.2+Recovery-R2-public-lifecycle-override",
+  "sourceManifestSha256": "dda9af1cd0a33941d507b4c14c20acc2949d6f3153e7ab593a8e7d3b998c3574",
+  "projectSourceManifestSha256": "e44378dd99bd2a73c429e6ccdb15fdfd4426e5550ee8858c8c50778c7b39562f",
+  "fullCheckpointManifestSha256": "3a6fb974884f18497718591430d618b7b6f22eea46e88edf6c773e8fd95ef476",
   "fileCount": 391,
-  "totalBytes": 4619240,
+  "totalBytes": 4619237,
   "payloadKind": "full-cad-free-main-app",
   "publicPayloadBuild": "main-app-61a42ee64d2a6f14f3f90bde",
   "publicPayloadInventorySha256": "44820be905063d7c279c3933f45e22e6e6d7df744d9ec1480c6454d69379e3de",
@@ -769,8 +769,8 @@
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/MainActivity.java",
-      "bytes": 4752,
-      "sha256": "41ec5e7c5ada719ca87934a1eace56ebdec2afe4f14130f5f1776f5ad4869297"
+      "bytes": 4749,
+      "sha256": "73eb1e6dba26b3dd68eab760ba61e99749d57db369901b3c649131fb8c04f64a"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/MainActivityOperations.java",
@@ -1971,5 +1971,6 @@
   "baseM1_2NativeManifestSha256": "79eac4e3785cb4c91cfe323511364189bc872951c6e2fe3fcf5665c8520fa024",
   "baseM1_2FullCheckpointManifestSha256": "ea4fdcd9c4a5116f01e5347a55053d427bebf4d22c2b5170c046d48d2c7a146b",
   "reviewedRecoveryOverlayManifestSha256": "fc4bc67fbf1478eaa5fb53a41fb2533517edc677e384bde0b6ca0085ccb8707c",
-  "integrationIsOriginalFreeze": false
+  "integrationIsOriginalFreeze": false,
+  "parentIntegratedNativeManifestSha256": "97ac83d18dceeeffbd805dc9457827fe53474a82a8a226d281fbccea8b2691ce"
 }
