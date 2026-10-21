@@ -6,7 +6,6 @@ import com.getcapacitor.BwvBridgeCallGuard;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.JSONObject;
 /** Dedicated diagnostic capability; no ProjectStore, path, updater or health input is accepted. */
@@ -40,12 +39,19 @@ public final class BWVSelfTestPlugin extends Plugin {
     @PluginMethod public void closeRun(PluginCall call){work(call,()->{boolean removed=service.close(handle(call),runId(call));if(removed){ownedHandle=null;ownedRun=null;}return new JSONObject().put("removed",removed);});}
     @PluginMethod public void exportReport(PluginCall call){getActivity().runOnUiThread(()->{
         try{gate(call);String text=call.getString("text");if(text==null||text.length()>65536)throw new IllegalArgumentException();
-            bwv.diagnostics.DiagnosticExportLease.Export export=service.reserveExport(runId(call),text);
+            final bwv.diagnostics.DiagnosticExportLease.Export export=service.reserveExport(runId(call),text);
             Intent intent=new Intent(getActivity(),DiagnosticReportSaveActivity.class).putExtra("exportToken",export.token());
-            try{startActivityForResult(call,intent,"reportSaved");}catch(RuntimeException unavailable){service.finishExport(export.token());throw unavailable;}
+            try{
+                ((MainActivity)getActivity()).launchOperation(MainActivityOperations.Kind.DIAGNOSTIC_SAVE,intent,new MainActivityOperations.Owner(){
+                    @Override public void complete(ActivityResult result){reportSaved(call,result);}
+                    @Override public void invalidated(){call.release(bridge);}
+                    @Override public void settled(){service.finishExport(export.token());}
+                });
+            }catch(MainActivityOperations.LaunchFailure uncertain){throw uncertain;}
+            catch(RuntimeException rejectedBeforeLaunch){service.finishExport(export.token());throw rejectedBeforeLaunch;}
         }catch(Exception error){call.reject("REPORT_EXPORT_REJECTED");}
     });}
-    @ActivityCallback private void reportSaved(PluginCall call,ActivityResult result){if(call==null||!BwvBridgeCallGuard.current(call,bridge.getWebView()))return;if(result.getData()!=null&&result.getData().getBooleanExtra("failed",false)){call.reject("REPORT_SAVE_NOT_VERIFIED");return;}boolean saved=result.getResultCode()==android.app.Activity.RESULT_OK;call.resolve(new JSObject().put("cancelled",!saved).put("readbackVerified",saved));}
+    private void reportSaved(PluginCall originalCall,ActivityResult result){if(!BwvBridgeCallGuard.current(originalCall,bridge.getWebView())){originalCall.release(bridge);return;}if(result!=null&&result.getData()!=null&&result.getData().getBooleanExtra("failed",false)){originalCall.reject("REPORT_SAVE_NOT_VERIFIED");return;}boolean saved=result!=null&&result.getResultCode()==android.app.Activity.RESULT_OK;originalCall.resolve(new JSObject().put("cancelled",!saved).put("readbackVerified",saved));}
     void documentStarted(){releaseOwned();}
     @Override protected void handleOnDestroy(){destroyed=true;releaseOwned();}
     private void releaseOwned(){if(service!=null&&ownedHandle!=null){try{service.cancel(ownedHandle,ownedRun);service.close(ownedHandle,ownedRun);}catch(Exception ignored){/* Failed cleanup remains quarantined, never broad cache cleanup. */}}}

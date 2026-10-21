@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+- 在独立 M1.2 提案上集成经独立审核的单文件 Recovery R1 修正：备份结果绑定不可变请求与文件，恢复只保留无权限路由，拒绝重复、过期和错配结果。加入 21 场景 / 59 断言及四项有效编译负向控制；这是新的集成清单，不是原 M1.2 冻结清单等价物。
+- Integrate the independently reviewed one-file Recovery R1 overlay on M1.2. Bind backup results to immutable request/file ownership and restore routing without file/URI authority; add 21 host scenarios / 59 assertions and four compile-valid negative controls. Record new integration hashes, not equivalence to the original M1.2 freeze.
+- 保留真实资源、32 项精确 JUnit、只读无 APK 任务范围和源码交付说明。恢复期间可能需要关闭选择器和任务再重开；不清除数据，不承诺活动写入取消或进程死亡后续传。提供方活性与真机验证仍单独待验收。
+- Keep real payload bytes, exact 32 JUnit tests, read-only no-APK task scope and preferred-source notices unchanged. Orphan recovery may require closing pickers/the task and reopening without clearing data; accepted-write cancellation, durable continuation, provider liveness and device acceptance are not claimed.
+
+- 将隔离的原生检查快照推进到精确 M1.2：仅改动五个生产文件，新增 UI 线程活动结果所有权协调器；109 个真实离线资源和 32 项 JUnit 合同保持逐字节一致。导航撤销、重复回调、重入、未知启动与恢复预算受到约束，仍需实际 Android CI 和真机验证。
+- Advance the isolated snapshot to exact M1.2 with five production-file changes and a UI-owned activity-result coordinator; retain byte-identical 109 real offline assets and the exact 32-test JUnit contract. Bound navigation, duplicate/reentrant results, uncertain launches and restoration without claiming actual Android/device acceptance.
+- 加入哈希固定的主机所有权回归及 13 项编译有效的负向控制；保留现有只读工作流、三项 Gradle 目标、完整有界 lint 输出和源代码交付说明。Recovery SAF 备份所有权及就绪后的提供方活性另行处理，不生成 APK、不签名、不安装、不发布。
+- Add hash-pinned host ownership regressions and 13 compile-valid negative controls without expanding the existing Gradle task allowlist. Preserve read-only CI, bounded lint reporting and preferred-source delivery notices. Recovery SAF backup ownership and post-readiness provider liveness remain separate; no APK, signing, install or release.
+
 - 将隔离的原生编译快照升级为精确 M1.1 主应用集成：包含 390 个文件和 109 个真实离线网页资源，不再使用合成编译页面；修正原生消息回复的 UI 线程与监听器所有权。仍未生成 APK，也不代表真机或完整功能验收通过。
 - Advance the isolated native compile snapshot to exact M1.1: 390 files with 109 real CAD-free offline assets instead of synthetic pages; correct UI-thread replies and listener ownership. No APK or device/full-function acceptance is implied.
 - CI 校验真实资源和固定的 32 项 JUnit 测试记录，任意跳过、遗漏或替换均失败；输出 30 项源代码指标及独立构建步骤结果，明确区分源码证据与真实启动。保留只读、无签名、无 SDK 安装、无发布范围。

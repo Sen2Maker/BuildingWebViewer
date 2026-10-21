@@ -52,11 +52,23 @@ public class BWVProjectsPlugin extends Plugin {
   }
   @PluginMethod public void showReleaseNotes(PluginCall call){if(!authorized(call))return;run(call,()->new JSONObject(runtime.text("release-notes.json",65536)));}
   // Download/install/activate APIs are deliberately absent until reviewed Android adapters are enabled.
-  @PluginMethod public void openNativeGaussian(PluginCall call){if(!authorized(call))return;IO.execute(()->{try{
-    if(!authorized(call))return;String id=call.getString("id");JSONArray keys=call.getData().getJSONArray("keys");if(keys.length()>0)NativeGaussianActivity.authorizedFiles(store,id,keys);else store.get(id);
-    getActivity().runOnUiThread(()->{try{if(!authorized(call))return;Intent intent=new Intent(getContext(),NativeGaussianActivity.class).putExtra("project",id).putExtra("keys",keys.toString()).putExtra("lang",call.getString("lang","zh"));startActivityForResult(call,intent,"nativeGaussianReturned");}catch(Exception error){call.reject(error.getMessage());}});
-  }catch(Exception error){call.reject(error.getMessage());}});}
-  @ActivityCallback private void nativeGaussianReturned(PluginCall call,ActivityResult result){if(call==null||!authorized(call))return;boolean compatibility=result.getData()!=null&&result.getData().getBooleanExtra("compatibility",false);call.resolve(new JSObject().put("compatibility",compatibility));}
+  @PluginMethod public void openNativeGaussian(PluginCall call){if(!authorized(call))return;
+    try{
+      final String projectId=call.getString("id"),keysJson=call.getData().getJSONArray("keys").toString(),language=call.getString("lang","zh");
+      IO.execute(()->{try{
+        if(!authorized(call))return;JSONArray keys=new JSONArray(keysJson);if(keys.length()>0)NativeGaussianActivity.authorizedFiles(store,projectId,keys);else store.get(projectId);
+        getActivity().runOnUiThread(()->{try{
+          if(!authorized(call))return;
+          Intent intent=new Intent(getContext(),NativeGaussianActivity.class).putExtra("project",projectId).putExtra("keys",keysJson).putExtra("lang",language);
+          ((MainActivity)getActivity()).launchOperation(MainActivityOperations.Kind.NATIVE_GAUSSIAN,intent,new MainActivityOperations.Owner(){
+            @Override public void complete(ActivityResult result){nativeGaussianReturned(call,result);}
+            @Override public void invalidated(){call.release(bridge);}
+          });
+        }catch(Exception error){call.reject(error.getMessage());}});
+      }catch(Exception error){call.reject(error.getMessage());}});
+    }catch(Exception error){call.reject(error.getMessage());}
+  }
+  private void nativeGaussianReturned(PluginCall originalCall,ActivityResult result){if(!authorized(originalCall))return;boolean compatibility=result!=null&&result.getData()!=null&&result.getData().getBooleanExtra("compatibility",false);originalCall.resolve(new JSObject().put("compatibility",compatibility));}
   @PluginMethod public void cleanupStorage(PluginCall call){if(!authorized(call))return;call.reject("MAINTENANCE_DISABLED_PENDING_BACKUP_ONLY_PROJECT_REVIEW");}
   @PluginMethod public void emptyTrash(PluginCall call){if(!authorized(call))return;call.reject("MAINTENANCE_DISABLED_PENDING_BACKUP_ONLY_PROJECT_REVIEW");}
   @PluginMethod public void backupProject(PluginCall call){if(!authorized(call))return;run(call,()->{File dir=new File(getContext().getCacheDir(),"exports/"+ProjectStore.id());File file=store.backup(call.getString("id"),dir);share(call,file,"application/zip");return new JSONObject();});}
@@ -69,12 +81,18 @@ public class BWVProjectsPlugin extends Plugin {
   @PluginMethod public void retryImport(PluginCall call){if(!authorized(call))return;run(call,()->store.retry(call.getString("id")));}
   @PluginMethod public void discardImport(PluginCall call){if(!authorized(call))return;run(call,()->{JSONObject p=store.get(call.getString("id"));String job=p.optString("importJob");if(job.matches("[a-f0-9-]{36}"))ProjectStore.deleteTree(new File(store.inbox,job));p.remove("importJob");p.remove("error");p.put("status","ready");store.put(p);return p;});}
   @PluginMethod public void pickFiles(PluginCall call){if(!authorized(call))return;
-    Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-    getActivity().runOnUiThread(()->{if(authorized(call))startActivityForResult(call,intent,"picked");});
+    final String projectId=call.getString("id");
+    getActivity().runOnUiThread(()->{if(!authorized(call))return;try{
+      Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+      ((MainActivity)getActivity()).launchOperation(MainActivityOperations.Kind.FILE_PICKER,intent,new MainActivityOperations.Owner(){
+        @Override public void complete(ActivityResult result){picked(call,projectId,result);}
+        @Override public void invalidated(){call.release(bridge);}
+      });
+    }catch(Exception error){call.reject(error.getMessage());}});
   }
-  @ActivityCallback private void picked(PluginCall call,ActivityResult result){
-    if(call==null||!authorized(call))return;if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null){call.resolve(new JSObject().put("cancelled",true));return;}
-    List<Uri> uris=uris(result.getData());String id=call.getString("id");run(call,()->store.importUris(id,uris));
+  private void picked(PluginCall originalCall,String projectId,ActivityResult result){
+    if(!authorized(originalCall))return;if(result==null||result.getResultCode()!=Activity.RESULT_OK||result.getData()==null){originalCall.resolve(new JSObject().put("cancelled",true));return;}
+    List<Uri> selected=uris(result.getData());run(originalCall,()->store.importUris(projectId,selected));
   }
   static boolean isShare(Intent intent){return intent!=null&&Arrays.asList(Intent.ACTION_SEND,Intent.ACTION_SEND_MULTIPLE,Intent.ACTION_VIEW).contains(intent.getAction());}
   @SuppressWarnings("deprecation") static List<Uri> uris(Intent intent){
