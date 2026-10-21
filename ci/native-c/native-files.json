@@ -1,9 +1,9 @@
 {
   "status": "FROZEN_NATIVE_ONLY_REVIEW",
-  "checkpoint": "C1-native-only-compile-source",
-  "sourceManifestSha256": "4c919b5e27e8f3b3d484a460153a52fa888845a4315e66696ca6335814894c77",
+  "checkpoint": "C1.1-native-only-compile-source",
+  "sourceManifestSha256": "8c728d6c33acf94b233f47f8abbeb8917e5107c187a5eafab9d3d683fd5df119",
   "fileCount": 140,
-  "totalBytes": 822248,
+  "totalBytes": 822236,
   "publicFixtureInventorySha256": "6a3ec8f52aec3ffe007a5d2308788fce9899b4ba01dadb4f5ab809972ff3ae38",
   "files": [
     {
@@ -213,8 +213,8 @@
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeGaussianActivity.java",
-      "bytes": 41449,
-      "sha256": "3abd76699a613ea174314d8487e8370f1a2d179c54a8be4f9a48c11b9e0c546c"
+      "bytes": 41437,
+      "sha256": "6e3b3905c416e245e2fd97b89a2cc7d734c6f171fe959580d4123a7166743e99"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeGaussianCamera.java",

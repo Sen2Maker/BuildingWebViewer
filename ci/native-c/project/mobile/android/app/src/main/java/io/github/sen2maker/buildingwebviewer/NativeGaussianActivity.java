@@ -30,9 +30,9 @@ public class NativeGaussianActivity extends Activity implements NativeGaussianRe
  LinearLayout column(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(9),dp(5),dp(9),dp(5));return c;}
  LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);return r;}
  @Override public void onCreate(Bundle saved){super.onCreate(saved);
-  ProcessRuntime selected;
-  try{selected=((BwvApplication)getApplication()).runtime();}catch(RuntimeException unavailable){startActivity(new Intent(this,RecoveryActivity.class));finish();return;}
-  if(selected==null){
+  ProcessRuntime processRuntime;
+  try{processRuntime=((BwvApplication)getApplication()).runtime();}catch(RuntimeException unavailable){startActivity(new Intent(this,RecoveryActivity.class));finish();return;}
+  if(processRuntime==null){
    TextView waiting=new TextView(this);waiting.setText("正在验证本地资源 / Verifying bundled resources");setContentView(waiting);
    ((BwvApplication)getApplication()).readiness().whenComplete((runtime,error)->runOnUiThread(()->{if(closed||isFinishing()||isDestroyed())return;if(error!=null){startActivity(new Intent(this,RecoveryActivity.class));finish();}else recreate();}));
    return;
@@ -45,7 +45,7 @@ public class NativeGaussianActivity extends Activity implements NativeGaussianRe
   LinearLayout views=row();viewTools=views;button(views,"项目","Project",this::filesDialog);button(views,"立体","3D",()->{renderer.preset(0);updateFly();});button(views,"俯视","Top",()->{renderer.preset(1);updateFly();});button(views,"正视","Front",()->{renderer.preset(2);updateFly();});button(views,"适应","Fit",()->{renderer.fit();surface.requestRender();updateFly();});toolbarStack.addView(views);
   LinearLayout tools=row();mainTools=tools;button(tools,"显示","Display",this::displayDialog);button(tools,"相机","Camera",this::cameraDialog);button(tools,"书签","Bookmarks",this::bookmarksDialog);diagnose=button(tools,"更多 ···","More ···",this::moreDialog);diagnose.setEnabled(false);fly=button(tools,"进入漫游","Enter fly",()->{if(renderer.ready){renderer.flying(renderer.pose().flyEye==null);updateFly();}});toolbarStack.addView(tools);
   frame=new FrameLayout(this);frame.setBackground(shape(Color.BLACK));frame.setClipToOutline(true);LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,0,1);fp.setMargins(dp(9),dp(6),dp(9),dp(6));root.addView(frame,fp);
-  surface=new GLSurfaceView(this);surface.setEGLContextClientVersion(3);surface.setEGLConfigChooser(8,8,8,0,0,0);surface.setPreserveEGLContextOnPause(true);renderer=new NativeGaussianRenderer(this,surface,this,((BwvApplication)getApplication()).runtime());surface.setRenderer(renderer);surface.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);frame.addView(surface,new FrameLayout.LayoutParams(-1,-1));surface.setOnTouchListener((v,e)->touch(e));
+  surface=new GLSurfaceView(this);surface.setEGLContextClientVersion(3);surface.setEGLConfigChooser(8,8,8,0,0,0);surface.setPreserveEGLContextOnPause(true);renderer=new NativeGaussianRenderer(this,surface,this,processRuntime);surface.setRenderer(renderer);surface.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);frame.addView(surface,new FrameLayout.LayoutParams(-1,-1));surface.setOnTouchListener((v,e)->touch(e));
   LinearLayout card=column();card.setBackground(shape(Color.rgb(234,246,239)));loadingText=text(word("准备数据","Preparing data"),15);loadingText.setMaxLines(4);card.addView(loadingText);progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setIndeterminate(true);card.addView(progress,new LinearLayout.LayoutParams(-1,dp(10)));FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);cp.setMargins(dp(18),0,dp(18),0);frame.addView(card,cp);loadingCard=card;loadingCard.setVisibility(View.GONE);
   LinearLayout bottom=row();bottomTools=bottom;capture=button(bottom,"保存截图","Save image",()->{if(renderer.ready){capture.setEnabled(false);stage("capture");renderer.capture();}});capture.setEnabled(false);gestureHint=text(word("单指旋转 · 双指缩放与平移","Drag to orbit · pinch to zoom"),10);gestureHint.setTextColor(Color.rgb(104,130,117));bottom.addView(gestureHint,new LinearLayout.LayoutParams(0,dp(40),2));root.addView(bottom);
   flyTools=row();flyTools.setMotionEventSplittingEnabled(true);flyTools.setPadding(dp(5),dp(4),dp(5),dp(4));
