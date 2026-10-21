@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+- 将隔离的原生编译快照升级为精确 M1.1 主应用集成：包含 390 个文件和 109 个真实离线网页资源，不再使用合成编译页面；修正原生消息回复的 UI 线程与监听器所有权。仍未生成 APK，也不代表真机或完整功能验收通过。
+- Advance the isolated native compile snapshot to exact M1.1: 390 files with 109 real CAD-free offline assets instead of synthetic pages; correct UI-thread replies and listener ownership. No APK or device/full-function acceptance is implied.
+- CI 校验真实资源和固定的 32 项 JUnit 测试记录，任意跳过、遗漏或替换均失败；输出 30 项源代码指标及独立构建步骤结果，明确区分源码证据与真实启动。保留只读、无签名、无 SDK 安装、无发布范围。
+- Require exact real-payload bytes and all 32 JUnit records with no skips, missing or substituted tests. Report 30 source indicators and independent build-stage results without claiming an Android startup; preserve read-only, no-signing, no-SDK-install and no-release scope.
+
 - 将隔离的原生编译快照从已通过编译、lint 与 28 项 JUnit 检查的 C1.2 升级为精确 204 文件的 C2.2：加入原生自检准入、取消/清理与报告保存隔离，以及导入内容的只读边界。该提交仍需实际 Android CI；不表示 APK、真机或完整应用验收通过。
 - Advance the isolated native compile fixture from the passed C1.2 baseline to the exact 204-file C2.2 source: diagnostic admission/cancellation/report ownership and imported-content data-only boundaries. Actual C2.2 Android CI remains required; this is not APK, device or full-App acceptance.
 - 将合成资源重建结果绑定到 C2.2 冻结清单；lint 日志最多展示 200 个有界问题并明确报告截断，便于完整检查现有 53 条警告。不新增上传、秘密信息、权限、签名、SDK 安装或发布能力。

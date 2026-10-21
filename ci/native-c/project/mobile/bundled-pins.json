@@ -1,6 +1,7 @@
 {
-  "build": "native-diagnostic-fixture-c2",
-  "inventoryBytes": 2505,
-  "inventorySha256": "ada8f8da8cfa90bac012fa4806f915ded9bdf55f461aa9d2621a16caf9349bf7",
-  "fixtureOnly": true
+  "build": "main-app-61a42ee64d2a6f14f3f90bde",
+  "inventoryBytes": 14681,
+  "inventorySha256": "44820be905063d7c279c3933f45e22e6e6d7df744d9ec1480c6454d69379e3de",
+  "fixtureOnly": false,
+  "postSyncFinalized": true
 }

@@ -1,0 +1,5 @@
+Mediabunny 1.61.4 — Copyright (c) 2026-present, Vanilagy and contributors.
+Mozilla Public License 2.0; see MEDIABUNNY-LICENSE.txt.
+Unmodified upstream TypeScript source: docs/third-party/mediabunny-1.61.4.tgz in the project source distribution.
+Source package: https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.4.tgz
+Only encoding and container-writing code is bundled. All processing is local; no CDN or upload is used.

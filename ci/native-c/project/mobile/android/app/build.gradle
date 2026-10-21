@@ -2,8 +2,9 @@ apply plugin: 'com.android.application'
 
 // Generated from the final post-injection asset inventory, never a runtime override.
 def bundlePinsFile = file('../../bundled-pins.json')
-if (!bundlePinsFile.isFile()) throw new GradleException('Run mobile/scripts/prepare-native-fixture.py before this compile-only checkpoint')
+if (!bundlePinsFile.isFile()) throw new GradleException('Run mobile/scripts/assemble-main-web.py and finalize-main-web.py before compiling the App candidate')
 def bundlePins = new groovy.json.JsonSlurper().parse(bundlePinsFile)
+if (bundlePins.fixtureOnly != false || bundlePins.postSyncFinalized != true) throw new GradleException('Full main payload and post-sync inventory are required; synthetic or pre-sync assets are forbidden')
 def quoted = { value -> groovy.json.JsonOutput.toJson(value.toString()) }
 
 android {
@@ -21,7 +22,7 @@ android {
         buildConfigField 'String', 'BUNDLE_INVENTORY_SHA256', quoted(bundlePins.inventorySha256)
         buildConfigField 'long', 'BUNDLE_INVENTORY_BYTES', bundlePins.inventoryBytes.toString() + 'L'
         buildConfigField 'String', 'BUNDLE_BUILD', quoted(bundlePins.build)
-        buildConfigField 'boolean', 'NATIVE_COMPILE_FIXTURE', 'true'
+        buildConfigField 'boolean', 'NATIVE_COMPILE_FIXTURE', 'false'
         buildConfigField 'boolean', 'DIAGNOSTIC_ENABLED', 'true'
         buildConfigField 'boolean', 'EXTERNAL_UPDATES_ENABLED', 'false'
         buildConfigField 'int', 'NATIVE_API', '1'

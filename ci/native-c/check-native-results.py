@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Report independent native CI diagnostics before failing any result gate."""
 import json
+import hashlib
 import sys
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -64,32 +65,77 @@ def lint_result(android, root):
     return result
 
 
-def junit_result(android, root):
+def junit_result(android, root, expected_path):
     reports = sorted((android / 'app/build/test-results/testReleaseUnitTest').glob('TEST-*.xml'))
-    result = {'status': 'missing', 'reports': len(reports), 'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0}
+    result = {'status': 'missing', 'reports': len(reports), 'tests': 0, 'failures': 0,
+              'errors': 0, 'skipped': 0, 'records': [], 'expected_tests': 0, 'expected_reports': 0}
     if not reports:
         result['reason'] = 'No actual release-unit XML results; NO-SOURCE is not acceptance'
         return result
     try:
-        if len(reports) > MAX_UNIT_REPORTS:
-            raise ValueError('Too many JUnit XML reports')
+        contract = json.loads(Path(expected_path).read_text())
+        if contract.get('schema') != 1 or contract.get('allowSkipped') is not False:
+            raise ValueError('Invalid explicit JUnit contract')
+        expected = {}
+        for suite in contract['suites']:
+            name = suite['suite']
+            methods = suite['tests']
+            if name in expected or not methods or len(set(methods)) != len(methods):
+                raise ValueError('Duplicate/empty expected suite or method')
+            source = root / suite['sourcePath']
+            if source.is_symlink() or not source.resolve().is_relative_to(root):
+                raise ValueError('JUnit source escapes exact snapshot')
+            if hashlib.sha256(source.read_bytes()).hexdigest() != suite['sourceSha256']:
+                raise ValueError('JUnit source differs from reviewed expected-test contract')
+            expected[name] = set(methods)
+        result['expected_reports'] = len(expected)
+        result['expected_tests'] = sum(map(len, expected.values()))
+        if (len(expected) != contract['suiteCount'] or result['expected_tests'] != contract['testCount']
+                or result['expected_tests'] > 1000 or len(expected) > MAX_UNIT_REPORTS):
+            raise ValueError('Invalid bounded expected JUnit counts')
+        if len(reports) != len(expected):
+            raise ValueError('Missing or extra JUnit suite reports')
+        seen = set()
         for report in reports:
             node = read_xml(report, root)
-            if node.tag != 'testsuite':
-                raise ValueError('Unexpected JUnit XML root: ' + bounded(report.name, 100))
+            suite = node.get('name', '')
+            if node.tag != 'testsuite' or suite not in expected or report.name != 'TEST-' + suite + '.xml':
+                raise ValueError('Unexpected JUnit suite identity')
             values = {}
             for key in ('tests', 'failures', 'errors', 'skipped'):
                 value = node.get(key, '0' if key != 'tests' else '')
                 if not value.isascii() or not value.isdecimal() or len(value) > 10:
                     raise ValueError('Invalid JUnit count: ' + key)
                 values[key] = int(value)
-            if any(values[key] > values['tests'] for key in ('failures', 'errors', 'skipped')):
-                raise ValueError('JUnit subcount exceeds tests')
+            if sum(values[key] for key in ('failures', 'errors', 'skipped')) > values['tests']:
+                raise ValueError('JUnit subcounts exceed tests')
+            cases = node.findall('testcase')
+            if len(cases) != values['tests'] or len(cases) != len(expected[suite]):
+                raise ValueError('Testcase records missing or unexpected for declared test count')
+            observed = {'failures': 0, 'errors': 0, 'skipped': 0}
+            for case in cases:
+                name, classname = case.get('name', ''), case.get('classname', '')
+                identity = (suite, name)
+                if classname != suite or name not in expected[suite] or identity in seen:
+                    raise ValueError('Unexpected or duplicate testcase identity')
+                seen.add(identity)
+                flags = {key: case.find(tag) is not None for key, tag in
+                         [('failures', 'failure'), ('errors', 'error'), ('skipped', 'skipped')]}
+                if sum(flags.values()) > 1:
+                    raise ValueError('Inconsistent testcase status')
+                for key, present in flags.items():
+                    observed[key] += int(present)
+                state = next((key for key in ('failures', 'errors', 'skipped') if flags[key]), 'passed')
+                # Only reviewed identifiers and status, never failure text, stdout or user data.
+                result['records'].append({'suite': suite, 'test': name, 'status': state})
+            if any(observed[key] != values[key] for key in observed):
+                raise ValueError('Testcase statuses disagree with suite summary')
             for key, value in values.items():
                 result[key] += value
-        result['status'] = 'passed' if (result['tests'] > result['skipped'] and
-                                         not result['failures'] and not result['errors']) else 'failed'
-    except (OSError, ValueError, ET.ParseError) as exc:
+        if seen != {(suite, test) for suite, methods in expected.items() for test in methods}:
+            raise ValueError('The exact expected JUnit record set was not executed')
+        result['status'] = 'passed' if not (result['failures'] or result['errors'] or result['skipped']) else 'failed'
+    except (OSError, ValueError, KeyError, TypeError, ET.ParseError) as exc:
         result.update(status='invalid', error=bounded(exc, 300))
     return result
 
@@ -112,10 +158,12 @@ def output_result(root):
 
 
 def main():
+    if len(sys.argv) != 3:
+        raise SystemExit('Usage: check-native-results.py project expected-junit.json')
     root = Path(sys.argv[1]).resolve()
     android = root / 'mobile/android'
     # Do not short-circuit: all diagnostics are printed before the final failure.
-    results = {'lint': lint_result(android, root), 'junit': junit_result(android, root),
+    results = {'lint': lint_result(android, root), 'junit': junit_result(android, root, sys.argv[2]),
                'forbidden_outputs': output_result(root)}
     for name, result in results.items():
         print('NATIVE_' + name.upper() + '_RESULT=' + json.dumps(result, sort_keys=True))

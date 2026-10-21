@@ -1,28 +1,35 @@
-# Native C2.2 compile checkpoint
+# M1.1 exact main-payload native compile checkpoint
 
-This isolated snapshot is **not a release or a full App**. Its synthetic package identity is 1.0.0/versionCode 1, but it is not an installable v1.0.0 build. The existing repository application is unchanged.
+This checkpoint compiles the reviewed CAD-free main Android source with its **real, complete offline web payload**, not a synthetic compile fixture. It is still **not an APK, release or runtime/device acceptance**. Root repository application files, main, tags and releases remain untouched.
 
-The workflow only compiles native Java, runs Android lint, and runs local JVM unit tests. It requires already-installed Java 21, Android platform 36 and build-tools 36.0.0; missing tools stop rather than install an SDK or accept licenses. Public lockfile-pinned build dependencies and checksum-pinned Gradle may be downloaded. The rolling hosted image and actual tool versions are logged.
+## Third-party preferred source
 
-There are no signing credentials, deployment, release publication, APK/AAB tasks or artifact uploads. New transferred files contain no CAD engine WASM, CAD import wrappers, fonts or real user projects. Diagnostic canaries and shader stubs are synthetic, not functional CAD/rendering acceptance. The core Capacitor bridge and pinned source overlay retain their upstream MIT notice. Existing rights and licenses are unchanged.
+Read [SOURCE_DELIVERY.md](SOURCE_DELIVERY.md) alongside the compiled browser assets. It provides the full immutable Mediabunny 1.61.4 preferred-source archive, verification hashes and existing project bundling materials while retaining MPL-2.0. For this public CI delivery it supersedes the frozen authored notes that mention only an incomplete npm source tarball or a pending source URL; it does not claim final APK dependency/license acceptance.
 
-## Exact frozen source
+## Exact scope
 
-`project/` contains exactly 204 C2.2 files, 1,108,956 bytes. `native-files.json` binds every path, size and SHA256 to the independently reviewed source.
+`project/` contains exactly 390 M1.1 files, 4,603,295 bytes. `native-files.json` binds every path/size/SHA256. The final Android public tree has 109 files and 1,764,820 bytes, including the real project home, five 3D/point-cloud/Gaussian tools, real paired shaders, local diagnostics and reviewed notices. No CAD engine, editor, parser, CAD vendor payload, font or real user project is included. Reviewed non-CAD video-export code and additive upstream notices retain their terms; this checkpoint does not adopt a new application license or complete outstanding source-offer review.
 
-- Native source manifest SHA256: `34c194c030a1c3badf101ac5d51eada40f59343969cebc4313a4691f4c649a7d`
-- Full private checkpoint manifest SHA256: `b91d42b6947b06ad186b8b7c7413e493779d8a01b5b804a7aea81af20eff1912`
-- Public synthetic build: `native-diagnostic-fixture-c2`
-- Final 20-file public inventory: 2,505 bytes, SHA256 `ada8f8da8cfa90bac012fa4806f915ded9bdf55f461aa9d2621a16caf9349bf7`
+- Native manifest SHA256: `889b605fed7ec4e0b928fcd2fd79bf095092249f82324d28792a881ebde5f81c`
+- Separate 806-file project source manifest: `d6cd66a6bc6c6e49ea17ec49e5d1b67c394439e0cf712c11e3419a0bd877b4fe`
+- Full 850-entry checkpoint manifest: `9a88d0bb10ad9672cc00ff4040c272d239b28fade20b6f42bcb1c3d03d9a6f3d`
+- Real main build: `main-app-61a42ee64d2a6f14f3f90bde`
+- Final inventory: 14,681 bytes, SHA256 `44820be905063d7c279c3933f45e22e6e6d7df744d9ec1480c6454d69379e3de`
 
-Preparation reapplies the hash-gated Capacitor 8.5.3 overlay, generates the tiny fixture, runs Capacitor sync, and finalizes the post-sync inventory. The fixture gate compares regenerated pins against the frozen source manifest, then checks an exact path/hash bijection. Unlisted payloads and rehashed fixture drift fail closed.
+This snapshot is the exact native compile subset, not the separate full Vite source tree. Its web assets have already been assembled, synchronized and finalized from the reviewed source. CI deliberately does **not** run an incomplete Vite rebuild, `cap sync`, the old fixture generators, or either assembly/finalization command. It verifies the reviewed final bytes, installs integrity-locked public mobile dependencies with lifecycle scripts disabled, and applies only the exact hash-gated M1.1 Capacitor overlay.
 
-The diagnostic fixture keeps external updates disabled. C2.2 adds fixed diagnostic admission reasons, per-Activity attempt/run identity, immutable report export tickets, cleanup ownership, and imported-content data-only boundaries. It preserves the C1.2 API-30 ZIP-buffer fix and native Activity capture correction. No legacy trust is imported and no runtime signature policy is weakened.
+The real-payload verifier rejects fixture/pre-sync flags, stale fixture owners, missing/unlisted/rehashed asset changes, fake shaders, wrong native identity, invalid offline HTML/core/shell links and CAD modules. It independently checks the packaged 109-file inventory against the frozen source manifest and the 107-file pre-sync web tree. After patching, it verifies the installed overlay/helpers/core and absence of legacy JavascriptInterface registration. Historical C2 synthetic-helper tests are retained as isolated regression cases only; the M1 workflow's payload acceptance path is `verify-main-payload.py`.
 
-## Guarded evidence and remaining gates
+## Native transport and safeguards
 
-Parent commit `ea9074e80df01c58465925558f1f0d7c7959874f` passed actual Android compilation, lint with 0 errors/53 warnings, and 28 JUnit tests. That result applies to C1.2, **not** to C2.2. C2.2 still requires a new actual hosted compile/lint/unit run.
+M1.1 corrects native UI-thread replies and listener publication/retirement while preserving nonce, main-frame, exact-origin, document and per-call ownership. External updates remain disabled. Native recovery/export remains available without web startup. Destructive cleanup/empty-trash is disabled pending a separate backup-only-project storage review. Existing storage/import/render algorithms and C2 update/diagnostic state machines are retained.
 
-The resolved Gradle graph must pass the unchanged 121-path task allowlist before task actions. Unknown tasks stop for review. Resource/class-library intermediates are distinct from forbidden installable packages. `--continue` permits eligible independent diagnostics after a failure; the original Gradle failure remains authoritative. The final gate independently reports lint, JUnit and forbidden outputs, requiring real nonempty, not-all-skipped JUnit reports. Lint stdout includes up to 200 bounded issues, blockers first, with explicit omitted issue/location counts. It does not print source excerpts or upload reports.
+The build uses preinstalled full Java 21, Android API 36 and build-tools 36.0.0. Missing tools stop rather than install SDK/JDK packages or accept licenses. The checksum-pinned Gradle distribution and lockfile-pinned public dependencies may be downloaded. `contents: read`, pinned checkout with credentials disabled and the unchanged 121-task guard remain. Only Java compile, Android lint and local JVM tests run. No APK/AAB, signing, install, emulator, upload, release or deploy is permitted.
 
-Four instrumentation source files are retained for later review but are **not compiled or run by this workflow**. No emulator or device is involved. Android lifecycle/provider operations, diagnostic cancellation/rotation/process death, imported-content top-level navigation/bridge isolation, complete licensed web assembly, and real-device acceptance remain separate open gates. Old App/data retention and verified export/restore are required before migration acceptance.
+## Evidence and result contract
+
+The source gate prints thirty named, actual source indicators, explicitly **not** runtime startup, document-epoch simulation or proof of security. Build-stage forensics independently report fixed step outcomes without reading user data or including environment secrets. The result gate prints up to 200 bounded lint issues, blockers first, with explicit omitted counters, and all 32 expected JUnit testcase identities/statuses across 9 suites. Missing/duplicate/substituted test records, summary-only XML, errors, failures or **any skipped test** fail. Test source hashes are bound to `expected-junit.json`. The Gradle step remains independently authoritative; `--continue` does not suppress failure.
+
+The parent C2.2 commit `a3b718d609da18751187030246a92098b502454e` passed actual compile, lint 0 errors/61 warnings and 28 JUnit tests. **That evidence does not cover M1.1.** This checkpoint requires a fresh actual Android run and warning review. Four new portable authority tests bring the expected total to 32; their presence is not an execution result.
+
+Android WebMessage callbacks, startup/recovery, navigation/reload/listeners, iframe/data-route isolation, SAF/provider cancellation and process death, offline import/view/export, renderer/touch/performance and OEM transfer remain device gates. Instrumentation sources are retained but not compiled or run here. Old App/data must be preserved and export/re-import verified before migration acceptance. No signing, package, install, deployment or production-update authority is implied.

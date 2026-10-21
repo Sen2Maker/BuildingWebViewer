@@ -1,8 +1,8 @@
 {
   "Bridge.java": {
     "before": "619700a31548504d7f81552c696273d652c655ebe317a006bda3f9398bdecdf5",
-    "after": "10d75f2aa4301f2992ea167a0bb38e04cfe873aa46b4b70cc85584ee53610738",
-    "previous": "5ea0266102a7ebd30dec4fb4d23e584e9f55bd639dfb7e9daa0c4bd4f2ab1736"
+    "after": "9c9a1c869fedf40fde63c51b82eb37776b29cde98e353dcd7a1ae432bc0cfa4f",
+    "previous": "10d75f2aa4301f2992ea167a0bb38e04cfe873aa46b4b70cc85584ee53610738"
   },
   "WebViewLocalServer.java": {
     "before": "3b7fb9b16fd96dc0ef18050120c06b6bf0b72c4b6690a2967219a21b3e65c3ab",
@@ -16,5 +16,18 @@
   "BridgeWebViewClient.java": {
     "before": "c9098b2e7f1586d24acdd767a8af9962b7f78023a0484026a983b943b2b6b3e0",
     "after": "a2ebb450a01385dbed9110395ddaac6163cd5b2fcfdf1b7f5598f8051c97e121"
+  },
+  "MessageHandler.java": {
+    "before": "5fa05c9148c4e24958f72b2d81747b416a73356693a8cb99249c557fdc9dec1a",
+    "after": "99b847df50ae570766acd101a6169115984fb013c76df75e083fd30fd4feaae1",
+    "previous": "407b8b826101f900cd05da6a56eaa97e2965a384926697c61ebd7818297e7a60"
+  },
+  "plugin/CapacitorCookies.java": {
+    "before": "ae3433e4dda80307ab78230fac96e2b1f38dca345080012f45df8c56b0b4e2ee",
+    "after": "38f95f70524805daf8eb78c59e7c27cdfd82ee88cb7c8c501e961aaed3032e61"
+  },
+  "plugin/CapacitorHttp.java": {
+    "before": "45725522be260ea0c4814218b8cab7bda5763dc0f8e517493f5edc241aaf3af7",
+    "after": "a05dd4af0327b9705b62f969068e0f4815fda724a1b939e8374b17645e397e7c"
   }
 }

@@ -1,0 +1,13 @@
+PROPOSED ADDITIONAL MAIN-PROJECT THIRD-PARTY NOTICES
+
+Local review materials only: not applied to a release. The application's own license is not selected or changed. Third-party terms and rights remain separate from any proposed noncommercial terms for independently owned application code.
+
+Mediabunny 1.61.4: Copyright (c) 2026-present, Vanilagy and contributors. MPL 2.0. See MEDIABUNNY-1.61.4-LICENSE.txt. Full preferred source at commit d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1, including shared TypeScript omitted by the npm tarball, is retained in the separate source kit. Before release, add the verified same-version public source URL; this is not a completed source offer.
+
+Apache Cordova Android 14.0.1: preserve CORDOVA-14.0.1-NOTICE.txt and CORDOVA-14.0.1-LICENSE.txt.
+
+Kotlin stdlib: the historical v1.10.0 APK identifies runtime 2.0.21; see KOTLIN-STDLIB-2.0.21-ATTRIBUTION.txt and its named license files. kotlinx.coroutines 1.8.1: preserve KOTLINX-COROUTINES-1.8.1-NOTICE.txt and LICENSE.txt. Final new APK versions remain unverified.
+
+libarchive-android 1.1.6 incorporates native libraries under their own terms. See LIBARCHIVE-3.8.1-COPYING.txt and LIBARCHIVE-3.8.1-SOURCE-NOTICES.txt, LZ4-1.10.0-XXHASH-NOTICE.txt, and preserved EXISTING-* license texts. Source-comment extraction is review material, not proof of every optimized symbol or exhaustive notices. Mbed TLS offers alternative licenses; the original alternatives are preserved without applying a new application license or claiming acceptance of an agreement.
+
+STATIC-ZLIB-STATUS.txt distinguishes unresolved static NDK provenance from confirmed license conditions. Final APK runtime resolution and remaining JVM artifact notices still need review; missing bit-identical native provenance alone is not asserted to bar publication. Current AndroidX/Capacitor/MIT-polyfill notices remain necessary; this additional directory does not replace them.

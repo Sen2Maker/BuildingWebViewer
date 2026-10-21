@@ -1,0 +1,7 @@
+/* Shared project links; the version is generated from package.json. */
+.project-links{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-left:auto;flex:none;font-size:10px;white-space:nowrap}
+.project-links a{color:#668477;text-decoration:none;transition:color .15s}.project-links a:hover{color:#245d48;text-decoration:underline;text-underline-offset:3px}.project-links a:focus-visible{outline:2px solid #518c7b;outline-offset:3px;border-radius:3px}
+.project-links .project-version{font-variant-numeric:tabular-nums;font-size:9px;border:1px solid #d7e4da;border-radius:5px;padding:3px 7px;background:#eff5f0;color:#4e7460}
+.workspace>main>footer{flex-wrap:wrap;column-gap:12px;row-gap:3px;padding-block:6px;flex-shrink:0}
+@media(max-width:1000px){.workspace>main>footer .footer-detail{display:none}}
+@media(max-width:700px){body:not([data-tool]){grid-template-rows:60px minmax(0,1fr) 50px}body:not([data-tool])>footer{flex-wrap:wrap;justify-content:flex-end;align-content:center;gap:3px}body:not([data-tool])>footer>span{width:100%;text-align:right}.project-links{gap:14px}.workspace>main>footer{min-height:46px}.workspace>main>footer .touch-hint{max-width:none;width:100%;white-space:normal}.workspace>main>footer .project-links{width:100%}}

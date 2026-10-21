@@ -1,6 +1,6 @@
-# Frozen C2.2 native-only source checkpoint. Not a release or full App build.
-# No publishing, signing, deployment, SDK/JDK installation or APK/AAB tasks.
-name: Native C compile only
+# Exact M1.1 native snapshot with the real CAD-free offline main payload.
+# Compile/lint/JVM tests only; no publishing, signing, SDK install or APK/AAB.
+name: Main M1 native compile only
 on:
   push:
     branches: [ci/native-v1-compile]
@@ -27,25 +27,38 @@ jobs:
       - name: Set ephemeral Gradle cache after the runner starts
         shell: bash
         run: printf 'GRADLE_USER_HOME=%s/bwv-native-gradle\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-      - name: Verify exact frozen native-only source
-        run: python3 ci/native-c/verify-native-allowlist.py ci/native-c/project ci/native-c/native-files.json
-      - name: Test the source, fixture, and result gates using synthetic data
-        run: python3 ci/native-c/test-ci-guards.py
+      - name: Verify exact frozen 390-file M1.1 native and real-payload snapshot
+        id: source
+        run: python3 -B ci/native-c/verify-native-allowlist.py ci/native-c/project ci/native-c/native-files.json
+      - name: Reject synthetic assets and validate all real offline pages and shaders
+        id: payload
+        run: python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json
+      - name: Report 30 source-only startup and transport indicators without simulating an Android launch
+        id: indicators
+        run: python3 -B ci/native-c/check-main-source-indicators.py ci/native-c/project ci/native-c/main-source-indicators.json
+      - name: Run source, payload, result and strict JUnit record gate regressions
+        id: guards
+        run: |
+          python3 -B ci/native-c/test-ci-guards.py
+          python3 -B ci/native-c/test-main-payload.py
       - name: Require preinstalled full Java 21 and Android 36 tools
+        id: preflight
         run: bash ci/native-c/preflight-hosted-native.sh ci/native-c/project
-      - name: Install integrity-locked public npm build dependencies without lifecycle scripts
+      - name: Install integrity-locked public npm dependencies without lifecycle scripts
+        id: dependencies
         working-directory: ci/native-c/project/mobile
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Apply hash-gated Capacitor root lock and generate tiny synthetic fixture
+      # The exact finalized full payload is already reviewed. This 390-file subset
+      # is not the separate 806-file Vite source tree: do not rebuild or synthesize it.
+      - name: Apply the exact reviewed M1.1 Capacitor transport overlay only
+        id: overlay
         working-directory: ci/native-c/project/mobile
-        run: |
-          python3 scripts/apply-capacitor-root-lock.py
-          python3 scripts/prepare-native-fixture.py
-          node node_modules/@capacitor/cli/bin/capacitor sync android
-          python3 scripts/finalize-native-fixture.py
-      - name: Verify final public fixture and pinned inventory
-        run: python3 ci/native-c/verify-native-fixture.py ci/native-c/project ci/native-c/native-files.json
-      - name: Review guarded compile/lint/local-unit task graph before task actions
+        run: python3 -B scripts/apply-capacitor-root-lock.py
+      - name: Recheck real payload, installed transport and exact reviewed core bytes
+        id: installed
+        run: python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json --installed
+      - name: Review guarded compile lint local-unit task graph before actions
+        id: graph
         working-directory: ci/native-c/project/mobile/android
         run: |
           bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
@@ -54,9 +67,8 @@ jobs:
             -Porg.gradle.java.installations.auto-download=false \
             --dry-run \
             :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
-      # Continue eligible remaining tasks after a failure; Gradle still exits nonzero.
-      # The same exact task-graph guard remains active. No continue-on-error.
-      - name: Compile native sources, lint, and run JVM unit tests only
+      - name: Compile real native sources and full payload lint then run exact JVM tests
+        id: compile
         working-directory: ci/native-c/project/mobile/android
         run: |
           bash ./gradlew --no-daemon --console=plain --no-configuration-cache --continue \
@@ -64,7 +76,27 @@ jobs:
             -Pandroid.builder.sdkDownload=false \
             -Porg.gradle.java.installations.auto-download=false \
             :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
-      - name: Report lint and JUnit independently, then require passing results and no installable output
+      - name: Report bounded build-stage forensics without runtime or user data
         if: always()
-        run: python3 ci/native-c/check-native-results.py ci/native-c/project
-# No upload-artifact/cache/deploy/release action. Logs contain synthetic results only.
+        env:
+          SOURCE: ${{ steps.source.outcome }}
+          PAYLOAD: ${{ steps.payload.outcome }}
+          INDICATORS: ${{ steps.indicators.outcome }}
+          GUARDS: ${{ steps.guards.outcome }}
+          PREFLIGHT: ${{ steps.preflight.outcome }}
+          DEPENDENCIES: ${{ steps.dependencies.outcome }}
+          OVERLAY: ${{ steps.overlay.outcome }}
+          INSTALLED: ${{ steps.installed.outcome }}
+          GRAPH: ${{ steps.graph.outcome }}
+          COMPILE: ${{ steps.compile.outcome }}
+        run: |
+          python3 -B - <<'PY'
+          import json, os
+          names = ['SOURCE', 'PAYLOAD', 'INDICATORS', 'GUARDS', 'PREFLIGHT', 'DEPENDENCIES', 'OVERLAY', 'INSTALLED', 'GRAPH', 'COMPILE']
+          outcomes = {name: os.environ.get(name, 'unknown') for name in names}
+          print('NATIVE_CI_STAGE_FORENSICS=' + json.dumps({'outcomes': outcomes, 'android_runtime_started': False, 'user_data_read': False, 'scope': 'Build-stage evidence only, not App startup or device acceptance'}, sort_keys=True))
+          PY
+      - name: Require exact 32 JUnit records with no skips and report all bounded lint diagnostics
+        if: always()
+        run: python3 -B ci/native-c/check-native-results.py ci/native-c/project ci/native-c/expected-junit.json
+# Original Gradle failures stay failures. No upload/cache/deploy/release action.

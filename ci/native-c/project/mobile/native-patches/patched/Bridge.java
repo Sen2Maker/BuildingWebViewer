@@ -819,6 +819,11 @@ public class Bridge {
 
             Runnable currentThreadTask = () -> {
                 try {
+                    if (("BWVProjects".equals(pluginId) || "BWVSelfTest".equals(pluginId)) &&
+                        !BwvBridgeCallGuard.current(call, webView)) {
+                        call.release(this);
+                        return;
+                    }
                     plugin.invoke(methodName, call);
 
                     if (call.isKeptAlive()) {
@@ -832,7 +837,13 @@ public class Bridge {
                 }
             };
 
-            taskHandler.post(currentThreadTask);
+            // These two narrow plugins admit on UI; their heavy operations remain on their IO executors.
+            // Keep invocation + keepAlive publication in one turn, before any queued reply/release.
+            if ("BWVProjects".equals(pluginId) || "BWVSelfTest".equals(pluginId)) {
+                executeOnMainThread(currentThreadTask);
+            } else {
+                taskHandler.post(currentThreadTask);
+            }
         } catch (Exception ex) {
             Logger.error(Logger.tags("callPluginMethod"), "error : " + ex, null);
             call.errorCallback(ex.toString());
@@ -929,7 +940,9 @@ public class Bridge {
      * @param call a call to release
      */
     public void releaseCall(PluginCall call) {
-        releaseCall(call.getCallbackId());
+        msgHandler.releaseCall(call);
+        // A delayed old-document result must not remove a new call reusing its callback ID.
+        if (this.savedCalls.get(call.getCallbackId()) == call) this.savedCalls.remove(call.getCallbackId());
     }
 
     /**
@@ -937,7 +950,8 @@ public class Bridge {
      * @param callbackId an ID of a callback to release
      */
     public void releaseCall(String callbackId) {
-        this.savedCalls.remove(callbackId);
+        PluginCall call = this.savedCalls.remove(callbackId);
+        if (call != null) msgHandler.releaseCall(call);
     }
 
     /**

@@ -4,6 +4,8 @@
     <application
         android:name=".BwvApplication"
         android:allowBackup="false"
+        android:fullBackupContent="@xml/bwv_backup_exclusions"
+        android:dataExtractionRules="@xml/bwv_data_extraction_exclusions"
         android:enableOnBackInvokedCallback="true"
         android:icon="@drawable/bwv_icon"
         android:label="@string/app_name"

@@ -17,11 +17,19 @@ class GuardTests(unittest.TestCase):
         self.base = Path(self.tmp.name)
         self.root = self.base / 'project'
         self.root.mkdir()
+        self.junit_source = b'// Synthetic reviewed unit-test source\n'
+        (self.base / 'expected-junit.json').write_text(json.dumps({
+            'schema': 1, 'suiteCount': 1, 'testCount': 2, 'allowSkipped': False,
+            'suites': [{'suite': 'synthetic.GuardTest', 'sourcePath': 'unit-source.java',
+                        'sourceSha256': hashlib.sha256(self.junit_source).hexdigest(),
+                        'tests': ['case0', 'case1']}]}))
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def run_helper(self, name, *args, ok):
+        if name == 'check-native-results.py' and len(args) == 1:
+            args = (*args, self.base / 'expected-junit.json')
         if name == 'verify-native-fixture.py' and len(args) == 1:
             args = (*args, self.base / 'fixture-manifest.json')
         result = subprocess.run([sys.executable, str(HERE / name), *map(str, args)], text=True, capture_output=True)
@@ -55,7 +63,12 @@ class GuardTests(unittest.TestCase):
         app = self.root / 'mobile/android/app/build'
         unit = app / 'test-results/testReleaseUnitTest'
         unit.mkdir(parents=True)
-        (unit / 'TEST-Synthetic.xml').write_text(f'<testsuite tests="{tests}" skipped="{skipped}" failures="{failures}" errors="{errors}"/>')
+        (self.root / 'unit-source.java').write_bytes(self.junit_source)
+        cases = []
+        for i in range(max(0, int(tests))):
+            status = '<skipped/>' if i < int(skipped) else '<failure/>' if i < int(skipped) + int(failures) else '<error/>' if i < int(skipped) + int(failures) + int(errors) else ''
+            cases.append(f'<testcase classname="synthetic.GuardTest" name="case{i}">{status}</testcase>')
+        (unit / 'TEST-synthetic.GuardTest.xml').write_text(f'<testsuite name="synthetic.GuardTest" tests="{tests}" skipped="{skipped}" failures="{failures}" errors="{errors}">' + ''.join(cases) + '</testsuite>')
         lint = app / 'reports'
         lint.mkdir()
         (lint / 'lint-results-release.xml').write_text('<issues>' + (f'<issue severity="{severity}"/>' if severity else '') + '</issues>')
@@ -164,7 +177,7 @@ class GuardTests(unittest.TestCase):
 
     def test_results_missing_junit_still_exposes_lint(self):
         app = self.results(severity='Error')
-        (app / 'test-results/testReleaseUnitTest/TEST-Synthetic.xml').unlink()
+        (app / 'test-results/testReleaseUnitTest/TEST-synthetic.GuardTest.xml').unlink()
         data, _ = self.diagnostics()
         self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'missing')
         self.assertEqual(data['NATIVE_LINT_RESULT']['severity_counts'], {'Error': 1})
@@ -172,7 +185,7 @@ class GuardTests(unittest.TestCase):
 
     def test_results_invalid_junit_still_exposes_lint(self):
         app = self.results(severity='Error')
-        (app / 'test-results/testReleaseUnitTest/TEST-Synthetic.xml').write_text('<broken')
+        (app / 'test-results/testReleaseUnitTest/TEST-synthetic.GuardTest.xml').write_text('<broken')
         data, _ = self.diagnostics()
         self.assertEqual(data['NATIVE_JUNIT_RESULT']['status'], 'invalid')
         self.assertEqual(data['NATIVE_LINT_RESULT']['status'], 'failed')
@@ -263,6 +276,55 @@ class GuardTests(unittest.TestCase):
         value['publicFixtureFiles'] = 3
         manifest.write_text(json.dumps(value))
         self.run_helper('verify-native-fixture.py', self.root, ok=False)
+
+    def unit_report(self):
+        return self.root / 'mobile/android/app/build/test-results/testReleaseUnitTest/TEST-synthetic.GuardTest.xml'
+
+    def test_results_partial_skip_fails(self):
+        self.results(skipped='1')
+        self.run_helper('check-native-results.py', self.root, ok=False)
+
+    def test_results_full_record_set_visible(self):
+        self.results()
+        data, _ = self.diagnostics(ok=True)
+        self.assertEqual(data['NATIVE_JUNIT_RESULT']['records'], [
+            {'suite': 'synthetic.GuardTest', 'test': 'case0', 'status': 'passed'},
+            {'suite': 'synthetic.GuardTest', 'test': 'case1', 'status': 'passed'}])
+
+    def test_results_summary_without_cases_rejected(self):
+        self.results()
+        self.unit_report().write_text('<testsuite name="synthetic.GuardTest" tests="2"/>')
+        self.run_helper('check-native-results.py', self.root, ok=False)
+
+    def test_results_duplicate_case_rejected(self):
+        self.results()
+        p = self.unit_report(); p.write_text(p.read_text().replace('case1', 'case0'))
+        self.run_helper('check-native-results.py', self.root, ok=False)
+
+    def test_results_substituted_case_rejected(self):
+        self.results()
+        p = self.unit_report(); p.write_text(p.read_text().replace('case1', 'unknown'))
+        self.run_helper('check-native-results.py', self.root, ok=False)
+
+    def test_results_other_class_rejected(self):
+        self.results()
+        p = self.unit_report(); p.write_text(p.read_text().replace('classname="synthetic.GuardTest"', 'classname="other.Test"'))
+        self.run_helper('check-native-results.py', self.root, ok=False)
+
+    def test_results_extra_suite_rejected(self):
+        self.results()
+        (self.unit_report().parent / 'TEST-extra.Test.xml').write_text('<testsuite name="extra.Test" tests="0"/>')
+        self.run_helper('check-native-results.py', self.root, ok=False)
+
+    def test_results_hidden_skip_rejected(self):
+        self.results()
+        p = self.unit_report(); p.write_text(p.read_text().replace('name="case0"></testcase>', 'name="case0"><skipped/></testcase>'))
+        self.run_helper('check-native-results.py', self.root, ok=False)
+
+    def test_results_changed_expected_source_rejected(self):
+        self.results()
+        (self.root / 'unit-source.java').write_text('changed')
+        self.run_helper('check-native-results.py', self.root, ok=False)
 
     def test_results_unknown_severity_fails_closed(self):
         self.results(severity='UnexpectedLevel')
