@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "agpVersion": "8.13.0",
+  "gradleVersion": "8.14.3",
+  "observedRun": 39602430532,
+  "observedJob": 119230027791,
+  "targets": [
+    ":app:compileReleaseJavaWithJavac",
+    ":app:lintRelease",
+    ":app:testReleaseUnitTest"
+  ],
+  "allowedPaths": [
+    ":app:preBuild",
+    ":app:preReleaseBuild",
+    ":app:generateReleaseBuildConfig",
+    ":app:javaPreCompileRelease",
+    ":capacitor-android:preBuild",
+    ":capacitor-android:preReleaseBuild",
+    ":capacitor-android:writeReleaseAarMetadata",
+    ":capacitor-cordova-android-plugins:preBuild",
+    ":capacitor-cordova-android-plugins:preReleaseBuild",
+    ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
+    ":app:checkReleaseAarMetadata",
+    ":capacitor-android:processReleaseNavigationResources",
+    ":capacitor-cordova-android-plugins:processReleaseNavigationResources",
+    ":app:processReleaseNavigationResources",
+    ":app:compileReleaseNavigationResources",
+    ":app:generateReleaseResValues",
+    ":capacitor-android:generateReleaseResValues",
+    ":capacitor-android:generateReleaseResources",
+    ":capacitor-android:packageReleaseResources",
+    ":capacitor-cordova-android-plugins:generateReleaseResValues",
+    ":capacitor-cordova-android-plugins:generateReleaseResources",
+    ":capacitor-cordova-android-plugins:packageReleaseResources",
+    ":app:mapReleaseSourceSetPaths",
+    ":app:generateReleaseResources",
+    ":app:mergeReleaseResources",
+    ":app:packageReleaseResources",
+    ":app:parseReleaseLocalResources",
+    ":app:createReleaseCompatibleScreenManifests",
+    ":app:extractDeepLinksRelease",
+    ":capacitor-android:extractDeepLinksRelease",
+    ":capacitor-android:processReleaseManifest",
+    ":capacitor-cordova-android-plugins:extractDeepLinksRelease",
+    ":capacitor-cordova-android-plugins:processReleaseManifest",
+    ":app:processReleaseMainManifest",
+    ":app:processReleaseManifest",
+    ":app:processReleaseManifestForPackage",
+    ":capacitor-android:compileReleaseLibraryResources",
+    ":capacitor-android:parseReleaseLocalResources",
+    ":capacitor-android:generateReleaseRFile",
+    ":capacitor-cordova-android-plugins:compileReleaseLibraryResources",
+    ":capacitor-cordova-android-plugins:parseReleaseLocalResources",
+    ":capacitor-cordova-android-plugins:generateReleaseRFile",
+    ":app:processReleaseResources",
+    ":capacitor-android:javaPreCompileRelease",
+    ":capacitor-android:compileReleaseJavaWithJavac",
+    ":capacitor-android:bundleLibCompileToJarRelease",
+    ":capacitor-cordova-android-plugins:javaPreCompileRelease",
+    ":capacitor-cordova-android-plugins:compileReleaseJavaWithJavac",
+    ":capacitor-cordova-android-plugins:bundleLibCompileToJarRelease",
+    ":app:compileReleaseJavaWithJavac",
+    ":app:extractProguardFiles",
+    ":capacitor-android:bundleLibRuntimeToJarRelease",
+    ":capacitor-android:processReleaseJavaRes",
+    ":capacitor-android:createFullJarRelease",
+    ":capacitor-android:extractProguardFiles",
+    ":capacitor-android:generateReleaseLintModel",
+    ":capacitor-android:prepareLintJarForPublish",
+    ":capacitor-cordova-android-plugins:bundleLibRuntimeToJarRelease",
+    ":capacitor-cordova-android-plugins:processReleaseJavaRes",
+    ":capacitor-cordova-android-plugins:createFullJarRelease",
+    ":capacitor-cordova-android-plugins:extractProguardFiles",
+    ":capacitor-cordova-android-plugins:generateReleaseLintModel",
+    ":capacitor-cordova-android-plugins:prepareLintJarForPublish",
+    ":app:generateReleaseLintReportModel",
+    ":capacitor-android:checkReleaseAarMetadata",
+    ":capacitor-android:mergeReleaseJniLibFolders",
+    ":capacitor-android:mergeReleaseNativeLibs",
+    ":capacitor-android:stripReleaseDebugSymbols",
+    ":capacitor-android:copyReleaseJniLibsProjectAndLocalJars",
+    ":capacitor-android:extractDeepLinksForAarRelease",
+    ":capacitor-android:extractReleaseAnnotations",
+    ":capacitor-android:mergeReleaseShaders",
+    ":capacitor-android:compileReleaseShaders",
+    ":capacitor-android:generateReleaseAssets",
+    ":capacitor-android:mergeReleaseAssets",
+    ":capacitor-android:mergeReleaseGeneratedProguardFiles",
+    ":capacitor-android:mergeReleaseConsumerProguardFiles",
+    ":capacitor-android:prepareReleaseArtProfile",
+    ":capacitor-android:mergeReleaseJavaResource",
+    ":capacitor-android:syncReleaseLibJars",
+    ":capacitor-android:bundleReleaseLocalLintAar",
+    ":capacitor-cordova-android-plugins:checkReleaseAarMetadata",
+    ":capacitor-cordova-android-plugins:mergeReleaseJniLibFolders",
+    ":capacitor-cordova-android-plugins:mergeReleaseNativeLibs",
+    ":capacitor-cordova-android-plugins:stripReleaseDebugSymbols",
+    ":capacitor-cordova-android-plugins:copyReleaseJniLibsProjectAndLocalJars",
+    ":capacitor-cordova-android-plugins:extractDeepLinksForAarRelease",
+    ":capacitor-cordova-android-plugins:extractReleaseAnnotations",
+    ":capacitor-cordova-android-plugins:mergeReleaseShaders",
+    ":capacitor-cordova-android-plugins:compileReleaseShaders",
+    ":capacitor-cordova-android-plugins:generateReleaseAssets",
+    ":capacitor-cordova-android-plugins:mergeReleaseAssets",
+    ":capacitor-cordova-android-plugins:mergeReleaseGeneratedProguardFiles",
+    ":capacitor-cordova-android-plugins:mergeReleaseConsumerProguardFiles",
+    ":capacitor-cordova-android-plugins:prepareReleaseArtProfile",
+    ":capacitor-cordova-android-plugins:mergeReleaseJavaResource",
+    ":capacitor-cordova-android-plugins:syncReleaseLibJars",
+    ":capacitor-cordova-android-plugins:bundleReleaseLocalLintAar",
+    ":app:bundleReleaseClassesToCompileJar",
+    ":app:preReleaseUnitTestBuild",
+    ":capacitor-android:writeReleaseLintModelMetadata",
+    ":capacitor-cordova-android-plugins:writeReleaseLintModelMetadata",
+    ":app:generateReleaseUnitTestLintModel",
+    ":capacitor-android:lintAnalyzeRelease",
+    ":capacitor-cordova-android-plugins:lintAnalyzeRelease",
+    ":app:lintAnalyzeRelease",
+    ":app:lintAnalyzeReleaseUnitTest",
+    ":capacitor-android:preReleaseUnitTestBuild",
+    ":capacitor-android:generateReleaseUnitTestLintModel",
+    ":capacitor-android:lintAnalyzeReleaseUnitTest",
+    ":capacitor-cordova-android-plugins:preReleaseUnitTestBuild",
+    ":capacitor-cordova-android-plugins:generateReleaseUnitTestLintModel",
+    ":capacitor-cordova-android-plugins:lintAnalyzeReleaseUnitTest",
+    ":app:lintReportRelease",
+    ":app:lintRelease",
+    ":app:bundleReleaseClassesToRuntimeJar",
+    ":app:javaPreCompileReleaseUnitTest",
+    ":app:compileReleaseUnitTestJavaWithJavac",
+    ":app:processReleaseJavaRes",
+    ":app:processReleaseUnitTestJavaRes",
+    ":app:testReleaseUnitTest"
+  ],
+  "typedIntermediates": {
+    ":app:bundleReleaseClassesToCompileJar": {
+      "class": "com.android.build.gradle.internal.feature.BundleAllClasses",
+      "kind": "jar"
+    },
+    ":app:bundleReleaseClassesToRuntimeJar": {
+      "class": "com.android.build.gradle.internal.feature.BundleAllClasses",
+      "kind": "jar"
+    },
+    ":app:compileReleaseNavigationResources": {
+      "class": "com.android.build.gradle.tasks.CompileNavigationXmlTask",
+      "kind": "intermediate"
+    },
+    ":app:processReleaseNavigationResources": {
+      "class": "com.android.build.gradle.internal.tasks.ProcessNavigationXmlTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:bundleReleaseLocalLintAar": {
+      "class": "com.android.build.gradle.tasks.BundleAar",
+      "kind": "lintAar"
+    },
+    ":capacitor-android:compileReleaseShaders": {
+      "class": "com.android.build.gradle.tasks.ShaderCompile",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:copyReleaseJniLibsProjectAndLocalJars": {
+      "class": "com.android.build.gradle.internal.tasks.LibraryJniLibsTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:createFullJarRelease": {
+      "class": "com.android.build.gradle.tasks.ZipMergingTask",
+      "kind": "jar"
+    },
+    ":capacitor-android:extractDeepLinksForAarRelease": {
+      "class": "com.android.build.gradle.tasks.ExtractDeepLinksTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:extractReleaseAnnotations": {
+      "class": "com.android.build.gradle.tasks.ExtractAnnotations",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:generateReleaseAssets": {
+      "class": "org.gradle.api.DefaultTask",
+      "kind": "anchor"
+    },
+    ":capacitor-android:mergeReleaseAssets": {
+      "class": "com.android.build.gradle.tasks.MergeSourceSetFolders",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:mergeReleaseConsumerProguardFiles": {
+      "class": "com.android.build.gradle.internal.tasks.MergeConsumerProguardFilesTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:mergeReleaseGeneratedProguardFiles": {
+      "class": "com.android.build.gradle.internal.tasks.MergeFileTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:mergeReleaseJavaResource": {
+      "class": "com.android.build.gradle.internal.tasks.MergeJavaResourceTask",
+      "kind": "jar"
+    },
+    ":capacitor-android:mergeReleaseJniLibFolders": {
+      "class": "com.android.build.gradle.tasks.MergeSourceSetFolders",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:mergeReleaseNativeLibs": {
+      "class": "com.android.build.gradle.internal.tasks.MergeNativeLibsTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:mergeReleaseShaders": {
+      "class": "com.android.build.gradle.tasks.MergeSourceSetFolders",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:prepareReleaseArtProfile": {
+      "class": "com.android.build.gradle.tasks.ProcessLibraryArtProfileTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:processReleaseNavigationResources": {
+      "class": "com.android.build.gradle.internal.tasks.ProcessNavigationXmlTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:stripReleaseDebugSymbols": {
+      "class": "com.android.build.gradle.internal.tasks.StripDebugSymbolsTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-android:syncReleaseLibJars": {
+      "class": "com.android.build.gradle.internal.tasks.LibraryAarJarsTask",
+      "kind": "jar"
+    },
+    ":capacitor-cordova-android-plugins:bundleReleaseLocalLintAar": {
+      "class": "com.android.build.gradle.tasks.BundleAar",
+      "kind": "lintAar"
+    },
+    ":capacitor-cordova-android-plugins:compileReleaseShaders": {
+      "class": "com.android.build.gradle.tasks.ShaderCompile",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:copyReleaseJniLibsProjectAndLocalJars": {
+      "class": "com.android.build.gradle.internal.tasks.LibraryJniLibsTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:createFullJarRelease": {
+      "class": "com.android.build.gradle.tasks.ZipMergingTask",
+      "kind": "jar"
+    },
+    ":capacitor-cordova-android-plugins:extractDeepLinksForAarRelease": {
+      "class": "com.android.build.gradle.tasks.ExtractDeepLinksTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:extractReleaseAnnotations": {
+      "class": "com.android.build.gradle.tasks.ExtractAnnotations",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:generateReleaseAssets": {
+      "class": "org.gradle.api.DefaultTask",
+      "kind": "anchor"
+    },
+    ":capacitor-cordova-android-plugins:mergeReleaseAssets": {
+      "class": "com.android.build.gradle.tasks.MergeSourceSetFolders",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:mergeReleaseConsumerProguardFiles": {
+      "class": "com.android.build.gradle.internal.tasks.MergeConsumerProguardFilesTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:mergeReleaseGeneratedProguardFiles": {
+      "class": "com.android.build.gradle.internal.tasks.MergeFileTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:mergeReleaseJavaResource": {
+      "class": "com.android.build.gradle.internal.tasks.MergeJavaResourceTask",
+      "kind": "jar"
+    },
+    ":capacitor-cordova-android-plugins:mergeReleaseJniLibFolders": {
+      "class": "com.android.build.gradle.tasks.MergeSourceSetFolders",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:mergeReleaseNativeLibs": {
+      "class": "com.android.build.gradle.internal.tasks.MergeNativeLibsTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:mergeReleaseShaders": {
+      "class": "com.android.build.gradle.tasks.MergeSourceSetFolders",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:prepareReleaseArtProfile": {
+      "class": "com.android.build.gradle.tasks.ProcessLibraryArtProfileTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:processReleaseNavigationResources": {
+      "class": "com.android.build.gradle.internal.tasks.ProcessNavigationXmlTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:stripReleaseDebugSymbols": {
+      "class": "com.android.build.gradle.internal.tasks.StripDebugSymbolsTask",
+      "kind": "intermediate"
+    },
+    ":capacitor-cordova-android-plugins:syncReleaseLibJars": {
+      "class": "com.android.build.gradle.internal.tasks.LibraryAarJarsTask",
+      "kind": "jar"
+    }
+  }
+}

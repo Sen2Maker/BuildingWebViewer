@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 原生编译 CI 按 AGP 8.13.0 源码审核导航资源、类 JAR 和仅供 lint 使用的库 AAR 中间任务；仅接受已观察的 121 个精确任务路径，新增任务绑定实现类与输出检查，继续禁止 APK/AAB、签名、安装、发布及 SDK/JDK 自动下载。Android 编译结果仍待实际运行。
+- Audit AGP 8.13.0 navigation, class-JAR and local lint-AAR intermediates against pinned sources. Accept only the observed 121 task paths, with added class/output checks; APK/AAB, signing, installation, publication and SDK/JDK auto-download remain forbidden. Actual Android compilation is still pending.
+
 - 修正原生检查工作流的运行器临时目录配置；缓存路径在任务启动后设置，保留只读、无 APK 的验证范围。
 - Fix native CI runtime-cache initialization after runner startup; retain the read-only, no-APK validation scope.
 
