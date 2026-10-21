@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+- 将隔离的原生编译快照从已通过编译、lint 与 28 项 JUnit 检查的 C1.2 升级为精确 204 文件的 C2.2：加入原生自检准入、取消/清理与报告保存隔离，以及导入内容的只读边界。该提交仍需实际 Android CI；不表示 APK、真机或完整应用验收通过。
+- Advance the isolated native compile fixture from the passed C1.2 baseline to the exact 204-file C2.2 source: diagnostic admission/cancellation/report ownership and imported-content data-only boundaries. Actual C2.2 Android CI remains required; this is not APK, device or full-App acceptance.
+- 将合成资源重建结果绑定到 C2.2 冻结清单；lint 日志最多展示 200 个有界问题并明确报告截断，便于完整检查现有 53 条警告。不新增上传、秘密信息、权限、签名、SDK 安装或发布能力。
+- Bind regenerated synthetic assets to the frozen C2.2 manifest and print up to 200 bounded lint diagnostics with explicit truncation counts. No upload, secrets, new permissions, signing, SDK installation or release capability is added.
+
 - 修正 ZIP 校验器的 Android 30 API 兼容性，不提高最低系统版本；CI 独立汇报 lint 与单元测试结果，检查失败仍保持失败。
 - Preserve API 30 ZIP-buffer compatibility and report lint/unit outcomes independently without suppressing failures.
 

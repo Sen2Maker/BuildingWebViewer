@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BuildingWebViewer isolated diagnostic self-test report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runnerVersion",
+    "runId",
+    "startedAt",
+    "finishedAt",
+    "durationMs",
+    "state",
+    "execution",
+    "environment",
+    "limits",
+    "cleanup",
+    "cases",
+    "summary",
+    "policy",
+    "verification"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "runnerVersion": {
+      "const": "0.1.0-proposal"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^selftest-[a-f0-9-]{36}$"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "state": {
+      "enum": [
+        "RUNNING",
+        "QUARANTINED",
+        "FINISHED"
+      ]
+    },
+    "execution": {
+      "enum": [
+        "WEB_OR_HOST_ONLY",
+        "ANDROID_ADAPTER"
+      ]
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "node",
+            "browser",
+            "android"
+          ]
+        },
+        "apkPackage": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_.:+ -]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "apkVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_.:+ -]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "androidRelease": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_.:+ -]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "webviewPackage": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_.:+ -]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "webviewVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_.:+ -]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "apkVersionCode": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "androidApi": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nativeApi": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "apkBuildSha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contentId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fixtureOnly": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "runMs",
+        "caseMs",
+        "cleanupMs",
+        "scratchBytes",
+        "assetBytes",
+        "reportBytes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "runMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        },
+        "caseMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8000
+        },
+        "cleanupMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "scratchBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        },
+        "assetBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "reportBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      }
+    },
+    "cleanup": {
+      "enum": [
+        "NOT_NEEDED",
+        "PENDING",
+        "VERIFIED",
+        "FAILED",
+        "UNVERIFIED"
+      ]
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "manual",
+          "status",
+          "code",
+          "evidence",
+          "durationMs"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "web.environment",
+              "native.runtime",
+              "native.bridge",
+              "native.filesystem",
+              "native.scratchStore",
+              "runtime.assets",
+              "web.workerWasm",
+              "fixture.crypto",
+              "manual.install",
+              "manual.touch",
+              "manual.powerLoss"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "manual": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNSUPPORTED",
+              "NOT_RUN",
+              "CANCELLED"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z_]+$",
+            "maxLength": 80
+          },
+          "evidence": {
+            "type": "object",
+            "maxProperties": 20,
+            "propertyNames": {
+              "pattern": "^[A-Za-z][A-Za-z0-9]+$"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9_.:+ -]+$"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "counts",
+        "automaticOutcome",
+        "manualAcceptance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "type": "object",
+          "required": [
+            "PASS",
+            "FAIL",
+            "UNSUPPORTED",
+            "NOT_RUN",
+            "CANCELLED"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "PASS": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+            },
+            "FAIL": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+            },
+            "UNSUPPORTED": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+            },
+            "NOT_RUN": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+            },
+            "CANCELLED": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+            }
+          }
+        },
+        "automaticOutcome": {
+          "enum": [
+            "FAILED",
+            "CANCELLED",
+            "PASSED",
+            "INCOMPLETE"
+          ]
+        },
+        "manualAcceptance": {
+          "const": "NOT_ASSESSED"
+        }
+      }
+    },
+    "policy": {
+      "const": {
+        "network": "FORBIDDEN",
+        "automaticUpload": "FORBIDDEN",
+        "userProjectAccess": "FORBIDDEN",
+        "productionTrustChanges": "FORBIDDEN",
+        "installation": "MANUAL_ONLY",
+        "powerLoss": "MANUAL_ONLY"
+      }
+    },
+    "verification": {
+      "const": "CASE_EVIDENCE_ONLY_NOT_RELEASE_ACCEPTANCE"
+    }
+  }
+}

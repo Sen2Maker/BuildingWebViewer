@@ -26,13 +26,15 @@ public final class RecoveryActivity extends Activity {
         super.onCreate(saved);
         LinearLayout column = new LinearLayout(this); column.setOrientation(LinearLayout.VERTICAL); column.setPadding(24, 32, 24, 24);
         status = new TextView(this); status.setText("本地恢复与导出 / Local recovery and export\n" + ((BwvApplication)getApplication()).failure() + "\nNo projects or trust state will be deleted. Export requires your document-provider selection."); column.addView(status);
+        if(BuildConfig.DIAGNOSTIC_ENABLED){Button test=new Button(this);test.setText("一键原生自检 / Native self-test");test.setOnClickListener(v->startActivity(new Intent(this,NativeSelfTestActivity.class)));column.addView(test);}
         ScrollView scroll = new ScrollView(this); scroll.addView(column); setContentView(scroll);
         io.execute(() -> {
             try {
-                ProjectStore store = ((BwvApplication)getApplication()).projects(); File[] manifests = store.projects.listFiles((d, n) -> n.endsWith(".json"));
+                ProjectStore store = ((BwvApplication)getApplication()).projects(); File[] manifests = store.projects.listFiles((d, n) -> n.endsWith(".json") || n.endsWith(".json.bak"));
                 if (manifests == null) throw new IOException("Project list unavailable");
-                for (File manifest : manifests) {
-                    String id = manifest.getName().substring(0, manifest.getName().length() - 5);
+                java.util.Set<String> projectIds = new java.util.TreeSet<>();
+                for (File manifest : manifests) { String name = manifest.getName(); if (name.endsWith(".bak")) name = name.substring(0,name.length()-4); projectIds.add(name.substring(0,name.length()-5)); }
+                for (String id : projectIds) {
                     try {
                         JSONObject project = store.get(id); String title = project.optString("name", id);
                         runOnUiThread(() -> { if (isFinishing() || isDestroyed()) return; Button button = new Button(this); button.setText("导出 / Export: " + title); button.setOnClickListener(v -> prepareBackup(store, id)); column.addView(button); });

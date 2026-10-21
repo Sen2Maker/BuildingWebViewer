@@ -18,7 +18,7 @@ public class BWVProjectsPlugin extends Plugin {
   private static final ExecutorService IO=Executors.newSingleThreadExecutor();
   private ProjectStore store;private ProcessRuntime runtime;
   private final Map<String,File> exports=new HashMap<>();
-  @Override public void load(){store=((BwvApplication)getActivity().getApplication()).projects();runtime=((BwvApplication)getActivity().getApplication()).runtime();if(runtime==null)throw new IllegalStateException("No process runtime");runtime.assertBound();IO.execute(()->{File folder=new File(getContext().getCacheDir(),"exports");File[] old=folder.listFiles();if(old!=null)for(File file:old)if(System.currentTimeMillis()-file.lastModified()>7L*24*3600*1000)ProjectStore.deleteTree(file);});Intent intent=getActivity().getIntent();if(isShare(intent)){getActivity().setIntent(new Intent());acceptShare(intent);}}
+  @Override public void load(){store=((BwvApplication)getActivity().getApplication()).projects();runtime=((BwvApplication)getActivity().getApplication()).runtime();if(runtime==null)throw new IllegalStateException("No process runtime");runtime.assertBound();/* Export-cache reclamation needs an explicit active-export-aware maintenance policy, not plugin-load deletion. */Intent intent=getActivity().getIntent();if(isShare(intent)){getActivity().setIntent(new Intent());acceptShare(intent);}}
   interface Task{JSONObject run()throws Exception;}
   private void run(PluginCall call,Task task){IO.execute(()->{try{call.resolve(JSObject.fromJSONObject(task.run()));}catch(Exception error){call.reject(error.getMessage(),error);}});}
   // No legacy health preference or activation entry exists. A JS event is not native trial health.
@@ -29,6 +29,11 @@ public class BWVProjectsPlugin extends Plugin {
     else{java.util.regex.Matcher match=java.util.regex.Pattern.compile("Chrome/([0-9.]+)").matcher(bridge.getWebView().getSettings().getUserAgentString());if(match.find())version=match.group(1);}
     call.resolve(new JSObject().put("current",runtime.version()).put("apkVersion",getContext().getPackageManager().getPackageInfo(getContext().getPackageName(),0).versionName).put("nativeGaussianWorkspace",true).put("nativeGaussian",((android.app.ActivityManager)getContext().getSystemService(android.content.Context.ACTIVITY_SERVICE)).getDeviceConfigurationInfo().reqGlEsVersion>=0x30000).put("android",android.os.Build.VERSION.RELEASE).put("webview",version));
   }catch(Exception error){call.reject(error.getMessage());}});}
+  @PluginMethod public void openCadAppDownload(PluginCall call){
+    // The independent CAD application's verified fixed download page is not finalized yet.
+    // Never accept a URL/project/path from JS or signed update metadata.
+    call.resolve(new JSObject().put("available",false).put("reason","CAD_APP_DOWNLOAD_PAGE_NOT_CONFIGURED"));
+  }
   @PluginMethod public void checkUpdate(PluginCall call){call.resolve(new JSObject().put("kind","disabled").put("reason",runtime.updateStatus));}
   @PluginMethod public void runtimeSnapshot(PluginCall call){
     runtime.assertBound();
@@ -70,8 +75,8 @@ public class BWVProjectsPlugin extends Plugin {
     IO.execute(()->{try{JSONObject p=store.importUris(null,files);notifyListeners("projectsChanged",JSObject.fromJSONObject(p),true);}catch(Exception error){notifyListeners("projectsChanged",new JSObject().put("error",error.getMessage()),true);}});
   }
   @Override protected void handleOnNewIntent(Intent intent){if(isShare(intent)){getActivity().setIntent(new Intent());acceptShare(intent);}}
-  @Override protected void handleOnPause(){ArchiveImporter.background=true;bridge.getWebView().evaluateJavascript(NativeRoutes.lifecycle("bwvPause"),null);}
-  @Override protected void handleOnResume(){ArchiveImporter.background=false;bridge.getWebView().evaluateJavascript(NativeRoutes.lifecycle("bwvResume"),null);}
+  @Override protected void handleOnPause(){bridge.getWebView().evaluateJavascript(NativeRoutes.lifecycle("bwvPause"),null);}
+  @Override protected void handleOnResume(){bridge.getWebView().evaluateJavascript(NativeRoutes.lifecycle("bwvResume"),null);}
   @PluginMethod public void readChunk(PluginCall call){run(call,()->{
     String id=call.getString("id"),key=call.getString("key");JSONArray files=store.get(id).getJSONArray("files");boolean allowed=false;for(int i=0;i<files.length();i++)if(files.getJSONObject(i).getString("key").equals(key)){allowed=true;break;}if(!allowed)throw new IOException("File is not in project");
     long offset=call.getData().optLong("offset",0L);int length=call.getInt("length",1048576);if(offset<0||length<0||length>1048576)throw new IOException("Invalid read range");

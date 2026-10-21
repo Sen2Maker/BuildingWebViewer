@@ -63,6 +63,7 @@ public class WebViewLocalServer {
     private final boolean html5mode;
     private final JSInjector jsInjector;
     private final Bridge bridge;
+    private final BwvDataOnlyAssetServer bwvDataOnlyServer;
 
     /**
      * A handler that produces responses for paths on the virtual asset server.
@@ -152,6 +153,7 @@ public class WebViewLocalServer {
         this.protocolHandler = new AndroidProtocolHandler(context.getApplicationContext());
         this.authorities = authorities;
         this.bridge = bridge;
+        this.bwvDataOnlyServer = new BwvDataOnlyAssetServer(context);
         this.jsInjector = jsInjector;
     }
 
@@ -205,6 +207,12 @@ public class WebViewLocalServer {
         }
         if (handler == null) {
             return null;
+        }
+
+        // BEFORE generic Range, local HTML, proxy, RouteProcessor or JSInjector handling.
+        // Always return a response, including denial/error; never fall through to asset HTML.
+        if (BwvDataOnlyRoutes.isReserved(loadingUrl.getEncodedPath(), loadingUrl.getPath())) {
+            return bwvDataOnlyServer.intercept(request);
         }
 
         if (isLocalFile(loadingUrl) || isMainUrl(loadingUrl) || !isAllowedUrl(loadingUrl) || isErrorUrl(loadingUrl)) {
@@ -679,10 +687,9 @@ public class WebViewLocalServer {
                 }
 
                 try {
-                    if (path.startsWith(capacitorContentStart)) {
-                        stream = protocolHandler.openContentUrl(url);
-                    } else if (path.startsWith(capacitorFileStart)) {
-                        stream = protocolHandler.openFile(path);
+                    if (BwvDataOnlyRoutes.isReservedPath(path)) {
+                        // A RouteProcessor must not smuggle data routes into an HTML response.
+                        throw new IOException("Data route cannot enter trusted asset pipeline");
                     } else if (!isAsset) {
                         if (routeProcessor == null) {
                             path = basePath + url.getPath();

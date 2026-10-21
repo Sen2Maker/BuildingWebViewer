@@ -1,14 +1,20 @@
 {
   "Bridge.java": {
     "before": "619700a31548504d7f81552c696273d652c655ebe317a006bda3f9398bdecdf5",
-    "after": "5ea0266102a7ebd30dec4fb4d23e584e9f55bd639dfb7e9daa0c4bd4f2ab1736"
+    "after": "10d75f2aa4301f2992ea167a0bb38e04cfe873aa46b4b70cc85584ee53610738",
+    "previous": "5ea0266102a7ebd30dec4fb4d23e584e9f55bd639dfb7e9daa0c4bd4f2ab1736"
   },
   "WebViewLocalServer.java": {
     "before": "3b7fb9b16fd96dc0ef18050120c06b6bf0b72c4b6690a2967219a21b3e65c3ab",
-    "after": "08baee8bdd83a8923129a79dde4182f1b1fe513ef536ac8f32caf1a881f64203"
+    "after": "33017c12943285e81d6998ed8b85bb5f6c6cd468e715af519e1dc709db60b5d6",
+    "previous": "08baee8bdd83a8923129a79dde4182f1b1fe513ef536ac8f32caf1a881f64203"
   },
   "plugin/WebView.java": {
     "before": "731da01c6b51895d7b81e0588a835e12ed65f4a3aa85e5db411b221754f18e96",
     "after": "01170544d944830fc826b0a480e541075ca9f58ffb47d49c28ee6550ca70223f"
+  },
+  "BridgeWebViewClient.java": {
+    "before": "c9098b2e7f1586d24acdd767a8af9962b7f78023a0484026a983b943b2b6b3e0",
+    "after": "a2ebb450a01385dbed9110395ddaac6163cd5b2fcfdf1b7f5598f8051c97e121"
   }
 }

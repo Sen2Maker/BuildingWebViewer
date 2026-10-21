@@ -1,10 +1,14 @@
 {
   "status": "FROZEN_NATIVE_ONLY_REVIEW",
-  "checkpoint": "C1.2-native-only-compile-source",
-  "sourceManifestSha256": "f6db3090c420c029ea63f18f6f9ba9a233917c1b0c46f837a31f73ed4c7a6aa8",
-  "fileCount": 140,
-  "totalBytes": 822773,
-  "publicFixtureInventorySha256": "6a3ec8f52aec3ffe007a5d2308788fce9899b4ba01dadb4f5ab809972ff3ae38",
+  "checkpoint": "C2.2-native-diagnostic-compile-source",
+  "sourceManifestSha256": "34c194c030a1c3badf101ac5d51eada40f59343969cebc4313a4691f4c649a7d",
+  "fullCheckpointManifestSha256": "b91d42b6947b06ad186b8b7c7413e493779d8a01b5b804a7aea81af20eff1912",
+  "fileCount": 204,
+  "totalBytes": 1108956,
+  "publicFixtureBuild": "native-diagnostic-fixture-c2",
+  "publicFixtureInventorySha256": "ada8f8da8cfa90bac012fa4806f915ded9bdf55f461aa9d2621a16caf9349bf7",
+  "publicFixtureInventoryBytes": 2505,
+  "publicFixtureFiles": 20,
   "files": [
     {
       "path": "mobile/android/.gitignore",
@@ -18,8 +22,8 @@
     },
     {
       "path": "mobile/android/app/build.gradle",
-      "bytes": 3326,
-      "sha256": "8bb29ded9ea354229c3ca5360fe528ac3736d227910c668b21a43beac08edc42"
+      "bytes": 3391,
+      "sha256": "316cfd989e7ac35851da785be9ee9c5fcf441e0bb67fcac2150f74ea711f3bbf"
     },
     {
       "path": "mobile/android/app/capacitor.build.gradle",
@@ -32,14 +36,29 @@
       "sha256": "1cf8c57e8f79c250b0af9c1a5a4edad71a5c348a79ab70243b6bae086c150ad2"
     },
     {
+      "path": "mobile/android/app/src/androidTest/java/com/getcapacitor/ImportedContentIsolationTest.java",
+      "bytes": 11023,
+      "sha256": "55cabe39b0ec69f1d50739dada8203f7ef4f2158c81e45cedd161f490ec0d1ca"
+    },
+    {
+      "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/DiagnosticAdaptersTest.java",
+      "bytes": 6491,
+      "sha256": "8b5f627f7bd2bc5fc2d050a809a7d481ca8d71c5e0282c334f078519db0e0c8b"
+    },
+    {
+      "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/RuntimeTestGate.java",
+      "bytes": 573,
+      "sha256": "338a1a7ff2ce942f000b1de00e0eb34fab11445d25542a4817e3811baf548f29"
+    },
+    {
       "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/UpdateFilesystemCapabilityTest.java",
       "bytes": 1209,
       "sha256": "05ea1a990d59d6a15ee1254f497445e5caf70bf7d21c6b5c82b50cfb0d699169"
     },
     {
       "path": "mobile/android/app/src/main/AndroidManifest.xml",
-      "bytes": 2913,
-      "sha256": "4f055b4031505157a11b197406e9fda539280a9f9e822766c8209ba405ed90cb"
+      "bytes": 3153,
+      "sha256": "933f28a6765a7456d599013ee0ebc6c5ae31d4a2228beb6f43ae28bbe9295d64"
     },
     {
       "path": "mobile/android/app/src/main/assets/capacitor.config.json",
@@ -53,8 +72,53 @@
     },
     {
       "path": "mobile/android/app/src/main/assets/public/asset-inventory.json",
-      "bytes": 1104,
-      "sha256": "6a3ec8f52aec3ffe007a5d2308788fce9899b4ba01dadb4f5ab809972ff3ae38"
+      "bytes": 2505,
+      "sha256": "ada8f8da8cfa90bac012fa4806f915ded9bdf55f461aa9d2621a16caf9349bf7"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/android-adapter-core.mjs",
+      "bytes": 1908,
+      "sha256": "496a551d6609d8a199de62a2c4562601a8e85675ee4b867b0034bfca184aec2e"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/android-adapter.mjs",
+      "bytes": 530,
+      "sha256": "0794c54d2034758945b6ff891063182220d0353f8cad0d02d983e6c6bf7de1b6"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/shader-canary.txt",
+      "bytes": 26,
+      "sha256": "5a71d37b7a84553d80faf8e0b29981ceac3db81de3bb383751359e9e3dca10ab"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/src/browser-worker-adapter.mjs",
+      "bytes": 1692,
+      "sha256": "bc59d76f29edd3706c1c849a97d56148584846174cec88d5301e0773c717b6ac"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/src/self-test-panel.css",
+      "bytes": 716,
+      "sha256": "0ab125d3ddefc63934d6cc64f0918b70b1b2a4c8aaef1aaf1ce1d9876e6412b9"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/src/self-test-panel.mjs",
+      "bytes": 5628,
+      "sha256": "5aeefa906110acf8fff65dd0cbcfae2c1f0c25bb494a6a21fdd510941e3f1d16"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/src/self-test-runner.mjs",
+      "bytes": 18319,
+      "sha256": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/src/self-test-worker.mjs",
+      "bytes": 780,
+      "sha256": "31384890678b10adf34f56a01d4e04a682f35848fb499685fc2685448da4b55e"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/diagnostics/web-canary.txt",
+      "bytes": 20,
+      "sha256": "060eaa12a310dee412687074fe963af2bccae5cceb14544343f0720c6a6990fe"
     },
     {
       "path": "mobile/android/app/src/main/assets/public/assets/js/capacitor.js",
@@ -63,8 +127,13 @@
     },
     {
       "path": "mobile/android/app/src/main/assets/public/assets/mobile/index.html",
-      "bytes": 174,
-      "sha256": "a6fad90d51b165a53a37be0b6a858afdc4617fa20d5c98c385d16604f2fb5468"
+      "bytes": 228,
+      "sha256": "4865ff2ad8f9c399085202a965e661c68783fafe0c1aabe9ac7a8f13be426584"
+    },
+    {
+      "path": "mobile/android/app/src/main/assets/public/assets/mobile/self-test.html",
+      "bytes": 486,
+      "sha256": "7e3bc54aea4aa6a2fefa72f752bd0a589081e83c0fdf33eed9a0da4444c53d9f"
     },
     {
       "path": "mobile/android/app/src/main/assets/public/assets/native/gaussian-fragment.glsl",
@@ -88,18 +157,43 @@
     },
     {
       "path": "mobile/android/app/src/main/assets/public/index.html",
-      "bytes": 81,
-      "sha256": "762d6b08bbe73128d25dcd9d12c2e17cbc2bc171027f31ddd322831dcdd4d243"
+      "bytes": 120,
+      "sha256": "c4bcbc89231ca4c4663db260feaf09683230c19a776b8eaa4d1724c8886c1808"
     },
     {
       "path": "mobile/android/app/src/main/assets/public/native-web.json",
-      "bytes": 232,
-      "sha256": "0ebc747026e568d1ed1ecf3244878ccd93de38d6a0701d76f9d8dfbe70d9df8d"
+      "bytes": 235,
+      "sha256": "f53edef1a017918086ca23181a10039ca7e0726c1035606ef60f0db75dfed5fd"
     },
     {
       "path": "mobile/android/app/src/main/assets/public/release-notes.json",
       "bytes": 100,
       "sha256": "b293467030159210e31bd22ebe9e9800ce369c0b6723e21cdeaf9bcdaf8d3425"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/bwv/diagnostics/DiagnosticExportLease.java",
+      "bytes": 2181,
+      "sha256": "60cea72b9d2d138689381f00f4da5e54379932336798493593f9aeea6f83d34f"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/bwv/diagnostics/DiagnosticPresentation.java",
+      "bytes": 2903,
+      "sha256": "b581f47ebade85bea24561e7a81ea678ab96ad59766ce49a0cc0ad05cec73a5c"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/bwv/diagnostics/DiagnosticReportValidator.java",
+      "bytes": 6317,
+      "sha256": "227ea20cc9acdca6a37bdaa061f8f1c1666efcdd46a6d93c5c87152bc6c0830a"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/bwv/diagnostics/DiagnosticRunLease.java",
+      "bytes": 37627,
+      "sha256": "ca2603f4b131f484d808d2926ee4ad36366d237ed8bd35eee8e217aa312658de"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/bwv/diagnostics/DiagnosticStart.java",
+      "bytes": 1307,
+      "sha256": "ae9ef103954faed1ada820a9fa838ef5393c397cbc861c4f26603eb94622eaa1"
     },
     {
       "path": "mobile/android/app/src/main/java/bwv/update/BundledAssetVerifier.java",
@@ -178,8 +272,13 @@
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BWVProjectsPlugin.java",
-      "bytes": 12266,
-      "sha256": "8c6413474eee190693d0f710fea24b6b99d333cb7175126da69245023d754867"
+      "bytes": 12425,
+      "sha256": "b1ef0686b5236f628870efc8d36463d6ee85fdb196f0928774b91ba48ed90bca"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BWVSelfTestPlugin.java",
+      "bytes": 4843,
+      "sha256": "25afefa94afd82d0a66395cd6a4350baeb323b1177f74db0a26f440af542113d"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BackNavigation.java",
@@ -188,8 +287,8 @@
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BootstrapActivity.java",
-      "bytes": 2753,
-      "sha256": "18e26492662a3d0134a363adadaa4c9316549e6852037adb39e601eb65610733"
+      "bytes": 4014,
+      "sha256": "47a1be88d8e307cab32d3f8bf11c301dc20d00a9e85cdacab8068e1602ec476f"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BoundedIO.java",
@@ -198,8 +297,23 @@
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BwvApplication.java",
+      "bytes": 4026,
+      "sha256": "ae2f774cef5915be7419cf60a7f58826672d95940dadccc99a73a5ae2875ce38"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/DiagnosticReportSaveActivity.java",
       "bytes": 2581,
-      "sha256": "efff8b10b12f86151c8c42a3b47b336c976d8558b02721e40fca3a8806a9249c"
+      "sha256": "18f0eb62e99bb2b6010385862b84c16d657bae4f3deaac5d33d0dbcb322111c6"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/DiagnosticSandboxContext.java",
+      "bytes": 2149,
+      "sha256": "3c61fa014a76b1223302db6304a89c48d0981c43a46b240f4864bb64f0561be7"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/DiagnosticStoreProbe.java",
+      "bytes": 4033,
+      "sha256": "aa2590b15388df518ef99cc524e192e11d13822691df1a512ea7383378ac3ea2"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/DiagnosticText.java",
@@ -208,8 +322,18 @@
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/MainActivity.java",
-      "bytes": 1959,
-      "sha256": "f44648a79576b839b7778d890ae634accd4249141331672da5f7a9bf284c13db"
+      "bytes": 2072,
+      "sha256": "0a0f4c430da0aa8e28413adc239599a8de7dff071ba3cf514908df0ff39db927"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticRunner.java",
+      "bytes": 7666,
+      "sha256": "5d002ab17005a939389537ab1abd09ada292e03ca1f1bcfc6367577c1a0366a2"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticService.java",
+      "bytes": 9653,
+      "sha256": "f7f417e85d14397f7a77b6c4273f7916f853050ff571ef68321f3624d940fef0"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeGaussianActivity.java",
@@ -267,14 +391,19 @@
       "sha256": "a7215047dc612783de4aa034b30fe120ee959a2405a751240636643560db0012"
     },
     {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeSelfTestActivity.java",
+      "bytes": 6543,
+      "sha256": "9e2a993fb2ddde781fc6936a66bc5e46adfd23ef4df6c6422138bf6d27eda32e"
+    },
+    {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/ProcessRuntime.java",
       "bytes": 1335,
       "sha256": "2165d7638171c77f93c1ab42f8354da308c0ef5a1ecb282ef3b1a42a758a92a8"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/ProjectReaderReadiness.java",
-      "bytes": 3091,
-      "sha256": "045bd418e3d6565cb2b92b88454323027a8cabe6e65d6bee85ddc246704ee739"
+      "bytes": 3635,
+      "sha256": "06c22de2661e247f0a56e7a45eab22f11916fa38337756fa73d28b45637acf98"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/ProjectStore.java",
@@ -283,8 +412,8 @@
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/RecoveryActivity.java",
-      "bytes": 6654,
-      "sha256": "90b5f4bd1e32c0588dc80ef691f492cde52795c9f32bff314cb6e195f4fc1992"
+      "bytes": 7102,
+      "sha256": "e345a0ab6e4a4b31b9ea95c4240c4c6526606c6abb9fd688c4bd8d546fbb5911"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
@@ -295,21 +424,6 @@
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/VersionPolicy.java",
       "bytes": 654,
       "sha256": "6b84df29151c175a6f6c3bd12cee05490a75950304aea24cc8d5f16eabfb723c"
-    },
-    {
-      "path": "mobile/android/app/src/main/res/drawable/bwv_icon.xml",
-      "bytes": 1000,
-      "sha256": "1db89d40f61dd61d2bc66ce601fef85163ca53a572a42cf40355a54ce4e901d3"
-    },
-    {
-      "path": "mobile/android/app/src/main/res/drawable/ic_launcher_background.xml",
-      "bytes": 5606,
-      "sha256": "718ba51adf166bb55c3e9936bb8199a0148457f7f0191aaa2f37a94f3159d6ec"
-    },
-    {
-      "path": "mobile/android/app/src/main/res/drawable/splash.png",
-      "bytes": 4040,
-      "sha256": "5cf98b4451bd99b20df26f9e608a46946118be6b0ae90762f9ca1786a30c76ff"
     },
     {
       "path": "mobile/android/app/src/main/res/drawable-land-hdpi/splash.png",
@@ -365,6 +479,21 @@
       "path": "mobile/android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml",
       "bytes": 1880,
       "sha256": "a8514094f754b099d3e55ce1d6e0b2de79db418b2eeacb0fc2a6bb0bfadef221"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable/bwv_icon.xml",
+      "bytes": 1000,
+      "sha256": "1db89d40f61dd61d2bc66ce601fef85163ca53a572a42cf40355a54ce4e901d3"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable/ic_launcher_background.xml",
+      "bytes": 5606,
+      "sha256": "718ba51adf166bb55c3e9936bb8199a0148457f7f0191aaa2f37a94f3159d6ec"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable/splash.png",
+      "bytes": 4040,
+      "sha256": "5cf98b4451bd99b20df26f9e608a46946118be6b0ae90762f9ca1786a30c76ff"
     },
     {
       "path": "mobile/android/app/src/main/res/layout/activity_main.xml",
@@ -557,6 +686,11 @@
       "sha256": "b488e162f552d6efb8286793c7871bbc1061c9bf5ca3a6a495fdeb8988a541c7"
     },
     {
+      "path": "mobile/android/gradle.properties",
+      "bytes": 1138,
+      "sha256": "cc714c0e506c98f0715f1cdcc1b26586928513286d8e5e4ccccdff423263fb19"
+    },
+    {
       "path": "mobile/android/gradle/wrapper/gradle-wrapper.jar",
       "bytes": 43764,
       "sha256": "7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172"
@@ -565,11 +699,6 @@
       "path": "mobile/android/gradle/wrapper/gradle-wrapper.properties",
       "bytes": 341,
       "sha256": "7dff5d260aea1fb2f5f6a97c2a4c966c9011173fb396fed6ecfd2afe2a445b2e"
-    },
-    {
-      "path": "mobile/android/gradle.properties",
-      "bytes": 1138,
-      "sha256": "cc714c0e506c98f0715f1cdcc1b26586928513286d8e5e4ccccdff423263fb19"
     },
     {
       "path": "mobile/android/gradlew",
@@ -593,8 +722,8 @@
     },
     {
       "path": "mobile/bundled-pins.json",
-      "bytes": 181,
-      "sha256": "c83efc34b4462aeb56281ceb578951b6b3f38cc81c2d72cad0eebed55b7f64b4"
+      "bytes": 184,
+      "sha256": "b546018a7fe143c910ba7130a0d5b7caaffd1ed77a03dbee008050c71b6ed952"
     },
     {
       "path": "mobile/capacitor.config.json",
@@ -602,9 +731,134 @@
       "sha256": "aaa3809916684f5e6d522b19cbbf594abe9fdef652ad8c9c9fdc8be5db131007"
     },
     {
+      "path": "mobile/diagnostics-r1/FILES.sha256.json",
+      "bytes": 5491,
+      "sha256": "79769ee67c593ff90b407e728d5f2161b5f100a3607fdcff7cd9baa20d6331f5"
+    },
+    {
+      "path": "mobile/diagnostics-r1/NATIVE_ADAPTER_CONTRACT.md",
+      "bytes": 8324,
+      "sha256": "e7a0ffc0b4708f95fe0f3b5ac5cd5163b312df50f6c7c21248554ed5c4621af3"
+    },
+    {
+      "path": "mobile/diagnostics-r1/android-adapter-core.mjs",
+      "bytes": 1908,
+      "sha256": "496a551d6609d8a199de62a2c4562601a8e85675ee4b867b0034bfca184aec2e"
+    },
+    {
+      "path": "mobile/diagnostics-r1/android-adapter.mjs",
+      "bytes": 530,
+      "sha256": "0794c54d2034758945b6ff891063182220d0353f8cad0d02d983e6c6bf7de1b6"
+    },
+    {
+      "path": "mobile/diagnostics-r1/fixtures/shader-canary.txt",
+      "bytes": 26,
+      "sha256": "5a71d37b7a84553d80faf8e0b29981ceac3db81de3bb383751359e9e3dca10ab"
+    },
+    {
+      "path": "mobile/diagnostics-r1/fixtures/web-canary.txt",
+      "bytes": 20,
+      "sha256": "060eaa12a310dee412687074fe963af2bccae5cceb14544343f0720c6a6990fe"
+    },
+    {
+      "path": "mobile/diagnostics-r1/report.schema.json",
+      "bytes": 9049,
+      "sha256": "1a4c0b0ac8a603de2302ecb4e0a0ca9319c5c7818c2cc1be0af3462b321180d6"
+    },
+    {
+      "path": "mobile/diagnostics-r1/self-test.html",
+      "bytes": 486,
+      "sha256": "7e3bc54aea4aa6a2fefa72f752bd0a589081e83c0fdf33eed9a0da4444c53d9f"
+    },
+    {
+      "path": "mobile/diagnostics-r1/src/browser-worker-adapter.mjs",
+      "bytes": 1692,
+      "sha256": "bc59d76f29edd3706c1c849a97d56148584846174cec88d5301e0773c717b6ac"
+    },
+    {
+      "path": "mobile/diagnostics-r1/src/self-test-panel.css",
+      "bytes": 716,
+      "sha256": "0ab125d3ddefc63934d6cc64f0918b70b1b2a4c8aaef1aaf1ce1d9876e6412b9"
+    },
+    {
+      "path": "mobile/diagnostics-r1/src/self-test-panel.mjs",
+      "bytes": 5628,
+      "sha256": "5aeefa906110acf8fff65dd0cbcfae2c1f0c25bb494a6a21fdd510941e3f1d16"
+    },
+    {
+      "path": "mobile/diagnostics-r1/src/self-test-runner.mjs",
+      "bytes": 18319,
+      "sha256": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f"
+    },
+    {
+      "path": "mobile/diagnostics-r1/src/self-test-worker.mjs",
+      "bytes": 780,
+      "sha256": "31384890678b10adf34f56a01d4e04a682f35848fb499685fc2685448da4b55e"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/browser-harness.html",
+      "bytes": 390,
+      "sha256": "44d00257101b971d518665b29bd273b11df86e1ca75d82e24f8a383a3490e422"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/browser-harness.mjs",
+      "bytes": 578,
+      "sha256": "b0a0062dfb07041eaa57fef3564284f4023be860546ce480c2946f3f84621764"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/helpers.mjs",
+      "bytes": 2563,
+      "sha256": "71200fd2f20085e8526c41675bc512c260b9011ad5d5c63dfb1fd6b1d44ee412"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/node-worker-wrapper.mjs",
+      "bytes": 261,
+      "sha256": "d7dea3cc54f430a37ea02f527644cd81dcd83b94d229674d9bad4dc46d7d71d0"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/panel.test.mjs",
+      "bytes": 9412,
+      "sha256": "64086e06c35e1edaa22b266baa916b627214983a7231ef24a06ce13469bfab94"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/run-browser.mjs",
+      "bytes": 5403,
+      "sha256": "d3692a058dc54b57a48db2c0f25e40d428c0fb10f8683e92322cc9a9f74fcefa"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/runner.test.mjs",
+      "bytes": 12061,
+      "sha256": "a2dbee9948bfc54edd95af37781605f6965cf7c5bc8cc2db7e1882102870b840"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/validate-reports.py",
+      "bytes": 664,
+      "sha256": "7295a184845e1ae9e7360e19ad36d9cf678ffc958c9d42c3cb234eddb116cbb1"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/write-host-report.mjs",
+      "bytes": 583,
+      "sha256": "212948b25025c3e8623a9ef78299f49b04ce8ce27225c238b1f54fcf4149b6b7"
+    },
+    {
       "path": "mobile/native-fixture-owner.json",
       "bytes": 88,
-      "sha256": "3d3d212f68e4a4d97d1056d39adf03428d70338b3d84eec37ec639f7ed9e8c00"
+      "sha256": "f5392a3ad1c6b0d8d49cfdd2d3e5d7ebdb0a5f1d4afdc968d61be05d7b6d1973"
+    },
+    {
+      "path": "mobile/native-patches/BwvDataOnlyAssetServer.java",
+      "bytes": 3571,
+      "sha256": "c82f66d4f7c6c0ac113cef3f74b934ff76a60936da5dabf0759f3f72c2c0a036"
+    },
+    {
+      "path": "mobile/native-patches/BwvDataOnlyResponse.java",
+      "bytes": 6595,
+      "sha256": "7ba51c599f31e9b7f8dd9ad89a9214e38bd3d904c20c248d459fb182dfdfb0cd"
+    },
+    {
+      "path": "mobile/native-patches/BwvDataOnlyRoutes.java",
+      "bytes": 5793,
+      "sha256": "d97f60bc141a5adf9338db0593a29929d783f37960d988e745e549caf492cc6e"
     },
     {
       "path": "mobile/native-patches/BwvProcessRootGuard.java",
@@ -617,19 +871,39 @@
       "sha256": "9c6ebf3e5ab832ba4d5af38f340978e1fedbfee6e3d23662dfdb8917a9d864dd"
     },
     {
+      "path": "mobile/native-patches/README.md",
+      "bytes": 1487,
+      "sha256": "372ec2c623ec6e1a10a2fd46e41427ad341156acf13f41b606a7d0d16b720ff8"
+    },
+    {
+      "path": "mobile/native-patches/capacitor-8.5.3-content-security.patch",
+      "bytes": 3908,
+      "sha256": "9ad2f4e6934967d78ca92f34dafd0d8f1533847c182998cf167514fa06635961"
+    },
+    {
       "path": "mobile/native-patches/capacitor-8.5.3-hashes.json",
-      "bytes": 581,
-      "sha256": "8f9aa6f0e247f2adb50f7647b63ec929f98b8799fe8b8353a4dcd0872a7b4930"
+      "bytes": 948,
+      "sha256": "1d84ada9bcc62726b9e3ad983c6f7370ae7421d1620e0e5cbc0920d2c641b2fe"
+    },
+    {
+      "path": "mobile/native-patches/helper-hashes.json",
+      "bytes": 396,
+      "sha256": "95d62fdbcf2736c8330a0ea6bfb56542084f62a7246c8b5929bb1aad62cd9bae"
     },
     {
       "path": "mobile/native-patches/patched/Bridge.java",
-      "bytes": 59779,
-      "sha256": "5ea0266102a7ebd30dec4fb4d23e584e9f55bd639dfb7e9daa0c4bd4f2ab1736"
+      "bytes": 59503,
+      "sha256": "10d75f2aa4301f2992ea167a0bb38e04cfe873aa46b4b70cc85584ee53610738"
+    },
+    {
+      "path": "mobile/native-patches/patched/BridgeWebViewClient.java",
+      "bytes": 4248,
+      "sha256": "a2ebb450a01385dbed9110395ddaac6163cd5b2fcfdf1b7f5598f8051c97e121"
     },
     {
       "path": "mobile/native-patches/patched/WebViewLocalServer.java",
-      "bytes": 31796,
-      "sha256": "08baee8bdd83a8923129a79dde4182f1b1fe513ef536ac8f32caf1a881f64203"
+      "bytes": 32263,
+      "sha256": "33017c12943285e81d6998ed8b85bb5f6c6cd468e715af519e1dc709db60b5d6"
     },
     {
       "path": "mobile/native-patches/patched/plugin/WebView.java",
@@ -648,8 +922,8 @@
     },
     {
       "path": "mobile/scripts/apply-capacitor-root-lock.py",
-      "bytes": 1166,
-      "sha256": "7516618d52a45b070d9fc43b8139735caa3f08b5cd3f861e4e82acd6ac9edb48"
+      "bytes": 1528,
+      "sha256": "c9abe13f11d3ed9b3024870d076f4c7882f44b66e84ffe6aafa1caf260dba89c"
     },
     {
       "path": "mobile/scripts/finalize-native-fixture.py",
@@ -658,13 +932,58 @@
     },
     {
       "path": "mobile/scripts/prepare-native-fixture.py",
-      "bytes": 3258,
-      "sha256": "f919a6410abf8c60ea46a8e6fd67836893e4bfdf8ce4beefdc72bceb0837ed70"
+      "bytes": 4267,
+      "sha256": "163575372630e988cf590a7ebc29d201112592dc6630494751d34fb93398cdd9"
     },
     {
       "path": "mobile/web/asset-inventory.json",
-      "bytes": 880,
-      "sha256": "c64a3d5f07e24ec4d3ea03e9e9fac538d948c30a5f2fe19c07dfbf63314f9da6"
+      "bytes": 2281,
+      "sha256": "96eea365425f431930f34158df4a69d9405fea15f29f978ad37b246a768a83cc"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/android-adapter-core.mjs",
+      "bytes": 1908,
+      "sha256": "496a551d6609d8a199de62a2c4562601a8e85675ee4b867b0034bfca184aec2e"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/android-adapter.mjs",
+      "bytes": 530,
+      "sha256": "0794c54d2034758945b6ff891063182220d0353f8cad0d02d983e6c6bf7de1b6"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/shader-canary.txt",
+      "bytes": 26,
+      "sha256": "5a71d37b7a84553d80faf8e0b29981ceac3db81de3bb383751359e9e3dca10ab"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/src/browser-worker-adapter.mjs",
+      "bytes": 1692,
+      "sha256": "bc59d76f29edd3706c1c849a97d56148584846174cec88d5301e0773c717b6ac"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/src/self-test-panel.css",
+      "bytes": 716,
+      "sha256": "0ab125d3ddefc63934d6cc64f0918b70b1b2a4c8aaef1aaf1ce1d9876e6412b9"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/src/self-test-panel.mjs",
+      "bytes": 5628,
+      "sha256": "5aeefa906110acf8fff65dd0cbcfae2c1f0c25bb494a6a21fdd510941e3f1d16"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/src/self-test-runner.mjs",
+      "bytes": 18319,
+      "sha256": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/src/self-test-worker.mjs",
+      "bytes": 780,
+      "sha256": "31384890678b10adf34f56a01d4e04a682f35848fb499685fc2685448da4b55e"
+    },
+    {
+      "path": "mobile/web/assets/diagnostics/web-canary.txt",
+      "bytes": 20,
+      "sha256": "060eaa12a310dee412687074fe963af2bccae5cceb14544343f0720c6a6990fe"
     },
     {
       "path": "mobile/web/assets/js/capacitor.js",
@@ -673,8 +992,13 @@
     },
     {
       "path": "mobile/web/assets/mobile/index.html",
-      "bytes": 174,
-      "sha256": "a6fad90d51b165a53a37be0b6a858afdc4617fa20d5c98c385d16604f2fb5468"
+      "bytes": 228,
+      "sha256": "4865ff2ad8f9c399085202a965e661c68783fafe0c1aabe9ac7a8f13be426584"
+    },
+    {
+      "path": "mobile/web/assets/mobile/self-test.html",
+      "bytes": 486,
+      "sha256": "7e3bc54aea4aa6a2fefa72f752bd0a589081e83c0fdf33eed9a0da4444c53d9f"
     },
     {
       "path": "mobile/web/assets/native/gaussian-fragment.glsl",
@@ -688,13 +1012,13 @@
     },
     {
       "path": "mobile/web/index.html",
-      "bytes": 81,
-      "sha256": "762d6b08bbe73128d25dcd9d12c2e17cbc2bc171027f31ddd322831dcdd4d243"
+      "bytes": 120,
+      "sha256": "c4bcbc89231ca4c4663db260feaf09683230c19a776b8eaa4d1724c8886c1808"
     },
     {
       "path": "mobile/web/native-web.json",
-      "bytes": 232,
-      "sha256": "0ebc747026e568d1ed1ecf3244878ccd93de38d6a0701d76f9d8dfbe70d9df8d"
+      "bytes": 235,
+      "sha256": "f53edef1a017918086ca23181a10039ca7e0726c1035606ef60f0db75dfed5fd"
     },
     {
       "path": "mobile/web/release-notes.json",

@@ -29,16 +29,18 @@ final class ProjectReaderReadiness {
             File selected = backup.exists() ? backup : new File(directory, name);
             JSONObject project;
             try (java.io.InputStream input = Files.newInputStream(selected.toPath(), LinkOption.NOFOLLOW_LINKS)) { project = new JSONObject(ProjectStore.readText(input)); }
-            if (project.getInt("schemaVersion") != 1 || !id.equals(project.getString("id"))) throw new IOException("Project requires an unsupported reader");
-            project.getString("name"); project.getJSONObject("states");
+            if (integer(project,"schemaVersion") != 1 || !id.equals(string(project,"id"))) throw new IOException("Project requires an unsupported reader");
+            string(project,"name"); project.getJSONObject("states");
             JSONArray files = project.getJSONArray("files");
             for (int i = 0; i < files.length(); i++) {
-                JSONObject item = files.getJSONObject(i); ArchivePolicy.path(item.getString("path"));
-                String key = item.getString("key");
+                JSONObject item = files.getJSONObject(i); ArchivePolicy.path(string(item,"path"));
+                String key = string(item,"key");
                 if (!key.matches("[a-f0-9]{64}")) throw new IOException("Invalid object key");
                 File object = new File(objectRoot, key);
-                if (!Files.isRegularFile(object.toPath(), LinkOption.NOFOLLOW_LINKS) || item.getLong("size") != object.length()) throw new IOException("Project object missing or changed");
+                if (!Files.isRegularFile(object.toPath(), LinkOption.NOFOLLOW_LINKS) || integer(item,"size") != object.length()) throw new IOException("Project object missing or changed");
             }
         }
     }
+    private static String string(JSONObject value,String key)throws Exception {Object field=value.get(key);if(!(field instanceof String))throw new IOException("Project field requires a string");return (String)field;}
+    private static long integer(JSONObject value,String key)throws Exception {Object field=value.get(key);if(!(field instanceof Integer)&&!(field instanceof Long))throw new IOException("Project field requires an integer");long number=((Number)field).longValue();if(number<0)throw new IOException("Negative project field");return number;}
 }

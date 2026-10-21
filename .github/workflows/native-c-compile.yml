@@ -1,4 +1,4 @@
-# Frozen C1 native-only source checkpoint. Not a release or full App build.
+# Frozen C2.2 native-only source checkpoint. Not a release or full App build.
 # No publishing, signing, deployment, SDK/JDK installation or APK/AAB tasks.
 name: Native C compile only
 on:
@@ -44,7 +44,7 @@ jobs:
           node node_modules/@capacitor/cli/bin/capacitor sync android
           python3 scripts/finalize-native-fixture.py
       - name: Verify final public fixture and pinned inventory
-        run: python3 ci/native-c/verify-native-fixture.py ci/native-c/project
+        run: python3 ci/native-c/verify-native-fixture.py ci/native-c/project ci/native-c/native-files.json
       - name: Review guarded compile/lint/local-unit task graph before task actions
         working-directory: ci/native-c/project/mobile/android
         run: |

@@ -19,7 +19,7 @@ public class MainActivity extends BridgeActivity {
   @Override public void onCreate(Bundle state){
     diagnostics=new StartupDiagnostics(this);
     try{runtime=((BwvApplication)getApplication()).runtime();runtimeReady=runtime!=null;}catch(RuntimeException failed){runtimeReady=false;}
-    if(runtimeReady){registerPlugin(BWVProjectsPlugin.class);bridgeBuilder.setServerPath(runtime.serverPath());}
+    if(runtimeReady){if(!BuildConfig.NATIVE_COMPILE_FIXTURE)registerPlugin(BWVProjectsPlugin.class);if(BuildConfig.DIAGNOSTIC_ENABLED)registerPlugin(BWVSelfTestPlugin.class);bridgeBuilder.setServerPath(runtime.serverPath());}
     try{super.onCreate(state);}catch(RuntimeException failed){diagnostics.record("BRIDGE_FAILURE",failed.getClass().getSimpleName());recovery();return;}
     if(!runtimeReady||bridge==null)recovery();
   }

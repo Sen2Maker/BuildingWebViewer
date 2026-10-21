@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 
 MAX_XML_BYTES = 8 * 1024 * 1024
 MAX_UNIT_REPORTS = 200
-MAX_ISSUES = 20
+MAX_ISSUES = 200  # Full current lint triage; bounded fields and explicit omitted count.
 MAX_LOCATIONS = 3
 MAX_PATHS = 20
 SEVERITIES = ('Fatal', 'Error', 'Warning', 'Information', 'Ignore')

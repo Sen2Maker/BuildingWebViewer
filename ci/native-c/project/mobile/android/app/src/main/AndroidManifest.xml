@@ -39,6 +39,8 @@
         </activity>
 
         <activity android:name=".MainActivity" android:exported="false" android:launchMode="singleTask" android:theme="@style/AppTheme.NoActionBarLaunch" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density" />
+        <activity android:name=".NativeSelfTestActivity" android:exported="false" android:theme="@style/AppTheme" />
+        <activity android:name=".DiagnosticReportSaveActivity" android:exported="false" android:theme="@style/AppTheme" />
         <activity android:name=".RecoveryActivity" android:exported="false" android:theme="@style/AppTheme" />
 
         <activity android:name=".NativeGaussianActivity" android:exported="false" android:theme="@style/NativeGaussianTheme" android:configChanges="orientation|screenSize|keyboardHidden" android:hardwareAccelerated="true" />

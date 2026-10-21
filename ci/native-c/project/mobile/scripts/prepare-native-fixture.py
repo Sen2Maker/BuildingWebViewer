@@ -18,9 +18,9 @@ if WEB.exists():
   if actual[name].is_symlink() or hashlib.sha256(actual[name].read_bytes()).hexdigest()!=row['sha256']:raise SystemExit('Refusing changed fixture bytes')
  shutil.rmtree(WEB)
 WEB.mkdir()
-build='native-compile-fixture-c1'
+build='native-diagnostic-fixture-c2'
 files={
- 'index.html':b'<!doctype html><title>Native compile fixture</title><p>Not a full App build.</p>\n',
+ 'index.html':b'<!doctype html><html><head><title>Native compile fixture</title></head><body><p>Not a full App build.</p></body></html>\n',
  'assets/mobile/index.html':b'<!doctype html><meta charset="utf-8"><title>Native compile fixture</title><script src="../js/capacitor.js"></script><p>Compile fixture only. CAD and updates unavailable.</p>\n',
  'assets/native/gaussian-vertex.glsl':b'#version 300 es\nvoid main(){gl_Position=vec4(0.0);}\n',
  'assets/native/gaussian-fragment.glsl':b'#version 300 es\nprecision mediump float;out vec4 color;void main(){color=vec4(1.0);}\n',
@@ -30,6 +30,17 @@ files={
 bridge=MOBILE/'node_modules/@capacitor/core/dist/capacitor.js'
 if not bridge.is_file():raise SystemExit('Run npm ci first; pinned Capacitor bridge missing')
 files['assets/js/capacitor.js']=bridge.read_bytes()
+# Reviewed R1 and fixed canaries only. No CAD engine is added to this native diagnostic fixture.
+diag=MOBILE/'diagnostics-r1'
+for path in sorted((diag/'src').glob('*')):
+ if path.is_file():files['assets/diagnostics/src/'+path.name]=path.read_bytes()
+files['assets/diagnostics/android-adapter.mjs']=(diag/'android-adapter.mjs').read_bytes()
+files['assets/diagnostics/android-adapter-core.mjs']=(diag/'android-adapter-core.mjs').read_bytes()
+files['assets/diagnostics/web-canary.txt']=(diag/'fixtures/web-canary.txt').read_bytes()
+files['assets/diagnostics/shader-canary.txt']=(diag/'fixtures/shader-canary.txt').read_bytes()
+files['assets/mobile/self-test.html']=(diag/'self-test.html').read_bytes()
+files['assets/mobile/index.html']=b'<!doctype html><html><head><meta charset="utf-8"><title>Native diagnostic fixture</title></head><body><p>No CAD payload. Not full release acceptance.</p><a href="self-test.html">Open one-tap device diagnostics</a></body></html>\n'
+
 for name,data in files.items():
  p=WEB/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
 entries=[{'path':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()} for name,data in sorted(files.items())]

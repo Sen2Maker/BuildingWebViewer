@@ -13,13 +13,24 @@ public final class BootstrapActivity extends Activity {
         super.onCreate(state);
         LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(32, 48, 32, 32);
         TextView status = new TextView(this); status.setText("正在验证本地资源 / Verifying local resources"); layout.addView(status);
-        Button recovery = new Button(this); recovery.setText("本地恢复与导出 / Recovery and export"); recovery.setOnClickListener(v -> { startActivity(new Intent(this, RecoveryActivity.class)); finish(); }); layout.addView(recovery); setContentView(layout);
+        Button recovery = new Button(this); recovery.setText("本地恢复与导出 / Recovery and export"); recovery.setOnClickListener(v -> { startActivity(new Intent(this, RecoveryActivity.class)); finish(); }); layout.addView(recovery);
+        Button cadDownload = new Button(this);cadDownload.setText("下载 CAD App（独立应用，地址待配置） / CAD App download not configured");cadDownload.setEnabled(false);layout.addView(cadDownload);
+        if(BuildConfig.DIAGNOSTIC_ENABLED){
+            Button nativeTest=new Button(this);nativeTest.setText("一键原生自检 / Native self-test");nativeTest.setOnClickListener(v->startActivity(new Intent(this,NativeSelfTestActivity.class)));layout.addView(nativeTest);
+            Button webTest=new Button(this);webTest.setText("打开网页自检 / Open WebView diagnostics");webTest.setOnClickListener(v->{try{if(((BwvApplication)getApplication()).runtime()!=null)startActivity(new Intent(this,MainActivity.class));}catch(RuntimeException unavailable){status.setText("Bundled runtime unavailable; use native diagnostics.");}});layout.addView(webTest);
+        }
+        setContentView(layout);
         ((BwvApplication)getApplication()).readiness().whenComplete((runtime, error) -> runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
             if (error != null) { status.setText("本地资源或数据读取检查失败。可使用原生导出。\nResource/data-reader check failed. Native export remains available."); return; }
             if (BuildConfig.NATIVE_COMPILE_FIXTURE) { status.setText("Native compile fixture only. This is not the installable viewer or full device-test App."); return; }
             startActivity(forwardImport(getIntent())); finish();
         }));
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent);
+        try { if (!BuildConfig.NATIVE_COMPILE_FIXTURE && ((BwvApplication)getApplication()).runtime() != null) { startActivity(forwardImport(intent)); finish(); } }
+        catch (RuntimeException unavailable) { /* Keep native recovery reachable. */ }
     }
     private Intent forwardImport(Intent source) {
         Intent target = new Intent(this, MainActivity.class);

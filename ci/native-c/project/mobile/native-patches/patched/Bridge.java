@@ -263,15 +263,9 @@ public class Bridge {
 
         // Start the local web server
         JSInjector injector = getJSInjector();
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            String allowedOrigin = Uri.parse(appUrl).buildUpon().path(null).fragment(null).clearQuery().build().toString();
-            try {
-                WebViewCompat.addDocumentStartJavaScript(webView, injector.getScriptString(), Collections.singleton(allowedOrigin));
-                injector = null;
-            } catch (IllegalArgumentException ex) {
-                Logger.warn("Invalid url, using fallback");
-            }
-        }
+        // BWV C2: do not register an origin-wide document-start injector. Imported routes
+        // share the origin but are data, not trusted app documents. The trusted asset
+        // HTML response pipeline below retains Capacitor's stream injector.
         localServer = new WebViewLocalServer(context, this, injector, authorities, html5mode);
         // BWV: native root must be explicit and pinned before any resource request.
         if (serverPath == null || config.getServerUrl() != null) throw new IllegalStateException("Explicit local native root required");

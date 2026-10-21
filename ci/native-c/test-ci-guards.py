@@ -22,6 +22,8 @@ class GuardTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_helper(self, name, *args, ok):
+        if name == 'verify-native-fixture.py' and len(args) == 1:
+            args = (*args, self.base / 'fixture-manifest.json')
         result = subprocess.run([sys.executable, str(HERE / name), *map(str, args)], text=True, capture_output=True)
         self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
         return result
@@ -38,11 +40,15 @@ class GuardTests(unittest.TestCase):
     def fixture(self):
         public = self.root / 'mobile/android/app/src/main/assets/public'
         public.mkdir(parents=True)
-        data = b'{"build":"native-compile-fixture-c1"}\n'
+        data = b'{"build":"native-diagnostic-fixture-c2"}\n'
         (public / 'native-web.json').write_bytes(data)
         raw = (json.dumps({'schema': 1, 'files': [{'path': 'native-web.json', 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}]}, separators=(',', ':')) + '\n').encode()
         (public / 'asset-inventory.json').write_bytes(raw)
-        (self.root / 'mobile/bundled-pins.json').write_text(json.dumps({'fixtureOnly': True, 'build': 'native-compile-fixture-c1', 'inventoryBytes': len(raw), 'inventorySha256': hashlib.sha256(raw).hexdigest()}))
+        (self.root / 'mobile/bundled-pins.json').write_text(json.dumps({'fixtureOnly': True, 'build': 'native-diagnostic-fixture-c2', 'inventoryBytes': len(raw), 'inventorySha256': hashlib.sha256(raw).hexdigest()}))
+        (self.base / 'fixture-manifest.json').write_text(json.dumps({
+            'status': 'FROZEN_NATIVE_ONLY_REVIEW', 'publicFixtureBuild': 'native-diagnostic-fixture-c2',
+            'publicFixtureInventoryBytes': len(raw), 'publicFixtureFiles': 2,
+            'publicFixtureInventorySha256': hashlib.sha256(raw).hexdigest()}))
         return public
 
     def results(self, tests='2', skipped='0', failures='0', errors='0', severity=None):
@@ -197,19 +203,66 @@ class GuardTests(unittest.TestCase):
         locations = ''.join('<location file="' + 'x' * 1000 + '" line="212" column="7"/>' for _ in range(5))
         warning = '<issue id="WarningId" severity="Warning" message="' + 'w' * 2000 + '">' + locations + '</issue>'
         error = '<issue id="NewApi" severity="Error" message="Requires API 35">' + locations + '</issue>'
-        (app / 'reports/lint-results-release.xml').write_text('<issues>' + warning * 53 + error + '</issues>')
+        (app / 'reports/lint-results-release.xml').write_text('<issues>' + warning * 253 + error + '</issues>')
         data, output = self.diagnostics()
         lint = data['NATIVE_LINT_RESULT']
-        self.assertEqual(lint['severity_counts'], {'Warning': 53, 'Error': 1})
-        self.assertEqual(len(lint['issues']), 20)
-        self.assertEqual(lint['omitted_issues'], 34)
+        self.assertEqual(lint['severity_counts'], {'Warning': 253, 'Error': 1})
+        self.assertEqual(len(lint['issues']), 200)
+        self.assertEqual(lint['omitted_issues'], 54)
         first = lint['issues'][0]
         self.assertEqual(first['id'], 'NewApi')
         self.assertEqual(first['message'], 'Requires API 35')
         self.assertEqual(first['locations'][0]['line'], '212')
         self.assertEqual(len(first['locations']), 3)
         self.assertEqual(first['omitted_locations'], 2)
-        self.assertLess(len(output), 40000)
+        self.assertLess(len(output), 400000)
+
+    def test_results_all_current_53_warnings_visible(self):
+        app = self.results()
+        warnings = ''.join(f'<issue id="Warning{i}" severity="Warning" message="Synthetic warning {i}"/>' for i in range(53))
+        (app / 'reports/lint-results-release.xml').write_text('<issues>' + warnings + '</issues>')
+        data, _ = self.diagnostics(ok=True)
+        lint = data['NATIVE_LINT_RESULT']
+        self.assertEqual(lint['severity_counts'], {'Warning': 53})
+        self.assertEqual(len(lint['issues']), 53)
+        self.assertEqual(lint['omitted_issues'], 0)
+        self.assertEqual(lint['issues'][-1]['id'], 'Warning52')
+
+    def test_fixture_rehashed_pins_do_not_replace_frozen_manifest(self):
+        public = self.fixture()
+        data = b'{"build":"native-diagnostic-fixture-c2","unexpected":"drift"}'
+        (public / 'native-web.json').write_bytes(data)
+        raw = (json.dumps({'schema': 1, 'files': [{'path': 'native-web.json', 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}]}) + '\n').encode()
+        (public / 'asset-inventory.json').write_bytes(raw)
+        pins = self.root / 'mobile/bundled-pins.json'
+        value = json.loads(pins.read_text())
+        value.update(inventoryBytes=len(raw), inventorySha256=hashlib.sha256(raw).hexdigest())
+        pins.write_text(json.dumps(value))
+        self.run_helper('verify-native-fixture.py', self.root, ok=False)
+
+    def test_fixture_previous_c1_build_rejected(self):
+        self.fixture()
+        pins = self.root / 'mobile/bundled-pins.json'
+        value = json.loads(pins.read_text())
+        value['build'] = 'native-compile-fixture-c1'
+        pins.write_text(json.dumps(value))
+        self.run_helper('verify-native-fixture.py', self.root, ok=False)
+
+    def test_fixture_unfrozen_manifest_rejected(self):
+        self.fixture()
+        manifest = self.base / 'fixture-manifest.json'
+        value = json.loads(manifest.read_text())
+        value['status'] = 'DRAFT'
+        manifest.write_text(json.dumps(value))
+        self.run_helper('verify-native-fixture.py', self.root, ok=False)
+
+    def test_fixture_wrong_frozen_file_count_rejected(self):
+        self.fixture()
+        manifest = self.base / 'fixture-manifest.json'
+        value = json.loads(manifest.read_text())
+        value['publicFixtureFiles'] = 3
+        manifest.write_text(json.dumps(value))
+        self.run_helper('verify-native-fixture.py', self.root, ok=False)
 
     def test_results_unknown_severity_fails_closed(self):
         self.results(severity='UnexpectedLevel')

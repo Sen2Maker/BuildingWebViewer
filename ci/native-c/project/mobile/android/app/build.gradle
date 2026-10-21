@@ -22,6 +22,7 @@ android {
         buildConfigField 'long', 'BUNDLE_INVENTORY_BYTES', bundlePins.inventoryBytes.toString() + 'L'
         buildConfigField 'String', 'BUNDLE_BUILD', quoted(bundlePins.build)
         buildConfigField 'boolean', 'NATIVE_COMPILE_FIXTURE', 'true'
+        buildConfigField 'boolean', 'DIAGNOSTIC_ENABLED', 'true'
         buildConfigField 'boolean', 'EXTERNAL_UPDATES_ENABLED', 'false'
         buildConfigField 'int', 'NATIVE_API', '1'
 
