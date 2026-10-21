@@ -1,0 +1,6 @@
+{
+  "build": "native-compile-fixture-c1",
+  "inventoryBytes": 1104,
+  "inventorySha256": "6a3ec8f52aec3ffe007a5d2308788fce9899b4ba01dadb4f5ab809972ff3ae38",
+  "fixtureOnly": true
+}

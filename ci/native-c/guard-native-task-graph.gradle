@@ -1,0 +1,41 @@
+// CI-only proposal. This gate runs after configuration, BEFORE task actions.
+// It does not sandbox Gradle settings/build-script configuration.
+import groovy.json.JsonOutput
+
+def targets = [':app:compileReleaseJavaWithJavac', ':app:lintRelease', ':app:testReleaseUnitTest'] as Set
+def modules = [':app', ':capacitor-android', ':capacitor-cordova-android-plugins'] as Set
+// Resource packages and library class JARs are build intermediates, not APK/AABs.
+// The first hosted graph has NOT been observed. An unknown task must stop for
+// review, not be suppressed with -x or automatically added to this list.
+def allowedNames = '''
+preBuild preReleaseBuild preReleaseUnitTestBuild
+generateReleaseBuildConfig generateReleaseResValues generateReleaseResources
+checkReleaseAarMetadata writeReleaseAarMetadata mapReleaseSourceSetPaths
+mergeReleaseResources packageReleaseResources parseReleaseLocalResources
+generateReleaseRFile generateReleaseUnitTestStubRFile compileReleaseLibraryResources
+createReleaseCompatibleScreenManifests extractDeepLinksRelease
+processReleaseMainManifest processReleaseManifest processReleaseManifestForPackage
+processReleaseResources processReleaseJavaRes processReleaseUnitTestJavaRes
+javaPreCompileRelease compileReleaseJavaWithJavac
+javaPreCompileReleaseUnitTest compileReleaseUnitTestJavaWithJavac
+bundleLibCompileToJarRelease bundleLibRuntimeToJarRelease
+generateReleaseLintModel generateReleaseLintReportModel
+generateReleaseUnitTestLintModel generateReleaseAndroidTestLintModel
+writeReleaseLintModelMetadata lintAnalyzeRelease lintAnalyzeReleaseUnitTest
+lintAnalyzeReleaseAndroidTest lintReportRelease lintRelease testReleaseUnitTest
+extractProguardFiles prepareLintJarForPublish
+'''.tokenize() as Set
+
+gradle.taskGraph.whenReady { graph ->
+    def requested = gradle.startParameter.taskNames as Set
+    if (requested != targets) throw new GradleException('Only the three approved native compile/lint/unit targets may run')
+    def tasks = graph.allTasks
+    def paths = tasks.collect { it.path }
+    println('NATIVE_REVIEW_TASK_GRAPH=' + JsonOutput.toJson(paths))
+    def unsafe = tasks.findAll { task ->
+        !modules.contains(task.project.path) || !allowedNames.contains(task.name) ||
+            task instanceof org.gradle.api.tasks.Exec || task instanceof org.gradle.api.tasks.JavaExec
+    }.collect { it.path }
+    if (!unsafe.isEmpty()) throw new GradleException('Unreviewed task graph, NO task actions permitted: ' + unsafe.join(', '))
+    println('NATIVE_REVIEW_TASK_GRAPH_ACCEPTED. This is not an APK build or device test.')
+}

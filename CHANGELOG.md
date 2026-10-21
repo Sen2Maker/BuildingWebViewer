@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 新增隔离的原生 C1 编译检查快照与只读 CI：仅使用合成网页资源检查 Java 编译、Android lint 和本地单元测试，不新增 CAD 引擎资源、不改许可证，也不签名、打包 APK 或部署。当前为未发布检查点，根应用版本不变，托管 Android 检查及真机验证尚未执行。
+- Add an isolated native C1 compile checkpoint and read-only CI with synthetic web assets only. No new CAD engine payload, license change, signing, APK packaging or deployment. This is unreleased; the root application version is unchanged, and hosted Android/device validation remains pending.
+
 ## [1.10.0] - 2026-10-18
 
 - 本地验证：148 项网页回归、5 个工具导航测试、23 个 Android 脚本兼容检查和 Android Debug 编译 / 单元测试通过；已核对中英文、390 像素布局及三栏 PNG 导出。未进行真机触摸与大数据压力测试。

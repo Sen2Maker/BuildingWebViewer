@@ -1,0 +1,66 @@
+# Frozen C1 native-only source checkpoint. Not a release or full App build.
+# No publishing, signing, deployment, SDK/JDK installation or APK/AAB tasks.
+name: Native C compile only
+on:
+  push:
+    branches: [ci/native-v1-compile]
+    paths: ['ci/native-c/**', '.github/workflows/native-c-compile.yml']
+  pull_request:
+    paths: ['ci/native-c/**', '.github/workflows/native-c-compile.yml']
+permissions:
+  contents: read
+concurrency:
+  group: native-c-compile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-source-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      CAP_PUBLISH: 'false'
+      GRADLE_USER_HOME: ${{ runner.temp }}/bwv-native-gradle
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, official SHA verified
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact frozen native-only source
+        run: python3 ci/native-c/verify-native-allowlist.py ci/native-c/project ci/native-c/native-files.json
+      - name: Test the source, fixture, and result gates using synthetic data
+        run: python3 ci/native-c/test-ci-guards.py
+      - name: Require preinstalled full Java 21 and Android 36 tools
+        run: bash ci/native-c/preflight-hosted-native.sh ci/native-c/project
+      - name: Install integrity-locked public npm build dependencies without lifecycle scripts
+        working-directory: ci/native-c/project/mobile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Apply hash-gated Capacitor root lock and generate tiny synthetic fixture
+        working-directory: ci/native-c/project/mobile
+        run: |
+          python3 scripts/apply-capacitor-root-lock.py
+          python3 scripts/prepare-native-fixture.py
+          node node_modules/@capacitor/cli/bin/capacitor sync android
+          python3 scripts/finalize-native-fixture.py
+      - name: Verify final public fixture and pinned inventory
+        run: python3 ci/native-c/verify-native-fixture.py ci/native-c/project
+      - name: Review guarded compile/lint/local-unit task graph before task actions
+        working-directory: ci/native-c/project/mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
+            -I ../../../guard-native-task-graph.gradle \
+            -Pandroid.builder.sdkDownload=false \
+            -Porg.gradle.java.installations.auto-download=false \
+            --dry-run \
+            :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
+      - name: Compile native sources, lint, and run JVM unit tests only
+        working-directory: ci/native-c/project/mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
+            -I ../../../guard-native-task-graph.gradle \
+            -Pandroid.builder.sdkDownload=false \
+            -Porg.gradle.java.installations.auto-download=false \
+            :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
+      - name: Require actual result XML and no installable output
+        if: always()
+        run: python3 ci/native-c/check-native-results.py ci/native-c/project
+# No upload-artifact/cache/deploy/release action. Logs contain synthetic results only.

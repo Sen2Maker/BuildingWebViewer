@@ -1,0 +1,14 @@
+{
+  "Bridge.java": {
+    "before": "619700a31548504d7f81552c696273d652c655ebe317a006bda3f9398bdecdf5",
+    "after": "5ea0266102a7ebd30dec4fb4d23e584e9f55bd639dfb7e9daa0c4bd4f2ab1736"
+  },
+  "WebViewLocalServer.java": {
+    "before": "3b7fb9b16fd96dc0ef18050120c06b6bf0b72c4b6690a2967219a21b3e65c3ab",
+    "after": "08baee8bdd83a8923129a79dde4182f1b1fe513ef536ac8f32caf1a881f64203"
+  },
+  "plugin/WebView.java": {
+    "before": "731da01c6b51895d7b81e0588a835e12ed65f4a3aa85e5db411b221754f18e96",
+    "after": "01170544d944830fc826b0a480e541075ca9f58ffb47d49c28ee6550ca70223f"
+  }
+}
