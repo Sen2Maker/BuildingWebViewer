@@ -1,0 +1,31 @@
+package com.getcapacitor;
+import java.util.*;import java.lang.reflect.*;
+public final class MainPickerOwnerRegression {
+ static final class JSObject {final Map<String,Object> data=new HashMap<>();JSObject put(String k,Object v){data.put(k,v);return this;}static JSObject fromJSONObject(JSONObject j){return new JSObject();}}
+ static final class JSONObject {}
+ record Uri(String value){}
+ static final class Intent {static final String ACTION_OPEN_DOCUMENT="open",CATEGORY_OPENABLE="openable",EXTRA_ALLOW_MULTIPLE="multi";static final int FLAG_GRANT_READ_URI_PERMISSION=1;final String file;Intent(String f){file=f;}Intent addCategory(String s){return this;}Intent setType(String s){return this;}Intent putExtra(String s,boolean b){return this;}Intent addFlags(int f){return this;}boolean getBooleanExtra(String k,boolean d){return true;}}
+ record ActivityResult(int getResultCode,Intent getData){}
+ static final class ActivityResultLauncher<T>{void launch(T input){}}
+ static final class Activity {static final int RESULT_OK=1;void runOnUiThread(Runnable r){r.run();}}
+ static final class Runtime {void assertBound(){}}
+ static final class Store {final List<String> imports=new ArrayList<>();JSONObject importUris(String id,List<Uri> files){imports.add(id+":"+files.get(0).value());return new JSONObject();}}
+ static final class Queue {final List<Runnable> jobs=new ArrayList<>();void execute(Runnable r){jobs.add(r);}void drain(){while(!jobs.isEmpty())jobs.remove(0).run();}}
+ static final class PluginCall {final String id,method,project;JSObject result;String error;PluginCall(String id,String method,String project){this.id=id;this.method=method;this.project=project;}String getCallbackId(){return id;}String getString(String k){return project;}void resolve(JSObject r){result=r;}void reject(String e){error=e;}void reject(String e,Exception x){error=e;}}
+ static final class Bridge {final Object webView=new Object();final Map<String,PluginCall> calls=new HashMap<>();PluginCall last;String nonce;final String url="https://localhost/assets/mobile/index.html";Bridge(){navigate();}void navigate(){calls.clear();BwvBridgeCallGuard.documentStarted(webView,url);nonce=BwvBridgeCallGuard.authorizeDocument(webView,url);}Object getWebView(){return webView;}PluginCall getSavedCall(String id){return calls.get(id);}PluginCall getPluginCallForLastActivity(){PluginCall c=last;last=null;return c;}void setPluginCallForLastActivity(PluginCall c){last=c;}void saveCall(PluginCall c){calls.put(c.id,c);}PluginCall call(String id,String method,String project){PluginCall c=new PluginCall(id,method,project);if(!BwvBridgeCallGuard.register(c,webView,"https://localhost","https://localhost",url,true,"BWVProjects",method,nonce))throw new AssertionError("registration");return c;}}
+ static final class Candidate {final Bridge bridge;final Runtime runtime=new Runtime();final Store store=new Store();final Queue IO=new Queue();boolean destroyed;String lastPluginCallId;Candidate(Bridge b){bridge=b;}Activity getActivity(){return new Activity();}ActivityResultLauncher<Intent> getActivityLauncherOrReject(PluginCall c,String name){return new ActivityResultLauncher<>();}static List<Uri> uris(Intent i){return List.of(new Uri(i.file));}interface Task{JSONObject run()throws Exception;}
+ @@AUTHORIZED@@
+ @@RUN@@
+ @@PICK_FILES@@
+ @@PICKED@@
+ @@RETURNED@@
+ @@START@@
+ @@TRIGGER@@
+ void result(String callback,ActivityResult result)throws Exception{triggerActivityCallback(Candidate.class.getDeclaredMethod(callback,PluginCall.class,ActivityResult.class),result);}
+ }
+ static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
+ public static void main(String[] args)throws Exception{
+  Bridge b=new Bridge();Candidate c=new Candidate(b);PluginCall old=b.call("old","pickFiles","11111111-1111-1111-1111-111111111111");c.pickFiles(old);b.navigate();PluginCall fresh=b.call("new","pickFiles","22222222-2222-2222-2222-222222222222");c.pickFiles(fresh);c.result("picked",new ActivityResult(Activity.RESULT_OK,new Intent("old-selected-file")));c.IO.drain();check(c.store.imports.equals(List.of("22222222-2222-2222-2222-222222222222:old-selected-file")),"old result was not reassigned");System.out.println("REPRODUCED main M1.1: stale picker A selection imported using picker B project authority");
+  Bridge x=new Bridge();Candidate y=new Candidate(x);PluginCall gaussian=x.call("gaussian","openNativeGaussian","11111111-1111-1111-1111-111111111111");y.startActivityForResult(gaussian,new Intent("nativeGaussian"),"nativeGaussianReturned");PluginCall picker=x.call("picker","pickFiles","22222222-2222-2222-2222-222222222222");y.pickFiles(picker);y.result("nativeGaussianReturned",new ActivityResult(Activity.RESULT_OK,new Intent("gaussian result")));check(picker.result!=null&&Boolean.TRUE.equals(picker.result.data.get("compatibility"))&&gaussian.result==null,"cross-operation return not reassigned");System.out.println("REPRODUCED main M1.1: native Gaussian return resolves the later picker call");
+ }
+}

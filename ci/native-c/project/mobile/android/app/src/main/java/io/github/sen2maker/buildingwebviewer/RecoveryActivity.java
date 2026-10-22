@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject;
 /** Platform-only recovery: no bridge, update store, network or resource-cache cleanup. */
 public final class RecoveryActivity extends Activity {
+    static final String EXTRA_TRANSPORT_OUTCOME_UNKNOWN = "bwv.recovery.transportOutcomeUnknown";
     private static final int FIRST_BACKUP_REQUEST = 4101, LAST_BACKUP_REQUEST = 65535;
     private static final String NEXT_REQUEST_STATE = "recoveryBackupNext", PENDING_REQUEST_STATE = "recoveryBackupPending";
     private static final class BackupAttempt {
@@ -33,7 +34,7 @@ public final class RecoveryActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         LinearLayout column = new LinearLayout(this); column.setOrientation(LinearLayout.VERTICAL); column.setPadding(24, 32, 24, 24);
-        status = new TextView(this); status.setText("本地恢复与导出 / Local recovery and export\n" + ((BwvApplication)getApplication()).failure() + "\nNo projects or trust state will be deleted. Export requires your document-provider selection.\n若系统选择操作中断或恢复次数已达安全上限，请先退出仍打开的系统选择器，再关闭本次 App 任务并从图标重新打开。可先在这里导出备份；不要清除存储或卸载。\nIf a system operation was interrupted or its safe restoration limit was reached, close any open picker, close this App task, then reopen from its icon. You can export here first. Do not clear App storage or uninstall."); column.addView(status);
+        status = new TextView(this); status.setText("本地恢复与导出 / Local recovery and export\n" + transportCaution() + ((BwvApplication)getApplication()).failure() + "\nNo projects or trust state will be deleted. Export requires your document-provider selection.\n若系统选择操作中断或恢复次数已达安全上限，请先退出仍打开的系统选择器，再关闭本次 App 任务并从图标重新打开。可先在这里导出备份；不要清除存储或卸载。\nIf a system operation was interrupted or its safe restoration limit was reached, close any open picker, close this App task, then reopen from its icon. You can export here first. Do not clear App storage or uninstall."); column.addView(status);
         if(BuildConfig.DIAGNOSTIC_ENABLED){Button test=new Button(this);test.setText("一键原生自检 / Native self-test");test.setOnClickListener(v->startActivity(new Intent(this,NativeSelfTestActivity.class)));column.addView(test);}
         ScrollView scroll = new ScrollView(this); scroll.addView(column); setContentView(scroll);
         restoreBackupState(saved);
@@ -84,6 +85,11 @@ public final class RecoveryActivity extends Activity {
     private void settleBackup(BackupAttempt attempt) {
         if (pendingBackup != attempt) return;
         pendingBackup = null; busy = false;
+    }
+    private String transportCaution() {
+        Intent reason = getIntent();
+        if (reason == null || !reason.getBooleanExtra(EXTRA_TRANSPORT_OUTCOME_UNKNOWN, false)) return "";
+        return "操作结果尚未确认，可能已经完成。不要重复提交；请先检查项目或导出备份。不会自动重试或删除项目。\nThe operation outcome is unknown and may already have completed. Do not resubmit. Inspect the project or export a backup first. Nothing is automatically retried or deleted.\n";
     }
     private void prepareBackup(ProjectStore store, String id) {
         if (backupClosed || busy) return;

@@ -1,6 +1,6 @@
-# M1.2 plus exact reviewed Recovery R2 integration with the real CAD-free offline main payload.
+# Exact reviewed M2 liveness + recovery integration with the real CAD-free offline main payload.
 # Compile/lint/JVM tests only; no publishing, signing, SDK install or APK/AAB.
-name: Main M1 native compile only
+name: Main M2 native compile only
 on:
   push:
     branches: [ci/native-v1-compile]
@@ -27,12 +27,10 @@ jobs:
       - name: Set ephemeral Gradle cache after the runner starts
         shell: bash
         run: printf 'GRADLE_USER_HOME=%s/bwv-native-gradle\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-      - name: Verify exact frozen 391-file M1.2 plus Recovery R2 integration snapshot
+      - name: Verify exact frozen 394-file Main M2 integration snapshot
         id: source
         run: |
           python3 -B ci/native-c/verify-native-allowlist.py ci/native-c/project ci/native-c/native-files.json
-          python3 -B ci/native-c/verify-native-allowlist.py ci/native-c/tests/activity-results ci/native-c/activity-tests.json
-          python3 -B ci/native-c/verify-native-allowlist.py ci/native-c/tests/recovery-ownership ci/native-c/recovery-tests.json
       - name: Reject synthetic assets and validate all real offline pages and shaders
         id: payload
         run: python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json
@@ -44,26 +42,17 @@ jobs:
         run: |
           python3 -B ci/native-c/test-ci-guards.py
           python3 -B ci/native-c/test-main-payload.py
+          python3 -B ci/native-c/test-m2-host-regressions.py
       - name: Require preinstalled full Java 21 and Android 36 tools
         id: preflight
         run: bash ci/native-c/preflight-hosted-native.sh ci/native-c/project
-      - name: Exercise reviewed activity-result ownership on host doubles and kill mutation controls
-        id: ownership
-        run: |
-          python3 -B ci/native-c/tests/activity-results/run_regression.py \
-            --candidate ci/native-c --output "$RUNNER_TEMP/bwv-m12-activity-regression"
-          python3 -B ci/native-c/tests/activity-results/run_mutations.py \
-            --candidate ci/native-c --output "$RUNNER_TEMP/bwv-m12-activity-mutations"
-      - name: Exercise reviewed Recovery backup ownership on host doubles and four mutation controls
-        id: recovery
-        run: python3 -B ci/native-c/run-recovery-ownership.py ci/native-c "$RUNNER_TEMP/bwv-m12-recovery-r1"
       - name: Install integrity-locked public npm dependencies without lifecycle scripts
         id: dependencies
         working-directory: ci/native-c/project/mobile
         run: npm ci --ignore-scripts --no-audit --no-fund
-      # The exact finalized full payload is already reviewed. This 391-file subset
-      # is not the separate 807-file Vite source tree: do not rebuild or synthesize it.
-      - name: Apply the exact reviewed M1.1 Capacitor transport overlay only
+      # The exact finalized full payload is already reviewed. This 394-file subset
+      # is not the separate 810-file Vite source tree: do not rebuild or synthesize it.
+      - name: Apply the exact reviewed M2 Java and runtime Capacitor overlays only
         id: overlay
         working-directory: ci/native-c/project/mobile
         run: python3 -B scripts/apply-capacitor-root-lock.py
@@ -71,7 +60,12 @@ jobs:
         id: installed
         run: |
           python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json --installed
-          python3 -B ci/native-c/check-lifecycle-visibility.py ci/native-c/project "$RUNNER_TEMP/bwv-r2-lifecycle-visibility"
+          python3 -B ci/native-c/check-lifecycle-visibility.py ci/native-c/project "$RUNNER_TEMP/bwv-m2-lifecycle-visibility"
+      - name: Exercise exact M2 runtime, native transport, activity and recovery host regressions
+        id: host
+        run: |
+          python3 -B ci/native-c/run-m2-host-regressions.py \
+            --project ci/native-c/project --output "$RUNNER_TEMP/bwv-m2-host-regressions"
       - name: Review guarded compile lint local-unit task graph before actions
         id: graph
         working-directory: ci/native-c/project/mobile/android
@@ -99,8 +93,7 @@ jobs:
           INDICATORS: ${{ steps.indicators.outcome }}
           GUARDS: ${{ steps.guards.outcome }}
           PREFLIGHT: ${{ steps.preflight.outcome }}
-          OWNERSHIP: ${{ steps.ownership.outcome }}
-          RECOVERY: ${{ steps.recovery.outcome }}
+          HOST: ${{ steps.host.outcome }}
           DEPENDENCIES: ${{ steps.dependencies.outcome }}
           OVERLAY: ${{ steps.overlay.outcome }}
           INSTALLED: ${{ steps.installed.outcome }}
@@ -109,7 +102,7 @@ jobs:
         run: |
           python3 -B - <<'PY'
           import json, os
-          names = ['SOURCE', 'PAYLOAD', 'INDICATORS', 'GUARDS', 'PREFLIGHT', 'OWNERSHIP', 'RECOVERY', 'DEPENDENCIES', 'OVERLAY', 'INSTALLED', 'GRAPH', 'COMPILE']
+          names = ['SOURCE', 'PAYLOAD', 'INDICATORS', 'GUARDS', 'PREFLIGHT', 'HOST', 'DEPENDENCIES', 'OVERLAY', 'INSTALLED', 'GRAPH', 'COMPILE']
           outcomes = {name: os.environ.get(name, 'unknown') for name in names}
           print('NATIVE_CI_STAGE_FORENSICS=' + json.dumps({'outcomes': outcomes, 'android_runtime_started': False, 'user_data_read': False, 'scope': 'Build-stage evidence only, not App startup or device acceptance'}, sort_keys=True))
           PY

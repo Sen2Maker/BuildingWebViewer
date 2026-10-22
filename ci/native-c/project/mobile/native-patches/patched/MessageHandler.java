@@ -89,6 +89,7 @@ public class MessageHandler {
         bridge.executeOnMainThread(() -> {
             if (replies.get(call) != expectedReply) return; // A remove/cancel/earlier terminal response won.
             boolean retain = false;
+            boolean providerEntered = false;
             try {
                 if (!BwvBridgeCallGuard.current(call, webView)) return;
                 PluginResult data = new PluginResult();
@@ -107,10 +108,22 @@ public class MessageHandler {
                 // Recheck in the actual UI delivery turn, not merely on the IO resolving thread.
                 if (replies.get(call) != expectedReply || !BwvBridgeCallGuard.current(call, webView)) return;
                 if (PluginCall.CALLBACK_ID_DANGLING.equals(call.getCallbackId())) return;
+                providerEntered = true;
                 expectedReply.postMessage(response);
                 retain = call.isKeptAlive();
             } catch (Exception ex) {
-                Logger.error("sendResponseMessage: error: " + ex);
+                Logger.error("sendResponseMessage: provider response unavailable; outcome not acknowledged");
+                if (providerEntered && BwvBridgeCallGuard.current(call, webView)) {
+                    // Retire only this native document. Never reroute data or replay the operation.
+                    java.util.List<PluginCall> affected = new java.util.ArrayList<>();
+                    synchronized (replies) {
+                        for (PluginCall owned : replies.keySet()) if (BwvBridgeCallGuard.sameDocument(call, owned)) affected.add(owned);
+                    }
+                    try { bridge.notifyTransportFailure(call); }
+                    finally {
+                        for (PluginCall owned : affected) if (replies.containsKey(owned)) owned.release(bridge);
+                    }
+                }
             } finally {
                 if (!retain && replies.get(call) == expectedReply) call.release(bridge);
             }

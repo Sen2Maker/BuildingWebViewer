@@ -5,10 +5,11 @@ public class MainActivity extends BridgeActivity {
   StartupDiagnostics diagnostics;
   ProcessRuntime runtime;
   private boolean runtimeReady,recovering;
+  private boolean transportOutcomeUnknown;
   private MainActivityOperations operations;
   private static final String OPERATION_STATE_KEY="bwv.native.pendingOperationKey";
   private static final String OPERATION_COUNT_KEY="bwv.native.restoredOperationCount";
-  private void recovery(){if(recovering)return;recovering=true;invalidateOperations();if(bridge!=null)com.getcapacitor.BwvBridgeCallGuard.destroyed(bridge.getWebView());startActivity(new android.content.Intent(this,RecoveryActivity.class));finish();}
+  private void recovery(){if(recovering)return;recovering=true;invalidateOperations();if(bridge!=null)com.getcapacitor.BwvBridgeCallGuard.destroyed(bridge.getWebView());startActivity(new android.content.Intent(this,RecoveryActivity.class).putExtra(RecoveryActivity.EXTRA_TRANSPORT_OUTCOME_UNKNOWN,transportOutcomeUnknown));finish();}
   BackNavigation backNavigation;
   public void showDiagnostics(){if(diagnostics!=null)diagnostics.show();}
   @Override protected void load(){
@@ -17,6 +18,7 @@ public class MainActivity extends BridgeActivity {
     if(bridge==null){recovery();return;}
     runtime.assertBound();
     if(!"public".equals(bridge.getServerBasePath())||!bridge.isMinimumWebViewInstalled()){recovery();return;}
+    bridge.setTransportFailureListener(this::transportFailed);
     backNavigation=new BackNavigation(this,bridge);diagnostics.install(bridge);
   }
   @Override public void onCreate(Bundle state){
@@ -40,6 +42,13 @@ public class MainActivity extends BridgeActivity {
   void launchOperation(MainActivityOperations.Kind kind,android.content.Intent intent,MainActivityOperations.Owner owner){
     if(operations==null||recovering||isFinishing()||isDestroyed())throw new IllegalStateException("SYSTEM_ACTIVITY_UNAVAILABLE");
     try{operations.launch(kind,intent,owner);}catch(MainActivityOperations.LaunchFailure uncertain){diagnostics.record("SYSTEM_ACTIVITY_LAUNCH_UNCERTAIN","Original operation remains quarantined; no automatic retry");recovery();throw uncertain;}
+  }
+  private void transportFailed(com.getcapacitor.PluginCall original){
+    if(bridge==null||recovering||isFinishing()||isDestroyed()||!com.getcapacitor.BwvBridgeCallGuard.current(original,bridge.getWebView()))return;
+    diagnostics.record("NATIVE_TRANSPORT_FAILED","Operation outcome is unknown; do not resubmit. No files are deleted.");
+    transportOutcomeUnknown=true;
+    documentStarted(null); // Native listener/run cleanup; system operations retain their original pending slot.
+    recovery();
   }
   void invalidateOperations(){if(operations!=null)operations.invalidate();}
   private void saveOperations(Bundle state){if(operations!=null){state.putString(OPERATION_STATE_KEY,operations.savedKey());state.putString(OPERATION_COUNT_KEY,Integer.toString(operations.restoredCount()));}}

@@ -131,6 +131,62 @@ class MainPayloadTests(unittest.TestCase):
     def test_installed_check_missing_dependency_fails(self):
         self.check(False, installed=True)
 
+    def installed_fixture(self):
+        # Source-derived helper fixture only, not an npm installation or real signature check.
+        mobile = self.root / 'mobile'
+        patches = mobile / 'native-patches'
+        target = mobile / 'node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor'
+        for name in json.loads((patches / 'capacitor-8.5.3-hashes.json').read_text()):
+            out = target / name; out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(patches / 'patched' / name, out)
+        for name in json.loads((patches / 'helper-hashes.json').read_text()):
+            out = target / name; out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(patches / name, out)
+        for row in json.loads((patches / 'runtime-hashes.json').read_text())['files']:
+            out = mobile / 'node_modules' / row['path']; out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(patches / row['payload'], out)
+        for package in ['android', 'core']:
+            (mobile / 'node_modules/@capacitor' / package / 'package.json').write_text('{"version":"8.5.3"}')
+        return mobile
+
+    def test_installed_source_derived_fixture_passes(self):
+        self.installed_fixture(); self.check(True, installed=True)
+
+    def test_changed_installed_native_runtime_rejected(self):
+        mobile = self.installed_fixture()
+        (mobile / 'node_modules/@capacitor/android/capacitor/src/main/assets/native-bridge.js').write_text('changed')
+        self.check(False, installed=True)
+
+    def test_changed_installed_core_runtime_rejected(self):
+        mobile = self.installed_fixture()
+        (mobile / 'node_modules/@capacitor/core/dist/capacitor.js').write_text('changed')
+        self.check(False, installed=True)
+
+    def test_changed_runtime_payload_rejected(self):
+        mobile = self.installed_fixture()
+        (mobile / 'native-patches/runtime/native-bridge.js').write_text('changed')
+        self.check(False, installed=True)
+
+    def test_duplicate_runtime_targets_rejected(self):
+        mobile = self.installed_fixture(); p = mobile / 'native-patches/runtime-hashes.json'
+        value = json.loads(p.read_text()); value['files'][1] = value['files'][0]; p.write_text(json.dumps(value))
+        self.check(False, installed=True)
+
+    def test_runtime_target_substitution_rejected(self):
+        mobile = self.installed_fixture(); p = mobile / 'native-patches/runtime-hashes.json'
+        value = json.loads(p.read_text()); value['files'][0]['path'] = '../outside.js'; p.write_text(json.dumps(value))
+        self.check(False, installed=True)
+
+    def test_runtime_symlink_rejected(self):
+        mobile = self.installed_fixture(); p = mobile / 'node_modules/@capacitor/core/dist/capacitor.js'
+        p.unlink(); p.symlink_to(mobile / 'native-patches/runtime/capacitor.js')
+        self.check(False, installed=True)
+
+    def test_installed_package_version_drift_rejected(self):
+        mobile = self.installed_fixture()
+        (mobile / 'node_modules/@capacitor/core/package.json').write_text('{"version":"9.0.0"}')
+        self.check(False, installed=True)
+
 
 if __name__ == '__main__':
     unittest.main()

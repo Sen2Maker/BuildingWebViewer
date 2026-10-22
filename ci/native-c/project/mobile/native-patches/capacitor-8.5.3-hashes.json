@@ -1,8 +1,8 @@
 {
   "Bridge.java": {
     "before": "619700a31548504d7f81552c696273d652c655ebe317a006bda3f9398bdecdf5",
-    "after": "9c9a1c869fedf40fde63c51b82eb37776b29cde98e353dcd7a1ae432bc0cfa4f",
-    "previous": "10d75f2aa4301f2992ea167a0bb38e04cfe873aa46b4b70cc85584ee53610738"
+    "after": "21301cb76e796635214d34dcf5c49d202dd512459545740a6337acb833bc4dac",
+    "previous": "9c9a1c869fedf40fde63c51b82eb37776b29cde98e353dcd7a1ae432bc0cfa4f"
   },
   "WebViewLocalServer.java": {
     "before": "3b7fb9b16fd96dc0ef18050120c06b6bf0b72c4b6690a2967219a21b3e65c3ab",
@@ -19,8 +19,8 @@
   },
   "MessageHandler.java": {
     "before": "5fa05c9148c4e24958f72b2d81747b416a73356693a8cb99249c557fdc9dec1a",
-    "after": "99b847df50ae570766acd101a6169115984fb013c76df75e083fd30fd4feaae1",
-    "previous": "407b8b826101f900cd05da6a56eaa97e2965a384926697c61ebd7818297e7a60"
+    "after": "395bef3e0c13d0354afddc5b222db8a6369bf11e624c3e767255ac782bbff3cc",
+    "previous": "99b847df50ae570766acd101a6169115984fb013c76df75e083fd30fd4feaae1"
   },
   "plugin/CapacitorCookies.java": {
     "before": "ae3433e4dda80307ab78230fac96e2b1f38dca345080012f45df8c56b0b4e2ee",

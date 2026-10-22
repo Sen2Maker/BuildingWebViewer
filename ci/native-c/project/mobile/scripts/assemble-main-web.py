@@ -252,6 +252,12 @@ def build_payload(project=PROJECT, mobile=MOBILE, dist=None):
     additions['assets/mobile/self-test.html'] = source_file(mobile / 'diagnostics-r1/self-test.html')
     for name in ('app-shell.js', 'app-shell.css'):
         additions['assets/mobile/' + name] = source_file(project / 'src/mobile' / name)
+    runtime_pins = json.loads(source_file(mobile / 'native-patches/runtime-hashes.json'))
+    require(runtime_pins.get('version') == '8.5.3', 'Unpinned runtime overlay version')
+    require({row['path'] for row in runtime_pins['files']} == {'@capacitor/android/capacitor/src/main/assets/native-bridge.js', '@capacitor/core/dist/capacitor.js'}, 'Unexpected runtime overlay targets')
+    for row in runtime_pins['files']:
+        require(digest(source_file(mobile / 'native-patches' / row['payload'])) == row['after'], 'Changed runtime overlay payload')
+        require(digest(source_file(mobile / 'node_modules' / row['path'])) == row['after'], 'Runtime overlay not installed or modified')
     core = mobile / 'node_modules/@capacitor/core'
     require(json.loads(source_file(core / 'package.json'))['version'] == '8.5.3', 'Unexpected Capacitor core version')
     additions['assets/js/capacitor.js'] = source_file(core / 'dist/capacitor.js')

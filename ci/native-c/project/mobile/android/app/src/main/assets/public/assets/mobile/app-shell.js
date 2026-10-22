@@ -19,6 +19,23 @@
   cap.nativePromise = (plugin, method, value) => ready.then(() => nativePromise(plugin, method, options(value)));
   // Capacitor's registerPlugin proxy already assimilates the asynchronous callback ID.
   cap.nativeCallback = (plugin, method, value, callback) => ready.then(() => nativeCallback(plugin, method, options(value), callback));
+  // A broken message channel cannot reliably carry an openRecovery request.
+  // Native console diagnostics separately exposes its platform recovery controls.
+  let failureNoticeShown = false;
+  window.addEventListener('bwvNativeTransportFailure', () => {
+    if (failureNoticeShown) return;
+    failureNoticeShown = true;
+    const show = () => {
+      for (const control of document.querySelectorAll('button,input,select,textarea')) control.disabled = true;
+      const dialog = document.createElement('dialog'); dialog.setAttribute('role','alertdialog');
+      const title = document.createElement('h2'); title.textContent = '连接中断 / Connection stopped';
+      const message = document.createElement('p'); message.textContent = '操作结果尚未确认，请勿重复提交。现有文件不会被清除。请用屏幕上的原生“诊断”按钮进入本地恢复，确认项目状态后继续。 / The operation outcome is not confirmed. Do not submit again. Existing files are retained. Use the native Diagnose button for local recovery and verify the project state.';
+      const close = document.createElement('button'); close.textContent = '关闭提示 / Close notice'; close.addEventListener('click', () => dialog.close?.());
+      dialog.append(title,message,close); document.body.appendChild(dialog);
+      if(typeof dialog.showModal==='function') dialog.showModal(); else dialog.setAttribute('open','');
+    };
+    if(document.body)show();else document.addEventListener('DOMContentLoaded',show,{once:true});
+  });
   const home = '/assets/mobile/index.html', language = () => new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'zh';
   const homeURL = () => `${home}?lang=${language()}`;
   const isHub = path => path === '/' || path === '/index.html' || path === '';

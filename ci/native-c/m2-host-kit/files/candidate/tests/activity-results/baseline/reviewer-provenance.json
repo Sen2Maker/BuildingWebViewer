@@ -1,0 +1,5 @@
+{
+  "reviewer_source": "/tmp/main-picker-owner-review/MainPickerOwnerRegression.java",
+  "reviewer_sha256": "bc93ac708da45ffc4f8d7472ee873c48cd7cd8d04e8a185ada5c769b656cedb9",
+  "claim": "Original supplied scaffold and assertions, with all seven production implementations replaced by runner-extracted frozen-source methods. All supplied method bodies verified equal to frozen source before templating."
+}

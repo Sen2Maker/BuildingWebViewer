@@ -898,6 +898,25 @@ public class Bridge {
         taskHandler.post(runnable);
     }
 
+    private java.util.function.Consumer<PluginCall> transportFailureListener;
+
+    /** Native application hook only; no JavaScript plugin or operation-retry capability. */
+    public void setTransportFailureListener(java.util.function.Consumer<PluginCall> listener) {
+        this.transportFailureListener = listener;
+    }
+
+    void notifyTransportFailure(PluginCall original) {
+        if (!BwvBridgeCallGuard.current(original, webView)) return;
+        try {
+            if (transportFailureListener != null) transportFailureListener.accept(original);
+        } catch (RuntimeException unavailable) {
+            Logger.error("Native transport failure observer unavailable; document revoked");
+        } finally {
+            // Missing/throwing UI observer must still revoke the failed native document.
+            if (BwvBridgeCallGuard.current(original, webView)) BwvBridgeCallGuard.destroyed(webView);
+        }
+    }
+
     public void executeOnMainThread(Runnable runnable) {
         Handler mainHandler = new Handler(context.getMainLooper());
 

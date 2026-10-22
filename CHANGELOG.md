@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Main M2 exact-source compile checkpoint
+
+- Replace only the CI native snapshot with reviewed394-file M2, including L1.R1 provider-exception handling and merged recovery caution/ownership. No root app migration.
+- Preserve109 reviewed M2 assets, source-delivery notices,32 exact JUnit records,16 actual-parent lifecycle checks and the unchanged121-task compile/lint/unit guard. Relative to R2, only core runtime, app shell and their public identity/inventory change.
+- Add exact runtime/native/activity/recovery host regressions and installed runtime hash checks. Earlier R2 Android success is not M2 acceptance; device, silent provider loss, APK/signing/install/release remain separate.
+
 - 修正 MainActivity 保存状态覆盖方法的访问级别为 public，与锁定版本 BridgeActivity 一致；实际 Android 编译发现该问题，先前主机检查未覆盖此继承规则。新增真实上游声明审计及会复现 protected 错误的编译负向回归，其他生产逻辑不变。
 - Fix only MainActivity's save-state override visibility to public, matching pinned BridgeActivity after actual Android compilation exposed the access reduction. Audit actual upstream lifecycle declarations and require a source-derived compile probe plus the protected-access negative control. No other production logic or task permissions change.
 

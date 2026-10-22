@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify exact reviewed M1.1 real offline payload, never synthesize/rebuild assets."""
+"""Verify exact reviewed M2 real payload/runtime; never synthesize/rebuild assets."""
 import argparse
 import hashlib
 import importlib.util
@@ -74,17 +74,34 @@ def verify(root, manifest_path, installed=False):
     if installed:
         target = mobile / 'node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor'
         patches = mobile / 'native-patches'
+        for package in ['android', 'core']:
+            require(json.loads((mobile / 'node_modules/@capacitor' / package / 'package.json').read_text()).get('version') == '8.5.3',
+                    'Installed Capacitor package version drift: ' + package)
         for name, pin in json.loads((patches / 'capacitor-8.5.3-hashes.json').read_text()).items():
             require(digest((target / name).read_bytes()) == pin['after'], 'Installed overlay mismatch: ' + name)
         for name, pin in json.loads((patches / 'helper-hashes.json').read_text()).items():
             require(digest((target / name).read_bytes()) == pin, 'Installed helper mismatch: ' + name)
+        runtime = json.loads((patches / 'runtime-hashes.json').read_text())
+        expected_runtime = {
+            '@capacitor/android/capacitor/src/main/assets/native-bridge.js': 'runtime/native-bridge.js',
+            '@capacitor/core/dist/capacitor.js': 'runtime/capacitor.js'}
+        require(runtime.get('schema') == 1 and runtime.get('version') == '8.5.3' and
+                len(runtime['files']) == 2 and {r['path']: r['payload'] for r in runtime['files']} == expected_runtime,
+                'Runtime overlay target set/version drift')
+        for row in runtime['files']:
+            payload_file = patches / row['payload']
+            installed_file = mobile / 'node_modules' / row['path']
+            require(not payload_file.is_symlink() and not installed_file.is_symlink(), 'Runtime overlay symlink')
+            require(digest(payload_file.read_bytes()) == row['after'] == digest(installed_file.read_bytes()),
+                    'Installed runtime overlay mismatch: ' + row['path'])
         require((mobile / 'node_modules/@capacitor/core/dist/capacitor.js').read_bytes() == payload['assets/js/capacitor.js'],
                 'Installed core is not the reviewed real payload core')
         require(not any('addJavascriptInterface(' in p.read_text() for p in target.rglob('*.java')),
                 'Unexpected origin-blind JavaScript interface in dependency')
     return {'status': 'passed', 'scope': 'Exact frozen real-main payload/source only; not runtime startup or device acceptance',
             'files': len(files), 'bytes': sum(map(len, files.values())), 'inventory_sha256': pins['inventorySha256'],
-            'build': pins['build'], 'fixture_only': False, 'installed_overlay_checked': installed}
+            'build': pins['build'], 'fixture_only': False, 'installed_overlay_checked': installed,
+            'installed_runtime_files_checked': 2 if installed else 0}
 
 
 def main():
