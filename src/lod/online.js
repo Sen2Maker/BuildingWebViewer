@@ -23,6 +23,8 @@ export function mountOnlineLod({descriptor,onReset,onMesh,onCloud,onRefinement,o
   document.querySelector('.sidebar').setAttribute('aria-label',text('在线建筑','Online buildings'));
   $('search').placeholder=text('搜索建筑 ID…','Search building IDs…');$('search').ariaLabel=text('搜索建筑 ID','Search building IDs');
   $('selected-models').setAttribute('aria-label',text('当前建筑','Current building'));
+  const stats=$('scene-stats');
+  if(stats.closest('.main-heading')){const meta=el('div',null,'','model-preview-meta');stats.before(meta);meta.append($('selected-models'),stats);}
   const previous=$('previous-mesh-id'),next=$('next-mesh-id'),counter=$('mesh-navigation-position');
   for(const button of [previous,next]){button.hidden=false;button.disabled=true;}
   $('previous-group').hidden=true;$('next-group').hidden=true;counter.textContent='0 / 0';
