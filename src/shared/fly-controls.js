@@ -1,3 +1,4 @@
+import { preferenceStorage } from './preference-storage.js';
 import { FlyCameraPose, flyCameraSettings, FLY_CAMERA_DEFAULTS } from './fly-camera.js';
 import { gsViewSpec } from './camera-geometry.js';
 
@@ -6,7 +7,7 @@ export function mountFlyCameraControls(viewer, container) {
   const en = document.documentElement.lang === 'en', tr = (zh, english) => en ? english : zh;
   const make = (tag, text, cls) => { const el = document.createElement(tag); if (text) el.textContent = text; if (cls) el.className = cls; return el; };
   const storage = 'BuildingWebViewer.camera.fly.v2';
-  let settings = flyCameraSettings(); try { settings = flyCameraSettings(JSON.parse(localStorage.getItem(storage))); } catch {}
+  let settings = flyCameraSettings(); try { settings = flyCameraSettings(JSON.parse(preferenceStorage().getItem(storage))); } catch {}
   const canvas = viewer.canvas, stage = canvas.parentElement, listeners = [], keys = new Set(), holds = new Map(), rolls = new Map();
   let active = false, frame = null, last = 0, sceneSpan = 1, locked = false, joystick = [0,0], lookPointer = null, stickPointer = null, savedCursor = '';
   const on = (el, event, fn, options) => { el.addEventListener(event, fn, options); listeners.push(() => el.removeEventListener(event, fn, options)); };
@@ -21,7 +22,7 @@ export function mountFlyCameraControls(viewer, container) {
     for (const input of [range,number]) {
       input.min=min; input.max=max; input.step=step; input.value=settings[key];
       input.setAttribute('aria-label',tr(zh,eng)+(input===range?tr('滑块',' slider'):tr('数值',' value')));
-      on(input,'input',()=>{const value=Number(input.value); if(input.value===''||!Number.isFinite(value)||value<min||value>max)return;settings=flyCameraSettings({...settings,[key]:value});(input===range?number:range).value=value;try{localStorage.setItem(storage,JSON.stringify(settings));}catch{}});
+      on(input,'input',()=>{const value=Number(input.value); if(input.value===''||!Number.isFinite(value)||value<min||value>max)return;settings=flyCameraSettings({...settings,[key]:value});(input===range?number:range).value=value;try{preferenceStorage().setItem(storage,JSON.stringify(settings));}catch{}});
       on(input,'change',()=>{input.value=settings[key];});
     }
     fields.push([key,range,number]); row.append(range,number,make('small',unit)); section.append(row);
@@ -32,7 +33,7 @@ export function mountFlyCameraControls(viewer, container) {
   const touchLabel=make('label',null,'gs-navigation-toggle'), touchMode=make('input');touchMode.type='checkbox';touchMode.checked=matchMedia('(pointer: coarse)').matches;
   touchLabel.append(touchMode,make('span',tr('使用触屏摇杆','Use touch controls')));section.append(touchLabel);
   section.append(make('p',tr('WASD / 方向键移动，空格上升，Shift 下降，Q 逆时针 / E 顺时针滚转相机，Esc 退出。鼠标向右即向右看，无惯性；按住 Ctrl 临时慢行。升降沿进入时的画面上方向，移动速度按模型大小换算。触屏：左摇杆移动，右侧拖动转头，可同时操作升降与 ↶ / ↷ 滚转。滚转改变相机倾斜，画面会向相反方向转动。','WASD / arrows move, Space rises, Shift descends, Q rolls the camera counterclockwise / E clockwise, Esc exits. Direct mouse look; hold Ctrl for precision travel. Vertical movement uses the entry view’s up direction. Speed scales with scene size. Touch: left stick moves, right side looks; rise/descend and ↶ / ↷ roll can be held together. Camera roll turns the image in the opposite direction.'),'presentation-help'));
-  const reset=make('button',tr('恢复漫游默认值','Reset fly controls'));reset.type='button';reset.onclick=()=>{settings=flyCameraSettings(FLY_CAMERA_DEFAULTS);for(const[k,r,n]of fields)r.value=n.value=settings[k];try{localStorage.setItem(storage,JSON.stringify(settings));}catch{}};section.append(reset);container.append(section);
+  const reset=make('button',tr('恢复漫游默认值','Reset fly controls'));reset.type='button';reset.onclick=()=>{settings=flyCameraSettings(FLY_CAMERA_DEFAULTS);for(const[k,r,n]of fields)r.value=n.value=settings[k];try{preferenceStorage().setItem(storage,JSON.stringify(settings));}catch{}};section.append(reset);container.append(section);
   const hud=make('div',null,'gs-fly-hud');hud.hidden=true;
   const top=make('div',null,'gs-fly-top'), status=make('span',null,'gs-fly-status'), exit=make('button',tr('退出漫游 · Esc','Exit fly · Esc'));exit.type='button';top.append(status,exit);
   const cross=make('div','+','gs-fly-cross');cross.setAttribute('aria-hidden','true');

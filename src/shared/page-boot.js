@@ -2,7 +2,7 @@
 (() => {
   const root = document.documentElement, sourceTitle = document.title;
   let saved = null;
-  try { saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
+  try { if (!new URLSearchParams((location.hash || '').slice(1)).has('preview')) saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
   const query = new URLSearchParams(location.search).get('lang');
   const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
   root.lang = language === 'en' ? 'en' : 'zh-CN';

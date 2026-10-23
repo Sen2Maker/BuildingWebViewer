@@ -1,3 +1,4 @@
+import { preferenceStorage } from './preference-storage.js';
 /** Shared display-only options. Geometry and exported point attributes stay unchanged. */
 export const PRESENTATION_DEFAULTS = Object.freeze({pointStyle:'disc', pointRatio:100, lineStyle:'native', lineWidth:2, lineGradient:false, lineEndColor:'#417ec4', surfaceStyle:'matte', axes:true, ruler:true, legend:true, pointCountLabel:true});
 export const PRESENTATION_STORAGE_KEY = 'BuildingWebViewer.presentation.v1';
@@ -19,11 +20,11 @@ function portablePresentation(options) {
   return clean;
 }
 let presentationPreferences = {...PRESENTATION_DEFAULTS};
-try { Object.assign(presentationPreferences,portablePresentation(JSON.parse(globalThis.localStorage?.getItem(PRESENTATION_STORAGE_KEY)||'null'))); } catch {}
+try { Object.assign(presentationPreferences,portablePresentation(JSON.parse(preferenceStorage()?.getItem(PRESENTATION_STORAGE_KEY)||'null'))); } catch {}
 export function currentPresentation() { return {...presentationPreferences}; }
 export function rememberPresentation(options) {
   presentationPreferences = {...presentationPreferences, ...normalizePresentation(options)};
-  try { globalThis.localStorage?.setItem(PRESENTATION_STORAGE_KEY,JSON.stringify(portablePresentation(presentationPreferences))); } catch {}
+  try { preferenceStorage()?.setItem(PRESENTATION_STORAGE_KEY,JSON.stringify(portablePresentation(presentationPreferences))); } catch {}
 }
 export function displaySampleIndices(total, ratio) {
   if (!Number.isSafeInteger(total) || total < 0 || total > 0xffffffff || !Number.isFinite(ratio) || ratio < 1 || ratio > 100) throw Error('Invalid display sampling size or percentage');

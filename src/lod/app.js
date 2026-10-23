@@ -1,3 +1,4 @@
+import { mountOnlinePreview, applyPreviewPreset } from '../shared/online-preview.js';
 import { meshReferenceModels } from './mesh-data.js';
 import { CloudFileCache } from '../cloud/cloud-cache.js';
 import { createViewerComparison } from '../shared/viewer-comparison.js';
@@ -353,3 +354,9 @@ for(const id of ['mesh-point-color-mode','mesh-point-color','mesh-point-style'])
 for(const id of ['mesh-point-size','mesh-point-opacity'])$(id).oninput=updateOptions;
 
 init();
+
+mountOnlinePreview({viewer:'lod',cancelParse:()=>{controller?.abort();generation++;$('loading').hidden=true;},replaceFile:async(file,preset,signal)=>{
+  removeModelEntries([...catalog]);folderReady([file]);if(signal.aborted)return;
+  applyPreviewPreset(preset);selected=new Set(catalog.map(entry=>entry.id));lastMeshId=[...selected].at(-1)||null;syncMeshFiles();renderSelection();renderList();await loadSelection();
+  if(!signal.aborted){applyPreviewPreset(preset);$('source-path').textContent=t('在线共享预览 · 仅本次页面');}
+}});

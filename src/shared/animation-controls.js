@@ -1,3 +1,4 @@
+import { preferenceStorage, isPreviewSession } from './preference-storage.js';
 import {caNewProject,caValidateProject,caFrameCount,caTime,caSample,caPutKey,caMoveKey,caResize,caOrbit,caParse,caSerialize} from './camera-animation.js';
 import {caExportAnimation} from './animation-export.js';
 import {saveLocalBlob} from './file-save.js';
@@ -10,7 +11,7 @@ export function mountCameraAnimation({adapter,toolbar,anchor,storageKey='BWV.cam
  const btn=(text,action,cls)=>{const n=el('button',text,cls);n.type='button';if(action)n.onclick=action;return n;};
  const select=options=>{const n=el('select');for(const[value,zh,eng]of options){const o=el('option',tr(zh,eng));o.value=value;n.append(o);}return n;};
  let project=caNewProject(adapter.space),cursor=1,selected=null,playing=false,raf=null,playStart=0,exporter=null,resultURL=null,cacheError=false,drag=null;
- const past=[],future=[];const storage=()=>globalThis.localStorage;
+ const past=[],future=[];const storage=()=>preferenceStorage();
  try{const saved=storage().getItem(storageKey);if(saved)project=caParse(saved);}catch{cacheError=true;}
  const toggle=btn(tr('相机动画','Camera animation'),()=>setOpen(panel.hidden),'ca-toggle');toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls','camera-animation');toolbar.append(toggle);
  const panel=el('section',null,'camera-animation');panel.id='camera-animation';panel.hidden=true;panel.setAttribute('aria-label',tr('相机动画时间轴','Camera animation timeline'));anchor.after(panel);
@@ -49,7 +50,7 @@ export function mountCameraAnimation({adapter,toolbar,anchor,storageKey='BWV.cam
  const result=el('div',null,'ca-result'),download=el('a'),video=el('video'),resultInfo=el('p',null,'ca-help');result.hidden=true;video.controls=true;video.muted=true;video.playsInline=true;result.append(download,resultInfo,video);panel.append(result);
  const savedNote=el('p',null,'ca-cache-note');panel.append(savedNote);
  function message(text,bad=false){status.textContent=text;status.classList.toggle('ca-error',bad);}
- function cache(){try{storage().setItem(storageKey,caSerialize(project));cacheError=false;}catch{cacheError=true;}savedNote.textContent=cacheError?tr('缓存不可用；请保存动画 JSON 备份。','Browser storage unavailable; save animation JSON as a backup.'):tr('动画自动保存在当前浏览器 · 模型文件仍需自行加载','Animation autosaves in this browser · Reload model files separately');}
+ function cache(){try{storage().setItem(storageKey,caSerialize(project));cacheError=false;}catch{cacheError=true;}savedNote.textContent=cacheError?tr('缓存不可用；请保存动画 JSON 备份。','Browser storage unavailable; save animation JSON as a backup.'):isPreviewSession()?tr('共享预览：动画仅保留在当前页面，请导出 JSON 保存','Shared preview: animation is temporary; export JSON to keep it'):tr('动画自动保存在当前浏览器 · 模型文件仍需自行加载','Animation autosaves in this browser · Reload model files separately');}
  function commit(next){const clean=caValidateProject(next);if(JSON.stringify(clean)===JSON.stringify(project))return;past.push(caSerialize(project));if(past.length>50)past.shift();future.length=0;project=clean;cursor=Math.min(cursor,total());cache();refresh();}
  function history(direction){if(exporter)return;stop();const from=direction<0?past:future,to=direction<0?future:past;if(!from.length)return;to.push(caSerialize(project));project=caParse(from.pop());cursor=Math.min(cursor,total());selected=null;cache();refresh();safeApply();}
  function total(){return caFrameCount(project.duration,project.fps);}

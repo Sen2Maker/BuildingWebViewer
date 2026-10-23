@@ -1,3 +1,4 @@
+import { preferenceStorage } from './preference-storage.js';
 import { CameraNavigation, cameraNavigationSettings, cameraNavigationScale, CAMERA_NAV_STORAGE } from './camera-navigation.js';
 import { gsViewSpec, gsDot3, gsProjectPosition } from './camera-geometry.js';
 import { gsReanchorOrbit, gsSetOrbitBasis, gsOrbitRotate } from './orbit-camera.js';
@@ -16,12 +17,12 @@ export function navigationMatrix(viewer) {
 }
 /** Attach navigation to a renderer without owning its geometry, importing or GPU lifecycle. */
 export function installCameraNavigation(viewer) {
-  let saved;try{saved=JSON.parse(localStorage.getItem(CAMERA_NAV_STORAGE));}catch{}
+  let saved;try{saved=JSON.parse(preferenceStorage().getItem(CAMERA_NAV_STORAGE));}catch{}
   viewer.navigation=new CameraNavigation(saved);viewer.projection='orthographic';viewer.fov=55;viewer.distance=100;viewer.near=.001;viewer.origin ||= [0,0,0];
   viewer.hasNavigationData=()=>!!(viewer.pointCount||viewer.edgeCount||viewer.triangleCount);
   viewer.worldCenter=()=>{const bounds=viewer.sceneBounds||viewer.bounds;return bounds?bounds[0].map((v,i)=>(v+bounds[1][i])/2):[0,0,0];};
   viewer.stopNavigation=()=>{viewer.fly?.leave();viewer.navigation.reset();};
-  viewer.setNavigation=options=>{viewer.stopNavigation();viewer.navigation.settings=cameraNavigationSettings({...viewer.navigation.settings,...options});if(options.pivot==='model')gsReanchorOrbit(viewer,{model:true});try{localStorage.setItem(CAMERA_NAV_STORAGE,JSON.stringify(viewer.navigation.settings));}catch{}viewer.requestRender();};
+  viewer.setNavigation=options=>{viewer.stopNavigation();viewer.navigation.settings=cameraNavigationSettings({...viewer.navigation.settings,...options});if(options.pivot==='model')gsReanchorOrbit(viewer,{model:true});try{preferenceStorage().setItem(CAMERA_NAV_STORAGE,JSON.stringify(viewer.navigation.settings));}catch{}viewer.requestRender();};
   viewer.beginOrbit=(pan=false)=>{if(!viewer.hasNavigationData()||viewer.fly?.active)return;viewer.navigation.reset();if(!pan&&viewer.navigation.settings.pivot!=='fixed')gsReanchorOrbit(viewer,{model:viewer.navigation.settings.pivot==='model'});};
   viewer.focusOrbit=(x=null,y=null)=>{if(!viewer.hasNavigationData())return false;viewer.stopNavigation();const hit=gsReanchorOrbit(viewer,{x,y});if(hit)viewer.setNavigation({pivot:'fixed'});viewer.onOrbitAnchor?.(hit);viewer.requestRender();return hit;};
   viewer.applyNavigation=delta=>{const[az,el,x,y,z]=delta;if(az||el){const basis=viewer.basis(),yaw=basis.map(v=>gsOrbitRotate(v,basis[1],az*Math.PI/180));gsSetOrbitBasis(viewer,yaw.map(v=>gsOrbitRotate(v,yaw[0],-el*Math.PI/180)));}viewer.camera.pan[0]+=x;viewer.camera.pan[1]+=y;viewer.camera.zoom=Math.max(.02,Math.min(100,viewer.camera.zoom*Math.exp(z)));if(viewer.camera.zoom===.02||viewer.camera.zoom===100)viewer.navigation.pending[4]=0;};

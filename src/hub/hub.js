@@ -1,3 +1,4 @@
+import { mountOnlineBuilder } from '../shared/online-preview.js';
 import { initializeLocale, getLanguage, setLanguage } from '../shared/i18n.js';
 const switchLanguage = document.getElementById('language-toggle');
 function renderHubLanguage() {
@@ -13,3 +14,5 @@ switchLanguage.onclick = () => {
   renderHubLanguage();
 };
 renderHubLanguage();
+
+mountOnlineBuilder();

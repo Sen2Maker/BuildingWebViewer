@@ -1,3 +1,5 @@
+import { mountOnlinePreview, applyPreviewPreset } from '../shared/online-preview.js';
+import { preferenceStorage, isPreviewSession } from '../shared/preference-storage.js';
 import { createViewerComparison } from '../shared/viewer-comparison.js';
 import { migrateObjectImportState } from '../shared/object-import-state.js';
 import { createBatchProgress } from '../shared/batch-progress.js';
@@ -48,7 +50,7 @@ initializeLocale();
   let wireMode = 'single', wirePreferences = {wires: [null, null, null], cloud: null, compare: false, count: 2};
   const selectedWireEntries = new Set();
   let wireChoices={wires:[],clouds:[]};
-  if(isWire)try{wirePreferences=normalizeWirePreferences(JSON.parse(localStorage.getItem('BuildingWebViewer.wirePreferences')||'null'));}catch{}
+  if(isWire)try{wirePreferences=normalizeWirePreferences(JSON.parse(preferenceStorage().getItem('BuildingWebViewer.wirePreferences')||'null'));}catch{}
   const pointProject = new ViewerProject(); let projectControls = null;
   let options = {...currentPalettePreferences(), showPoints: true, showWire: isWire, pointSize: 2, pointOpacity: 1,
     colorMode: isWire ? 'solid' : 'height', pointColor: '#547d99', wireColor: '#e49b44', rgbFields: null, grid: true };
@@ -164,7 +166,7 @@ initializeLocale();
     if((!changed || changed==='cloud-file') && wireChoices.clouds.length && $('cloud-file').value!=='overlay')wirePreferences.cloud = wirePreference(wireChoices.clouds, $('cloud-file').value);
     if((!changed || changed==='compare-mode') && !$('compare-mode').disabled)wirePreferences.compare = $('compare-mode').checked;
     if(!changed || changed==='compare-count')wirePreferences.count = Number($('compare-count').value);
-    try{localStorage.setItem('BuildingWebViewer.wirePreferences',JSON.stringify(wirePreferences));}catch{}
+    try{preferenceStorage().setItem('BuildingWebViewer.wirePreferences',JSON.stringify(wirePreferences));}catch{}
   }
   function configureWireChoices(entry) {
     const unique = key => [...new Map([entry,...[...selectedWireEntries].filter(item=>item!==entry)].flatMap(item=>item[key]).map(file=>[file.name.toLowerCase(),file])).values()];
@@ -700,7 +702,7 @@ initializeLocale();
     }});
     if (isWire) mountPointDrop({zone: document.querySelector('.sidebar'), status: $('drop-status'), accepts: name => /\.(obj|zip)$/i.test(name) || pointExtension.test(name), onFiles: importRecords});
     clear(); update();
-    if (!isWire && new URLSearchParams(location.search).get('generated') === '1') {
+    if (!isPreviewSession() && !isWire && new URLSearchParams(location.search).get('generated') === '1') {
       genTakeHandoff().then(files => {
         const url = new URL(location.href);
         url.searchParams.delete('generated');
@@ -747,5 +749,13 @@ initializeLocale();
       }
       list();$('source-note').textContent=t('项目自动保存在此设备');
     },onBackground:()=>{processingControls?.cancel();for(const [file] of cached.records)if(!cached.active.has(file))cached.forget(file);}}).then(session=>{mobileSession=session;});
+    mountOnlinePreview({viewer:isWire?'wireframe':'pointcloud',cancelParse:()=>{loadController?.abort();revision++;processingControls?.cancel();$('loading').hidden=true;},replaceFile:async(file,preset,signal)=>{
+      clear();for(const entry of entries)for(const old of [entry.file,...entry.wires||[],...entry.clouds||[]])if(old)cached.forget(old);
+      entries=[];receive([file],false);$('point-limit').value='1000000';if(signal.aborted)return;
+      applyPreviewPreset(preset);
+      if(isWire){if(entries[0])await choose(entries[0]);}
+      else{selectedCloudEntries.clear();if(entries[0])selectedCloudEntries.add(entries[0]);await loadCloudSelection();}
+      if(!signal.aborted){applyPreviewPreset(preset);$('source-note').textContent=t('在线共享预览 · 仅本次页面');}
+    }});
   } catch (cause) { error(cause.message); }
 })();

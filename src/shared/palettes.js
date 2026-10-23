@@ -1,3 +1,4 @@
+import { preferenceStorage } from './preference-storage.js';
 import { t } from './i18n.js';
 /** Shared, evenly spaced color stops for GPU rendering and matching UI legends. */
 export const PALETTE_DEFINITIONS = Object.freeze({
@@ -30,14 +31,14 @@ export function normalizePaletteOptions(options = {}) {
 }
 export function currentPalettePreferences() {
   try {
-    const stored=JSON.parse(globalThis.localStorage?.getItem(PALETTE_STORAGE_KEY)||'null');
+    const stored=JSON.parse(preferenceStorage()?.getItem(PALETTE_STORAGE_KEY)||'null');
     if(stored && typeof stored==='object')return {...normalizePaletteOptions({palette:stored.palette,reverse:stored.reverse}),range:null};
   } catch {}
   return {palette:'current',reverse:false,range:null};
 }
 export function rememberPalettePreferences(options) {
   const {palette,reverse}=normalizePaletteOptions(options);
-  try { globalThis.localStorage?.setItem(PALETTE_STORAGE_KEY,JSON.stringify({palette,reverse})); } catch {}
+  try { preferenceStorage()?.setItem(PALETTE_STORAGE_KEY,JSON.stringify({palette,reverse})); } catch {}
 }
 
 export function validatePaletteOptions(options) {

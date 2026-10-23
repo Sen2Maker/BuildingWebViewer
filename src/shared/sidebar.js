@@ -1,3 +1,4 @@
+import { preferenceStorage } from './preference-storage.js';
 import { t } from './i18n.js';
 export function projectSidebarWidth(value, available, inspector = false) {
   const maximum = Math.max(240, Math.min(500, available - 360 - (inspector && available >= 1200 ? 348 : 0)));
@@ -17,9 +18,9 @@ export function mountProjectSidebar({workspace, sidebar, toggle, collapse, separ
   const win = sidebar.ownerDocument.defaultView || window;
   const media = win.matchMedia?.('(max-width: 700px)');
   let preferences = projectSidebarPreferences();
-  try { preferences = projectSidebarPreferences(JSON.parse(win.localStorage.getItem(PROJECT_SIDEBAR_STORAGE))); } catch {}
+  try { preferences = projectSidebarPreferences(JSON.parse(preferenceStorage(win).getItem(PROJECT_SIDEBAR_STORAGE))); } catch {}
   let preferredWidth = preferences.width, width = preferredWidth, folded = false, resizing = null;
-  const save = () => { try { win.localStorage.setItem(PROJECT_SIDEBAR_STORAGE, JSON.stringify(preferences)); } catch {} };
+  const save = () => { try { preferenceStorage(win).setItem(PROJECT_SIDEBAR_STORAGE, JSON.stringify(preferences)); } catch {} };
   const foldKey = () => media?.matches ? 'mobileCollapsed' : 'desktopCollapsed';
   function apply() {
     width = projectSidebarWidth(preferredWidth, workspace.clientWidth, workspace.classList.contains('inspector-open'));

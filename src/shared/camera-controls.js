@@ -1,3 +1,4 @@
+import { preferenceStorage } from './preference-storage.js';
 import { gsSetOrbitBasis } from './orbit-camera.js';
 import { saveLocalBlob } from './file-save.js';
 import { t } from './i18n.js';
@@ -270,7 +271,7 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
   }
   function syncStored({notifyDeleted = true} = {}) {
     try {
-      const stored = win.localStorage.getItem(key);
+      const stored = preferenceStorage(win).getItem(key);
       const latest = stored ? parseCameraBookmarks(stored, space) : {bookmarks: [], preserveView: true};
       // Rebase only unsaved local edits, never this panel's entire cached array.
       const merged = new Map(latest.bookmarks.map(bookmark => [bookmark.id, bookmark]));
@@ -289,7 +290,7 @@ export function mountCameraControls({container, bookmarkContainer = null, getVie
     // When reading fails, do not overwrite records we cannot safely reconcile.
     if (!syncStored()) return false;
     try {
-      win.localStorage.setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView));
+      preferenceStorage(win).setItem(key, serializeCameraBookmarks(bookmarks, space, preserveView));
       pendingBookmarks.clear(); pendingPreserve = null;
       storageHelp.textContent = t('保存在此浏览器，下次打开仍可使用。可导出 JSON 备份或转移到其他浏览器。'); return true;
     } catch { storageUnavailable(); return false; }

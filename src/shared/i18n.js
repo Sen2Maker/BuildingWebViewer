@@ -1,3 +1,4 @@
+import { preferenceStorage } from './preference-storage.js';
 import { initializeAppLinks } from './app-navigation.js';
 import { EN_MESSAGES } from '../locales/en.js';
 
@@ -7,12 +8,12 @@ export function resolveLanguage(search = '', stored = null) {
   return ['zh','en'].includes(requested) ? requested : stored === 'en' ? 'en' : 'zh';
 }
 let savedLanguage = null;
-try { savedLanguage = globalThis.localStorage?.getItem(LANGUAGE_KEY); } catch {}
+try { savedLanguage = preferenceStorage()?.getItem(LANGUAGE_KEY); } catch {}
 let currentLanguage = resolveLanguage(globalThis.location?.search, savedLanguage);
 export const getLanguage = () => currentLanguage;
 export function setLanguage(language) {
   currentLanguage = language === 'en' ? 'en' : 'zh';
-  try { globalThis.localStorage?.setItem(LANGUAGE_KEY, currentLanguage); } catch {}
+  try { preferenceStorage()?.setItem(LANGUAGE_KEY, currentLanguage); } catch {}
   return currentLanguage;
 }
 /** Source-language keys keep messages readable; positional arguments are never translated. */

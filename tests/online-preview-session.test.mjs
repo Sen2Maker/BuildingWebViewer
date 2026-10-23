@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { preferenceStorage, isPreviewSession } from '../src/shared/preference-storage.js';
+function host(hash=''){const data=new Map([['saved','original']]);return {location:{hash},localStorage:{getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)},data};}
+test('shared session never reads or writes saved preferences and is isolated by document',()=>{const a=host('#preview=bad-json'),b=host('#preview=another');assert.equal(preferenceStorage(a).getItem('saved'),null);preferenceStorage(a).setItem('saved','temporary');assert.equal(a.data.get('saved'),'original');assert.equal(preferenceStorage(b).getItem('saved'),null);assert.equal(preferenceStorage(a).getItem('saved'),'temporary');});
+test('removing preview fragment cannot turn existing handlers into persistent writers',()=>{const a=host('#preview=bad');preferenceStorage(a).setItem('saved','temporary');a.location.hash='';assert.equal(isPreviewSession(a),true);preferenceStorage(a).setItem('saved','new');assert.equal(a.data.get('saved'),'original');});
+test('ordinary pages and native App retain previous storage',()=>{const a=host();assert.equal(preferenceStorage(a),a.localStorage);const app=host('#preview=x');app.Capacitor={isNativePlatform:()=>true};assert.equal(preferenceStorage(app),app.localStorage);});
+test('viewer sources do not directly write persistent localStorage',()=>{for(const dir of ['shared','cloud','lod'])for(const file of fs.readdirSync(new URL('../src/'+dir+'/',import.meta.url))){if(!file.endsWith('.js')||['preference-storage.js','page-boot.js'].includes(file))continue;const source=fs.readFileSync(new URL('../src/'+dir+'/'+file,import.meta.url),'utf8');assert.doesNotMatch(source,/localStorage\s*(?:\?\.)?\.?(?:setItem|removeItem|clear)/,file);}});
+test('preview bypasses destructive generated handoff and latches before storage access',()=>{const source=fs.readFileSync(new URL('../src/cloud/cloud-app.js',import.meta.url),'utf8');assert.match(source,/!isPreviewSession\(\) && !isWire && new URLSearchParams/);});
