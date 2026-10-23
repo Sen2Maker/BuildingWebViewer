@@ -144,6 +144,9 @@ export class SelfTestRunner {
         for (const key of ['secureTraversal','unixLinkCount','fileNoFollow','directoryNoFollow','exclusiveCreation','atomicRename','directoryForce']) {
           if (bool(reply[key])===null) throw new Stop('INVALID_PROVIDER_EVIDENCE'); evidence[key]=reply[key];
         }
+        if (reply.singleLinkCountObserved !== true || !['VERIFIED','UNSUPPORTED_ACCESS_DENIED','UNSUPPORTED_PROVIDER'].includes(reply.hardLinkFixture)) throw new Stop('INVALID_PROVIDER_EVIDENCE');
+        if (reply.unixLinkCount !== (reply.hardLinkFixture === 'VERIFIED')) throw new Stop('INVALID_PROVIDER_EVIDENCE');
+        evidence.singleLinkCountObserved = true; evidence.hardLinkFixture = reply.hardLinkFixture;
         const supported=Object.values(evidence).every(value=>value!==false);
         return result(supported?STATUS.PASS:STATUS.UNSUPPORTED,supported?'PROVIDER_CAPABILITIES_OBSERVED':'REQUIRED_PROVIDER_CAPABILITY_MISSING',evidence);
       },

@@ -38,7 +38,7 @@ public final class BwvApplication extends Application {
                 ProcessRuntime runtime = new ProcessRuntime(assets, "disabled: Android external-update adapters are not yet enabled");
                 ready.complete(runtime);
             } catch (Exception | LinkageError error) { failure = error.getClass().getSimpleName() + ": " + error.getMessage(); ready.completeExceptionally(error); }
-            try { filesystem = FilesystemCapabilityProbe.run(getFilesDir().toPath()); }
+            try { filesystem = AndroidFilesystemProbe.run(getFilesDir().toPath()); }
             catch (Exception error) { failure += "; update filesystem probe unavailable: " + error.getClass().getSimpleName(); }
         });
     }

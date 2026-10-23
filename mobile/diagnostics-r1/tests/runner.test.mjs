@@ -134,3 +134,19 @@ test('filesystem rejects unknown or private failure codes without echo', async (
  assert.equal(find(report,'native.filesystem').code,'INVALID_PROVIDER_EVIDENCE');
  assert.equal(find(report,'native.filesystem').status,STATUS.FAIL);assert.ok(!serializeReport(report).includes('secret-path'));
 });
+
+for (const fixture of ['UNSUPPORTED_ACCESS_DENIED','UNSUPPORTED_PROVIDER']) {
+ test(`hardlink fixture ${fixture} never becomes PASS or full acceptance`,async()=>{
+  const {adapter}=simulatedNative();const prior=adapter.probeFilesystem;
+  adapter.probeFilesystem=async()=>({...await prior(),unixLinkCount:false,singleLinkCountObserved:true,hardLinkFixture:fixture});
+  const report=await new SelfTestRunner(host({native:adapter})).run();const item=find(report,'native.filesystem');
+  assert.equal(item.status,STATUS.UNSUPPORTED);assert.equal(item.evidence.singleLinkCountObserved,true);assert.equal(item.evidence.unixLinkCount,false);assert.equal(item.evidence.hardLinkFixture,fixture);
+  assert.notEqual(report.summary.automaticOutcome,'PASSED');assert.equal(report.cleanup,'VERIFIED');
+ });
+}
+for(const override of [{singleLinkCountObserved:false},{hardLinkFixture:'VERIFIED',unixLinkCount:false},{hardLinkFixture:'UNSUPPORTED_ACCESS_DENIED',unixLinkCount:true},{hardLinkFixture:'/private/secret'}]) {
+ test(`inconsistent hardlink evidence fails ${JSON.stringify(override)}`,async()=>{
+  const {adapter}=simulatedNative();const prior=adapter.probeFilesystem;adapter.probeFilesystem=async()=>({...await prior(),...override});
+  const report=await new SelfTestRunner(host({native:adapter})).run();assert.equal(find(report,'native.filesystem').status,STATUS.FAIL);assert.ok(!serializeReport(report).includes('/private/secret'));
+ });
+}

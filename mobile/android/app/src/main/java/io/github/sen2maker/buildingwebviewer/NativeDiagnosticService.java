@@ -54,10 +54,10 @@ final class NativeDiagnosticService {
     }
     JSONObject filesystem(String handle,String runId)throws Exception {require(handle,runId);return operation(handle,scratch->{
         FilesystemCapabilityProbe.Result r;
-        try { r=FilesystemCapabilityProbe.run(scratch.root()); }
+        try { r=AndroidFilesystemProbe.run(scratch.root()); }
         catch (FilesystemCapabilityProbe.ProbeFailure failure) { scratch.checkCancelled(); return new JSONObject().put("failureCode", failure.code()); }
         scratch.checkCancelled();
-        return new JSONObject().put("providerClass",r.providerClass).put("directoryStreamClass",r.directoryStreamClass).put("secureTraversal",r.secureTraversal).put("unixLinkCount",r.unixLinkCount).put("fileNoFollow",r.fileNoFollow).put("directoryNoFollow",r.directoryNoFollow).put("exclusiveCreation",r.exclusiveCreation).put("atomicRename",r.atomicRename).put("directoryForce",r.directoryForce);
+        return new JSONObject().put("providerClass",r.providerClass).put("directoryStreamClass",r.directoryStreamClass).put("secureTraversal",r.secureTraversal).put("unixLinkCount",r.unixLinkCount).put("singleLinkCountObserved",r.singleLinkCountObserved).put("hardLinkFixture",r.hardLinkFixture).put("fileNoFollow",r.fileNoFollow).put("directoryNoFollow",r.directoryNoFollow).put("exclusiveCreation",r.exclusiveCreation).put("atomicRename",r.atomicRename).put("directoryForce",r.directoryForce);
     });}
     JSONObject store(String handle,String runId)throws Exception {require(handle,runId);return operation(handle,scratch->DiagnosticStoreProbe.run(app,scratch));}
     JSONObject asset(String handle,String runId,String kind,int maxBytes)throws Exception {require(handle,runId);if(maxBytes<1||maxBytes>65536)throw new IOException("ASSET_LIMIT");return operation(handle,scratch->{

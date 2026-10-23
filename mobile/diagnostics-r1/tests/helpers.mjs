@@ -16,7 +16,7 @@ export function simulatedNative(overrides={}) {
     async openRun(ctx){calls.push('open');return {runId:ctx.runId};},
     async runtimeSnapshot(){return {environment:{platform:'android',apkPackage:'unit.test.fixture',apkVersion:'0.0.0-test',apkVersionCode:1,apkBuildSha256:'d'.repeat(64),androidRelease:'SIMULATED',androidApi:35,webviewPackage:'test.webview',webviewVersion:'0.0',nativeApi:13,contentId:'a'.repeat(64)},runtime:{...fixtureSnapshot}};},
     async roundTrip(ctx){return {runId:ctx.runId,challenge:ctx.challenge,runtime:{...fixtureSnapshot}};},
-    async probeFilesystem(){return {providerClass:'test.SimulatedProvider',directoryStreamClass:'test.SimulatedStream',secureTraversal:true,unixLinkCount:true,fileNoFollow:true,directoryNoFollow:true,exclusiveCreation:true,atomicRename:true,directoryForce:true};},
+    async probeFilesystem(){return {providerClass:'test.SimulatedProvider',directoryStreamClass:'test.SimulatedStream',secureTraversal:true,unixLinkCount:true,singleLinkCountObserved:true,hardLinkFixture:'VERIFIED',fileNoFollow:true,directoryNoFollow:true,exclusiveCreation:true,atomicRename:true,directoryForce:true};},
     async probeScratchStore(){return Object.fromEntries(['scratchRootChecked','contextFilesIsolated','contextCacheIsolated','applicationContextIsolated','created','reopened','stateRoundtrip','backupRestored','cleanupVerified'].map(key=>[key,true]));},
     async closeRun(){calls.push('close');return {removed:true};},...overrides
   };

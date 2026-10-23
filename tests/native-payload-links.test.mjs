@@ -10,7 +10,7 @@ test('root native source matches M2 plus exact diagnostic-only delta',()=>{
  const baseline=json('ci/native-c/native-files.json');
  const delta=json('ci/root-native/diagnostic-source-delta.json');
  const reviewed=new Map(delta.changes.map(row=>[row.path,row]));
- assert.equal(reviewed.size,5);
+ assert.equal(reviewed.size,7);
  const seen=new Set();
  for(const row of baseline.files){
   if(row.path==='mobile/bundled-pins.json'||row.path.startsWith('mobile/web/')||row.path.startsWith('mobile/android/app/src/main/assets/public/'))continue;
@@ -19,6 +19,9 @@ test('root native source matches M2 plus exact diagnostic-only delta',()=>{
   assert.equal(sha(read(row.path)),change?.after??row.sha256,row.path);
  }
  assert.equal(seen.size,reviewed.size);
+ assert.equal(delta.additions.length,1);
+ assert.equal(delta.additions[0].path,"mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/AndroidFilesystemProbe.java");
+ assert.equal(sha(read(delta.additions[0].path)),delta.additions[0].sha256);
 });
 test('both native payload copies have verified CAD web links, not sibling local routes',()=>{
  for(const prefix of ['mobile/web/','mobile/android/app/src/main/assets/public/']){

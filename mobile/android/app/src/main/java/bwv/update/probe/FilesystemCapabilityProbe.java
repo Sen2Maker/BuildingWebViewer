@@ -26,16 +26,19 @@ public final class FilesystemCapabilityProbe {
         public final String directoryStreamClass;
         public final boolean secureTraversal;
         public final boolean unixLinkCount;
+        public final boolean singleLinkCountObserved;
+        public final String hardLinkFixture;
         public final boolean fileNoFollow;
         public final boolean directoryNoFollow;
         public final boolean exclusiveCreation;
         public final boolean atomicRename;
         public final boolean directoryForce;
         private Result(String providerClass, String directoryStreamClass, boolean secureTraversal,
-                boolean unixLinkCount, boolean fileNoFollow, boolean directoryNoFollow,
+                boolean unixLinkCount, boolean singleLinkCountObserved, String hardLinkFixture, boolean fileNoFollow, boolean directoryNoFollow,
                 boolean exclusiveCreation, boolean atomicRename, boolean directoryForce) {
             this.providerClass = providerClass; this.directoryStreamClass = directoryStreamClass;
             this.secureTraversal = secureTraversal; this.unixLinkCount = unixLinkCount;
+            this.singleLinkCountObserved = singleLinkCountObserved; this.hardLinkFixture = hardLinkFixture;
             this.fileNoFollow = fileNoFollow; this.directoryNoFollow = directoryNoFollow;
             this.exclusiveCreation = exclusiveCreation; this.atomicRename = atomicRename; this.directoryForce = directoryForce;
         }
@@ -46,6 +49,10 @@ public final class FilesystemCapabilityProbe {
                 + ",directoryNoFollow=" + directoryNoFollow + ",createNew=" + exclusiveCreation
                 + ",atomicRename=" + atomicRename + ",directoryForce=" + directoryForce; }
     }
+    public enum LinkCreation { CREATED, ACCESS_DENIED, NOT_SUPPORTED }
+    @FunctionalInterface public interface HardLinkCreator {
+        LinkCreation create(Path link, Path existing) throws IOException;
+    }
     public enum Stage { ROOT, CREATE_TREE, WRITE_FILE, EXCLUSIVE_CREATE, HARD_LINK, SYMBOLIC_LINK, DIRECTORY_STREAM, SECURE_READ, FILE_NOFOLLOW, DIRECTORY_NOFOLLOW, ATOMIC_RENAME, DIRECTORY_FORCE, CLEANUP }
     public static final class ProbeFailure extends IOException {
         private final Stage stage;
@@ -54,6 +61,14 @@ public final class FilesystemCapabilityProbe {
     }
     /** Caller supplies application filesDir, not an untrusted URI or external-storage path. */
     public static Result run(Path applicationFilesDir) throws IOException {
+        return run(applicationFilesDir, (link, existing) -> {
+            try { Files.createLink(link, existing); return LinkCreation.CREATED; }
+            catch (java.nio.file.AccessDeniedException denied) { return LinkCreation.ACCESS_DENIED; }
+            catch (UnsupportedOperationException unavailable) { return LinkCreation.NOT_SUPPORTED; }
+        });
+    }
+    /** Trusted native adapter only; never accepts a JavaScript callback or user path. */
+    public static Result run(Path applicationFilesDir, HardLinkCreator creator) throws IOException {
         Stage stage = Stage.ROOT;
         try {
         if (!applicationFilesDir.isAbsolute() || !applicationFilesDir.normalize().equals(applicationFilesDir)
@@ -75,11 +90,21 @@ public final class FilesystemCapabilityProbe {
             } catch (java.nio.file.FileAlreadyExistsException expectedFailure) { exclusive = true; }
             stage = Stage.HARD_LINK;
             boolean links = false;
-            try {
-                Path hard = right.resolve("hardlink"); Files.createLink(hard, original);
+            if (linkCount(original) != 1) throw new IOException("Fresh fixture is not single-linked");
+            boolean singleLinkCountObserved = true;
+            Path hard = right.resolve("hardlink");
+            LinkCreation creation = creator.create(hard, original);
+            String hardLinkFixture;
+            if (creation == LinkCreation.CREATED) {
                 links = linkCount(original) == 2 && linkCount(hard) == 2;
                 Files.delete(hard); links &= linkCount(original) == 1;
-            } catch (UnsupportedOperationException unsupported) { /* capability remains false */ }
+                if (!links) throw new IOException("Hardlink count transition mismatch");
+                hardLinkFixture = "VERIFIED";
+            } else if (creation == LinkCreation.ACCESS_DENIED || creation == LinkCreation.NOT_SUPPORTED) {
+                if (!Files.notExists(hard, LinkOption.NOFOLLOW_LINKS) || linkCount(original) != 1)
+                    throw new IOException("Unavailable hardlink fixture changed files");
+                hardLinkFixture = creation == LinkCreation.ACCESS_DENIED ? "UNSUPPORTED_ACCESS_DENIED" : "UNSUPPORTED_PROVIDER";
+            } else { throw new IOException("Invalid hardlink fixture result"); }
             stage = Stage.SYMBOLIC_LINK;
             Path fileLink = left.resolve("file-link"), directoryLink = left.resolve("directory-link");
             Files.createSymbolicLink(fileLink, original); Files.createSymbolicLink(directoryLink, right);
@@ -121,7 +146,7 @@ public final class FilesystemCapabilityProbe {
                 directoryForce = true;
             } catch (IOException | UnsupportedOperationException unsupported) { directoryForce = false; }
             return new Result(applicationFilesDir.getFileSystem().provider().getClass().getName(), streamClass,
-                    secure, links, fileNoFollow, directoryNoFollow, exclusive, atomic, directoryForce);
+                    secure, links, singleLinkCountObserved, hardLinkFixture, fileNoFollow, directoryNoFollow, exclusive, atomic, directoryForce);
         } finally {
             // Only the just-created probe tree. Never follows its intentionally created symbolic links.
             try { Files.walkFileTree(own, new SimpleFileVisitor<Path>() {

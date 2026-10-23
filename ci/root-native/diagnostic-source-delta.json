@@ -1,11 +1,16 @@
 {
-  "baseCommit": "5c6c60929d83fb9441d52dcc48aa0dbc5eeffe1b",
-  "purpose": "Preserve original M2 baseline; exact reviewed diagnostic-only source changes",
+  "baseCommit": "2e63c1148d0e470f500352a5d3cfec611869720d",
+  "purpose": "Original M2 retained; typed hardlink fixture denial and diagnostic evidence, fail closed",
   "changes": [
     {
       "path": "mobile/android/app/src/main/java/bwv/update/probe/FilesystemCapabilityProbe.java",
       "before": "0a00585d040d8419c33b862cbf9dbd0ff47429f8916cf23141e9494a0f2cfbd8",
-      "after": "635fd266902c77dc4b428e7ab69573c5d29480fc14a129476bef57ede97fd200"
+      "after": "d3dcf42f045baffde59ad597c83d1758c8ed0f3291b97358ccf7ea91d5477d25"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BwvApplication.java",
+      "before": "ae2f774cef5915be7419cf60a7f58826672d95940dadccc99a73a5ae2875ce38",
+      "after": "84160ea810b42012c054e51b13d35a46719fa1f2f005f1dd3a9abd85d5ea8d45"
     },
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticRunner.java",
@@ -15,17 +20,28 @@
     {
       "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticService.java",
       "before": "f7f417e85d14397f7a77b6c4273f7916f853050ff571ef68321f3624d940fef0",
-      "after": "9cd4841ecf03a2ba3ffe970d0a5c8ca9d1abd9b7559de06d590df34b02233bcc"
+      "after": "7c2aa01fb88e609466d02d1ff0e11c2c66f30ed0070851d1fdef1c6d70e08de8"
     },
     {
       "path": "mobile/diagnostics-r1/src/self-test-runner.mjs",
       "before": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f",
-      "after": "3a7c10e9c26f3371cb12b435a3333fdba86b33d6510bfd34987f44266b7ba7ea"
+      "after": "c55ec784e0107bb2b74223f97eee7ad9ed53fe3f4a9afe8b462285c3990528f4"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/helpers.mjs",
+      "before": "71200fd2f20085e8526c41675bc512c260b9011ad5d5c63dfb1fd6b1d44ee412",
+      "after": "5c74aa379da99ac27c9c1e38deae68bc725525e0971987934640f8ccb46af76e"
     },
     {
       "path": "mobile/diagnostics-r1/tests/runner.test.mjs",
       "before": "a2dbee9948bfc54edd95af37781605f6965cf7c5bc8cc2db7e1882102870b840",
-      "after": "517ab015ab89ca4c12432e6ba061937e1b6f486b4912e2aee8aaa850e1ebfadd"
+      "after": "c6e6e7660b19a01a9713228bce4397627977e38ef6d25273f322bc354550cfee"
+    }
+  ],
+  "additions": [
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/AndroidFilesystemProbe.java",
+      "sha256": "982652f87208f305ff52bd74cc758dcf1b2aa9f172daeb4d2b4754392ab34b79"
     }
   ]
 }
