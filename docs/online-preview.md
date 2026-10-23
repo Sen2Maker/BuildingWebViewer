@@ -2,6 +2,14 @@
 
 Open the website home page and choose **Online preview / Share**. Paste an HTTPS raw-data URL, choose point cloud, mesh or wireframe and its actual file format, and optionally enter a small visual preset. The generated link opens the appropriate existing viewer. It does not upload data or grant access to a private file.
 
+## Direct point-cloud / mesh comparison
+
+Use **Compare · Share**, choose the paired comparison mode, supply the public index URL and initial building ID, and share the generated `compare.html#compare=...` link. Opening it starts that building directly: point cloud on the left, mesh on the right. It does not require the recipient to browse a catalog first. Both panes remain side by side on phones, with a compact ID, Previous/Next and ID search control rather than a large instructions banner.
+
+The index is loaded first. The current mesh is fetched, integrity-checked and displayed before waiting for its point cloud. Point parsing uses a module worker when available and deterministic display sampling (250,000 points by default, bounded to at most 1,000,000). Sampling never rewrites the original object and does not reduce network bytes. A short point-count label identifies sampling. Both panes use the same mesh-derived origin and real scale; camera synchronization preserves alignment and does not refit when the delayed point cloud arrives.
+
+Only immediate neighboring building IDs are eligible for speculative caching. Raw-byte cache is limited to 32 MiB and at most three pairs; background requests are bounded and current selection takes priority. Files larger than the cache budget can still load in the foreground up to existing resource caps, without being retained for prefetch. Changing IDs or leaving the page cancels obsolete work. Saving local preferences, downloading the whole directory and native App remote loading are not enabled by this feature.
+
 ## What v1 supports
 
 - Point cloud: XYZ, TXT, CSV, PTS, PLY, PCD. The existing parser determines the supported variants and columns.

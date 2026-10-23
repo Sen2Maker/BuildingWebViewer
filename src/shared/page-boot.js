@@ -2,12 +2,12 @@
 (() => {
   const root = document.documentElement, sourceTitle = document.title;
   let saved = null;
-  try { if (!new URLSearchParams((location.hash || '').slice(1)).has('preview')) saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
+  try { if (!['preview','compare'].some(key=>new URLSearchParams((location.hash || '').slice(1)).has(key))) saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
   const query = new URLSearchParams(location.search).get('lang');
   const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
   root.lang = language === 'en' ? 'en' : 'zh-CN';
   if (language === 'en') {
-    const titles = {'lod.html':'Mesh Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio','cad.html':'CAD Viewer'};
+    const titles = {'compare.html':'Point Cloud & Mesh Comparison','lod.html':'Mesh Viewer','wireframe.html':'Wireframe Viewer','pointcloud.html':'Point Cloud Viewer','gaussian.html':'Gaussian Splatting Viewer','generate.html':'Point Cloud Studio','cad.html':'CAD Viewer'};
     document.title = (titles[location.pathname?.split('/').pop()] || 'BuildingWebViewer') + ' · 3D Data Workspace';
   }
   root.classList.add('boot-pending');

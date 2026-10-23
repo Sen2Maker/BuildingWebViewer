@@ -30,5 +30,9 @@
   "cad-editor.html": {
     "title": "二维绘图实验室 / 2D Editor Lab · BuildingWebViewer",
     "description": "实验性二维直线编辑：精确坐标、移动、撤销重做及本机 JSON 项目保存。不是 DXF/DWG 编辑器。"
+  },
+  "compare.html": {
+    "title": "点云与网格对比 / Point Cloud & Mesh Comparison",
+    "description": "同一建筑点云与网格的在线并排对比，共同坐标与同步视角。"
   }
 }

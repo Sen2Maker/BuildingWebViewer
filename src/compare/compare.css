@@ -1,0 +1,42 @@
+:root {color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #273e44; background: #f2f5f6;}
+* {box-sizing: border-box;}
+html, body {margin: 0; width: 100%; height: 100%; overflow: hidden;}
+body {display: flex; flex-direction: column; height: 100dvh;}
+#compare-app {display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; min-width: 0;}
+.compare-toolbar {display: flex; align-items: center; gap: 10px; flex: 0 0 54px; padding: 7px 16px; background: #fff; border-bottom: 1px solid #dce4e5; z-index: 3;}
+.compare-toolbar button, .compare-search input {font: inherit; color: inherit; border: 1px solid #d5dfe1; background: #fff; border-radius: 7px;}
+.compare-step {flex: 0 0 36px; height: 36px; font-size: 25px !important; line-height: 1; cursor: pointer;}
+.compare-toolbar button:hover:not(:disabled) {background: #edf5f2; border-color: #92b9aa;}
+.compare-toolbar button:disabled {opacity: .35; cursor: default;}
+.compare-id {min-width: 0; max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; letter-spacing: .02em;}
+.compare-counter {font-size: 11px; color: #6a7f85; white-space: nowrap; font-variant-numeric: tabular-nums;}
+.compare-search {position: relative; min-width: 90px; width: 210px; margin-left: auto;}
+.compare-search input {width: 100%; min-width: 0; height: 34px; padding: 0 10px; font-size: 13px;}
+.compare-toolbar :focus-visible, .compare-canvas:focus-visible {outline: 2px solid #45856d; outline-offset: 2px;}
+.compare-suggestions {position: absolute; top: calc(100% + 6px); right: 0; width: max(100%, 160px); max-width: 80vw; padding: 4px; background: #fff; border: 1px solid #d5dfe1; border-radius: 8px; box-shadow: 0 8px 25px #274e4320;}
+.compare-suggestions button {display: block; width: 100%; padding: 8px; text-align: left; overflow-wrap: anywhere; border: 0; border-radius: 4px; font-size: 13px; cursor: pointer;}
+.compare-notice {flex: 0 0 auto; margin: 0; padding: 7px 16px; border-bottom: 1px solid #e0e5e5; color: #735d3e; background: #fbf8f0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere;}
+.compare-panes {display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); flex: 1 1 auto; min-height: 0; min-width: 0; gap: 1px; background: #d2dddf;}
+.compare-pane {position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #f2f5f6;}
+.compare-pane-heading {position: absolute; inset: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 5px 10px; padding: 11px 14px; z-index: 2; pointer-events: none;}
+.compare-pane-heading h1 {margin: 0; font-size: 12px; font-weight: 650; letter-spacing: .03em;}
+.compare-state {font-size: 11px; line-height: 1.4; color: #698089; overflow-wrap: anywhere;}
+.compare-canvas {display: block; width: 100%; height: 100%; touch-action: none;}
+.compare-pane-message {position: absolute; z-index: 2; top: 42px; left: 14px; right: 14px; margin: 0; padding: 8px 10px; border: 1px solid #e5d9c6; border-radius: 6px; color: #79613e; background: #fffaf1ef; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; max-height: 40%; overflow: auto;}
+.compare-pane .scene-guides {display: none;}
+body > footer {flex: 0 0 auto; min-height: 27px; padding: 4px 14px; background: #fff; border-top: 1px solid #dce4e5;}
+body > footer .project-links {justify-content: flex-end; font-size: 10px; line-height: 17px;}
+[hidden] {display: none !important;}
+@media (max-width: 600px) {
+  .compare-toolbar {gap: 6px; padding: 6px 8px; flex-basis: 48px;}
+  .compare-step {flex-basis: 32px; height: 34px;}
+  .compare-id {font-size: 13px; max-width: 30vw;}
+  .compare-counter {display: none;}
+  .compare-search {width: 32%; min-width: 76px;}
+  .compare-search input {padding: 0 7px; font-size: 12px;}
+  .compare-pane-heading {padding: 9px 8px; gap: 3px 7px;}
+  .compare-state {font-size: 10px;}
+  .compare-pane-message {left: 8px; right: 8px; top: 53px; padding: 6px; font-size: 11px;}
+  body > footer {padding: 3px 8px;}
+  body > footer .project-links {font-size: 9px; gap: 9px;}
+}

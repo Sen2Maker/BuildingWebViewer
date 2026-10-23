@@ -3,6 +3,7 @@
   "app": "main",
   "pages": [
     "index.html",
+    "compare.html",
     "lod.html",
     "wireframe.html",
     "pointcloud.html",
@@ -16,7 +17,8 @@
     "cloud": "src/cloud/cloud-app.js",
     "gaussian": "src/gaussian/app.js",
     "generate": "src/generate/app.js",
-    "mobile": "src/mobile/home.js"
+    "mobile": "src/mobile/home.js",
+    "compare": "src/compare/app.js"
   },
   "assets": [
     "assets/css/camera-animation.css",
