@@ -4,7 +4,7 @@ import hashlib,importlib.util,json,subprocess,tempfile,unittest,zipfile
 from pathlib import Path
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('verify',Path(__file__).with_name('verify-unsigned-apk.py'));v=importlib.util.module_from_spec(spec);spec.loader.exec_module(v)
-BADGING="package: name='io.github.sen2maker.buildingwebviewer' versionCode='1' versionName='1.0.0'\nsdkVersion:'30'\ntargetSdkVersion:'36'\n"
+BADGING="package: name='io.github.sen2maker.buildingwebviewer' versionCode='2' versionName='1.0.0'\nsdkVersion:'30'\ntargetSdkVersion:'36'\n"
 class Tests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);(self.root/'ci').mkdir();self.apk=self.root/'app-release-unsigned.apk'
@@ -37,6 +37,8 @@ class Tests(unittest.TestCase):
   with self.assertRaises(ValueError):self.runcheck(error='Java not found')
  def test_manifest_package(self):
   with self.assertRaises(ValueError):self.runcheck(badging=BADGING.replace('buildingwebviewer','bad'))
+ def test_old_version(self):
+  with self.assertRaises(ValueError):self.runcheck(badging=BADGING.replace("versionCode='2'","versionCode='1'"))
  def test_sdk(self):
   with self.assertRaises(ValueError):self.runcheck(badging=BADGING.replace("sdkVersion:'30'","sdkVersion:'29'"))
  def test_debuggable(self):

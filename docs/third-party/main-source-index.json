@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "proposed_additive_overlay_not_applied_not_published",
+  "status": "Component source index; notices integrated, source archives prepared for separate release assets",
   "application_license_selected": false,
   "third_party_rights_overridden": false,
   "current_final_apk_resolution": "unknown_not_proven_by_historical_apk",
@@ -130,5 +130,6 @@
     "Mediabunny MPL preferred source must be made available with source notice; full material now obtained, delivery not yet applied.",
     "Preserve applicable Cordova/coroutines Apache NOTICE and license texts and relevant native BSD copyright/disclaimer texts.",
     "Final distributions must not purport to restrict upstream rights through application NC terms."
-  ]
+  ],
+  "source_archives_layout": "Archive paths are relative to the separate source kit, not the runtime Web/APK tree"
 }

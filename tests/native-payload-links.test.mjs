@@ -6,11 +6,11 @@ const root=new URL('../',import.meta.url);
 const read=p=>readFileSync(new URL(p,root));
 const json=p=>JSON.parse(read(p));
 const sha=b=>createHash('sha256').update(b).digest('hex');
-test('root native source matches M2 plus exact diagnostic-only delta',()=>{
+test('root native source matches M2 plus exact diagnostics and release version delta',()=>{
  const baseline=json('ci/native-c/native-files.json');
  const delta=json('ci/root-native/diagnostic-source-delta.json');
  const reviewed=new Map(delta.changes.map(row=>[row.path,row]));
- assert.equal(reviewed.size,7);
+ assert.equal(reviewed.size,9);
  const seen=new Set();
  for(const row of baseline.files){
   if(row.path==='mobile/bundled-pins.json'||row.path.startsWith('mobile/web/')||row.path.startsWith('mobile/android/app/src/main/assets/public/'))continue;

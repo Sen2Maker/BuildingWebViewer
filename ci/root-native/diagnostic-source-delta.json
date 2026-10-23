@@ -1,6 +1,6 @@
 {
   "baseCommit": "2e63c1148d0e470f500352a5d3cfec611869720d",
-  "purpose": "Original M2 retained; typed hardlink fixture denial and diagnostic evidence, fail closed",
+  "purpose": "Original M2 retained; typed hardlink fixture evidence plus exact versionCode 2 release successor",
   "changes": [
     {
       "path": "mobile/android/app/src/main/java/bwv/update/probe/FilesystemCapabilityProbe.java",
@@ -36,6 +36,16 @@
       "path": "mobile/diagnostics-r1/tests/runner.test.mjs",
       "before": "a2dbee9948bfc54edd95af37781605f6965cf7c5bc8cc2db7e1882102870b840",
       "after": "c6e6e7660b19a01a9713228bce4397627977e38ef6d25273f322bc354550cfee"
+    },
+    {
+      "path": "mobile/android/app/build.gradle",
+      "before": "b88674fbab9b8d57deacf3f49c8a04b58853080a11686845a1917e448997b107",
+      "after": "3cecb4217aa8149c8c5efa10ad038dd00cd15cf7b09a4eb71032c15cd6822f03"
+    },
+    {
+      "path": "mobile/scripts/assemble-main-web.py",
+      "before": "a8fbbb0a3a48b5c538715291c42aac24d3394fd3acb2d5583e9834beac6f3978",
+      "after": "0094926248efe81948ded9a8eec4ee463e1f8f537837fbcbea28cbb8002a08e8"
     }
   ],
   "additions": [

@@ -1,8 +1,8 @@
-PROPOSED ADDITIONAL MAIN-PROJECT THIRD-PARTY NOTICES
+ADDITIONAL MAIN-PROJECT THIRD-PARTY NOTICES
 
-Local review materials only: not applied to a release. The application's own license is not selected or changed. Third-party terms and rights remain separate from any proposed noncommercial terms for independently owned application code.
+Component notice and provenance information. This is not a declaration of release approval. The application's own license is not selected or changed. Third-party terms and rights remain separate from any proposed noncommercial terms for independently owned application code.
 
-Mediabunny 1.61.4: Copyright (c) 2026-present, Vanilagy and contributors. MPL 2.0. See MEDIABUNNY-1.61.4-LICENSE.txt. Full preferred source at commit d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1, including shared TypeScript omitted by the npm tarball, is retained in the separate source kit. Before release, add the verified same-version public source URL; this is not a completed source offer.
+Mediabunny 1.61.4: Copyright (c) 2026-present, Vanilagy and contributors. MPL 2.0. See MEDIABUNNY-1.61.4-LICENSE.txt. Full preferred source at commit d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1, including shared TypeScript omitted by the npm tarball, is retained in the separate source kit. Verified same-version upstream source: https://github.com/Vanilagy/mediabunny/tree/d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1. Final source-kit delivery and notice UI integration still require review; this is not final release clearance.
 
 Apache Cordova Android 14.0.1: preserve CORDOVA-14.0.1-NOTICE.txt and CORDOVA-14.0.1-LICENSE.txt.
 

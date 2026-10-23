@@ -1,0 +1,45 @@
+{
+  "status": "Prepared exact sources; separate release assets, not runtime assets; verify published URLs before claiming delivery",
+  "archives": [
+    {
+      "path": "source-archives/kotlin-stdlib-2.0.21-sources.jar",
+      "bytes": 633845,
+      "sha256": "5995c780c3ac742fb277ced561ebd7b0739227ea7c93a6bd9c7cee6593493fce",
+      "source_url": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.0.21/kotlin-stdlib-2.0.21-sources.jar",
+      "origin": "new official pinned upstream download",
+      "execution": "not executed; archive files inspected only"
+    },
+    {
+      "path": "source-archives/libarchive-9525f90c-source.tar.gz",
+      "bytes": 5920582,
+      "sha256": "944db9ab58a3cbdb5d947db4f04a3cc15f83b3147fcf7830ada592ba8d4a102c",
+      "source_url": "https://codeload.github.com/libarchive/libarchive/tar.gz/9525f90ca4bd14c7b335e2f8c84a4607b0af6bdf",
+      "origin": "new official pinned upstream download",
+      "execution": "not executed; archive files inspected only"
+    },
+    {
+      "path": "source-archives/libarchive-android-d3ee9c47-source.tar.gz",
+      "bytes": 101812,
+      "sha256": "0f888473865d88c464f47db786de79832ec23d368f62bfa7f6f298e970d62ac1",
+      "source_url": "https://codeload.github.com/zhanghai/libarchive-android/tar.gz/d3ee9c472173fcaf28e737f59dd34ef6cf3d1c88",
+      "origin": "new official pinned upstream download",
+      "execution": "not executed; archive files inspected only"
+    },
+    {
+      "path": "source-archives/mediabunny-1.61.4.tgz",
+      "bytes": 2186598,
+      "sha256": "974fbe5071a7be0d3de7cbf9567f65e7ca83a215a042f6a2d947e3387acda2c9",
+      "source_url": "https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.4.tgz",
+      "origin": "reused verified npm archive",
+      "execution": "not executed; archive files inspected only"
+    },
+    {
+      "path": "source-archives/mediabunny-d901f02d-source.tar.gz",
+      "bytes": 64666092,
+      "sha256": "c31e30589bc061b44a1c495346446f59e63a59dcfccb09c8e7aa7570a86dc694",
+      "source_url": "https://codeload.github.com/Vanilagy/mediabunny/tar.gz/d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1",
+      "origin": "new official pinned upstream download",
+      "execution": "not executed; archive files inspected only"
+    }
+  ]
+}

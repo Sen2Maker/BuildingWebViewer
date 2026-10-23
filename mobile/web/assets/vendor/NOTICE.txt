@@ -1,5 +1,7 @@
 Mediabunny 1.61.4 — Copyright (c) 2026-present, Vanilagy and contributors.
 Mozilla Public License 2.0; see MEDIABUNNY-LICENSE.txt.
-Unmodified upstream TypeScript source: docs/third-party/mediabunny-1.61.4.tgz in the project source distribution.
+Mediabunny is vendored from the integrity-pinned npm archive recorded in docs/third-party/mediabunny.json.
+Full preferred upstream source, including shared TypeScript omitted from the npm archive: https://github.com/Vanilagy/mediabunny/tree/d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1
+The npm archive is retained in the project source distribution, not necessarily in the runtime Web/APK package.
 Source package: https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.4.tgz
 Only encoding and container-writing code is bundled. All processing is local; no CDN or upload is used.

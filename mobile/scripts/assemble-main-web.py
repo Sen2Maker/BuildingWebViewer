@@ -279,11 +279,11 @@ def build_payload(project=PROJECT, mobile=MOBILE, dist=None):
         'schema': 1, 'product': 'BuildingWebViewer',
         'packageId': 'io.github.sen2maker.buildingwebviewer',
         'generation': 'stable-v1', 'channel': 'stable', 'version': package['version'],
-        'build': build, 'nativeApi': 1, 'minNativeVersionCode': 1,
+        'build': build, 'nativeApi': 1, 'minNativeVersionCode': 2,
     })
     payload['release-notes.json'] = json_bytes({'version': package['version'], 'notes': {
-        'en': 'Full offline main App integration candidate. Actual viewer pages, native Gaussian shaders and R1 device diagnostics are bundled. CAD is a separate app. External updates and CAD download remain unavailable. Not a signed or published release; device acceptance remains pending.',
-        'zh': '完整离线主 App 集成候选：包含实际查看器页面、原生高斯着色器及 R1 手机自检。CAD 为独立 App。外部更新与 CAD 下载尚未开放。本候选未签名、未发布，真机验收待完成。',
+        'en': 'Offline 3D tools with local project management and restored project-first layout. CAD is a separate app. External updates, destructive cleanup and CAD download remain disabled. Android hardlink-fixture restrictions are reported honestly as UNSUPPORTED; other storage checks remain enforced. Back up projects before uninstalling or changing devices.',
+        'zh': '离线三维工具与本地项目管理，恢复项目优先布局。CAD 为独立 App。外部更新、破坏性清理与 CAD 下载仍关闭。Android 硬链接样本限制如实显示为 UNSUPPORTED，其余存储检查继续执行。卸载或换机前请导出并验证项目备份。',
     }})
     validate_pages(payload)
     canonical_inventory(payload)

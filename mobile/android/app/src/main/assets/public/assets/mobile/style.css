@@ -4,3 +4,28 @@
 
 body{min-height:100vh;display:flex;flex-direction:column}main{width:100%;flex:1}footer{width:100%;max-width:900px;margin:auto;padding-top:0}.footer-actions{display:flex;justify-content:center;gap:10px}.footer-actions button{font-size:12px}.mobile-more{margin:18px 0 12px;text-align:left;border-top:1px solid #dbe6df;padding-top:12px}.mobile-more summary{cursor:pointer;text-align:center;font-size:12px}.mobile-more .mobile-actions{justify-content:center}.mobile-more p{margin:10px 0}.mobile-footer-links{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 0}.mobile-footer-links a,.mobile-more a{color:#527b67;text-decoration:none}.project-management{border-top:1px solid #edf2ee;margin-top:16px;padding-top:10px}.project-management summary{font-size:12px;cursor:pointer;color:#74887d}.mobile-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.mobile-tools button:last-child{grid-column:1/-1}.mobile-tools button{font-size:13px}#status:empty{display:none}@media(max-width:480px){header{padding:14px;gap:8px}header h1{font-size:16px}main{padding:16px}footer{padding:0 16px 16px}article{padding:14px}}
 .footer-actions,.mobile-footer-links{gap:0}.footer-actions>*+*{margin-left:10px}.mobile-footer-links>*+*{margin-left:12px}
+
+/* Restore the v1.10 project-first App hierarchy; retain native safety controls. */
+header>div{min-width:0}
+header h1{overflow-wrap:anywhere}
+header a{flex-shrink:0;padding:10px 0;min-height:44px}
+header img{flex-shrink:0}
+button,.mobile-action-link{min-height:44px;white-space:normal;overflow-wrap:anywhere}
+button:disabled{cursor:not-allowed}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #527b67;outline-offset:3px}
+.primary-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.primary-actions button{font-size:14px}
+#import-project{background:#3d7058;color:#fff;border-color:#3d7058}
+.mobile-tools button,.mobile-actions>*{min-width:0}
+#projects>p{padding:24px 16px;margin:20px 0;background:#fff;border:1px dashed #cbddd1;border-radius:15px;text-align:center}
+#status:not(:empty){padding:12px;background:#fff;border:1px solid #dbe6df;border-radius:8px}
+.footer-actions{display:flex;flex-wrap:wrap;gap:10px}
+.footer-actions>*+*{margin-left:0}
+.footer-actions>*{flex:1 1 120px;max-width:280px}
+.mobile-more summary,.project-management summary{min-height:44px;padding:10px 0}
+.mobile-more .mobile-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.mobile-action-link{display:flex;align-items:center;justify-content:center;padding:10px 13px;border:1px solid #cbddd1;border-radius:8px;background:#f2f7f3;font-size:12px;text-align:center}
+.mobile-more p,#version-info{overflow-wrap:anywhere}
+.mobile-other-tools{margin-bottom:0}
+@media(max-width:360px){header{flex-wrap:wrap}header a{margin-left:48px;padding:0;display:flex;align-items:center}header h1{font-size:15px}.mobile-more .mobile-actions{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}

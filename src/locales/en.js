@@ -1,5 +1,20 @@
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 export const EN_MESSAGES = {
+  "本地项目 · 三维工具": "Local projects · 3D tools",
+  "版本与更新": "Version & updates",
+  "更新状态": "Update status",
+  "本地版本说明": "Local release notes",
+  "更多工具": "More tools",
+  "CAD App 独立安装和管理文件，不会自动传送本机项目。": "The CAD app is installed separately and manages its own files. Local projects are not transferred automatically.",
+  "下载 CAD App": "Download CAD app",
+  "设备自检": "Device self-test",
+  "原生恢复与导出": "Native recovery & export",
+  "清理暂不可用": "Cleanup unavailable",
+  "永久删除暂不可用": "Permanent deletion unavailable",
+  "为保护中断写入的项目，清理与清空回收站暂时关闭。仍可移入回收站和恢复。": "Cleanup and emptying the trash are disabled to protect interrupted project writes. Moving to trash and restoring remain available.",
+  "卸载或换机前，请导出项目并确认备份可重新导入。系统自动备份和迁移已排除。": "Before uninstalling or changing devices, export your projects and verify that the backups can be imported. System backup and migration are excluded.",
+  "补充声明与源码交付状态": "Additional notices & source delivery status",
+
   '打开 CAD': 'Open CAD',
   '体验更多三维工具': 'Explore more 3D tools',
   '在独立 CAD 应用中预览图纸、模型与二维绘图。文件不会自动传送。': 'Open drawings, models and 2D editing in the independent CAD app. Files are not transferred automatically.',

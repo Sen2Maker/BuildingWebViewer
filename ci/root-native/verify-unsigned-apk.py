@@ -48,7 +48,7 @@ def inspect(apk, root, aapt, apksigner):
   native=[{'path':n,'bytes':z.getinfo(n).file_size,'sha256':hashlib.sha256(z.read(n)).hexdigest()} for n in names if n.startswith('lib/') and n.endswith('.so')]
   if z.testzip() is not None: raise ValueError('APK CRC failure')
  badging=subprocess.run([str(aapt),'dump','badging',str(apk)],check=True,capture_output=True,text=True).stdout
- if not re.search(r"^package: name='io.github.sen2maker.buildingwebviewer' versionCode='1' versionName='1.0.0'",badging,re.M): raise ValueError('Unexpected package identity/version')
+ if not re.search(r"^package: name='io.github.sen2maker.buildingwebviewer' versionCode='2' versionName='1.0.0'",badging,re.M): raise ValueError('Unexpected package identity/version')
  if "sdkVersion:'30'" not in badging or "targetSdkVersion:'36'" not in badging or 'application-debuggable' in badging: raise ValueError('Unexpected SDK/debug flag')
  signature=subprocess.run([str(apksigner),'verify','--verbose',str(apk)],capture_output=True,text=True)
  if signature.returncode==0: raise ValueError('APK unexpectedly verifies as signed')

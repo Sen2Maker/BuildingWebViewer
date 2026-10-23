@@ -1,19 +1,21 @@
-# BuildingWebViewer: Vite and native App source candidate
+# BuildingWebViewer
 
-This root is a locally validated source-migration candidate, not a published v1.0 release, deployed Pages update, signed APK, or device acceptance. Version 1.0.0 is the existing candidate version; no release or tag is created here.
+CAD-free 3D web tools and an Android application, built from Vite sources. The CAD application is maintained separately at https://github.com/Sen2Maker/WebCadToolBox.
 
-## Web development
+## Development
 
-Use Node 22.12+ and Python 3. Run `npm ci --ignore-scripts`, `npm test`, `npm run build`, then `npm run preview`. Vite source is in `src/`; generated output is `dist/`. Do not hand-edit output or serve the repository root as the built site.
+Use Node 22.12+ and Python 3. Run `npm ci --ignore-scripts`, `npm test`, `npm run build`, then `npm run preview`. Sources are in `src/`, generated web output in `dist/`. Do not hand-edit generated assets.
 
-The configured project homepage is https://sen2maker.github.io/BuildingWebViewer/ and the separate CAD website is https://sen2maker.github.io/WebCadToolBox/. These links do not transfer drawings. The Main App intentionally includes no CAD engine/editor, and the CAD App download remains unavailable until a production package exists.
+## Android
 
-## Native source
+The application uses the retained Main signing identity and package `io.github.sen2maker.buildingwebviewer`. Version 1.0.0/code2 succeeds the internal code1 builds. Actual-root CI compiles, lints, tests and assembles an unsigned release-variant APK, then verifies package identity and frozen resources. Signing and public release are separate steps; a green source build is not evidence of publication.
 
-`mobile/` preserves the M2 native implementation already compiled/tested on the isolated native CI branch, with a freshly reassembled web payload correcting production link metadata. The refreshed generated payload has not had a new hosted Android compile. Run `python3 scripts/check-root-native.py` to check the 394 refreshed source/payload identities. This does not rebuild Android or assert a new APK exists. Existing compile-only CI remains under `ci/native-c/`; root identity checking binds the promoted source to its refreshed local manifest; focused tests also retain unchanged native implementation against the original M2 snapshot. External updates remain disabled. Destructive native trash/lifetime cleanup is not enabled by this migration.
+External content updates remain disabled. Destructive native cleanup remains disabled. Android may deny creation of hardlink test fixtures: diagnostics report UNSUPPORTED, not PASS, while ordinary single-link storage checks remain separate. A code1 device report verified the corrected restricted-capability semantics; it does not certify every device or recovery scenario. Never uninstall an existing installation containing important data merely to resolve a signing conflict; export and verify backups first.
 
-## Publication boundaries
+## Licensing and sources
 
-Main source CI runs tests, Vite build and native identity checks only. Pages deployment is manual and still fails closed at `npm run release:check`. No push triggers release publication, signing or APK creation. Application terms, complete third-party source delivery and native acceptance have not been claimed resolved. Preserve all third-party notices and their original grants; this migration selects no new license.
+This repository does not add a license grant for project-owned code. Existing rights are retained; public source availability is not a claim that all code is open-source or freely licensed for commercial use. Third-party components retain their own licenses, notices and source rights; these are not overridden by the project's licensing status. See `assets/mobile/notices.html`, `assets/vendor/NOTICE.txt` and `assets/vendor/main-notices/NOTICE.txt`. Complete version-pinned third-party source archives and build materials are prepared separately for release delivery; do not claim they are published until their actual download links have been verified.
 
-`docs/migration/ROOT_MIGRATION.md` explains provenance, retained historical docs and replaced legacy entry/build paths. Historical documents are retained as evidence and may describe the previous App, updater or build chain; they do not override the current disabled-update contract.
+## Publication
+
+The web destinations are https://sen2maker.github.io/BuildingWebViewer/ and https://sen2maker.github.io/WebCadToolBox/. The Main App contains no CAD engine/editor. CAD App downloading remains unavailable until a verified production destination is configured. Release review metadata is not a substitute for component-specific evidence or an authorization to change licenses. Historical migration documents describe earlier states and do not override current runtime restrictions.
