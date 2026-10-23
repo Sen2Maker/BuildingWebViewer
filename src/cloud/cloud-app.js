@@ -1,4 +1,6 @@
+import {settingsForCloud} from '../shared/online-point-settings.js';
 import { mountOnlinePreview, applyPreviewPreset } from '../shared/online-preview.js';
+import {applyPresentationControls} from '../shared/online-presentation.js';
 import { preferenceStorage, isPreviewSession } from '../shared/preference-storage.js';
 import { createViewerComparison } from '../shared/viewer-comparison.js';
 import { migrateObjectImportState } from '../shared/object-import-state.js';
@@ -749,7 +751,11 @@ initializeLocale();
       }
       list();$('source-note').textContent=t('项目自动保存在此设备');
     },onBackground:()=>{processingControls?.cancel();for(const [file] of cached.records)if(!cached.active.has(file))cached.forget(file);}}).then(session=>{mobileSession=session;});
-    mountOnlinePreview({viewer:isWire?'wireframe':'pointcloud',cancelParse:()=>{loadController?.abort();revision++;processingControls?.cancel();$('loading').hidden=true;},replaceFile:async(file,preset,signal)=>{
+    const onlineConfiguration={getPalette:()=>paletteControls?.getOptions(),setPalette:value=>paletteControls?.setOptions(value),points:isWire?null:{
+      get:()=>{const item=displayedItems[0];return item?{cloud:item.rawCloud,settings:columnSettings(item.entry,item.rawCloud)}:null;},
+      apply:async settings=>{const item=displayedItems[0];if(!item)throw Error('No point cloud');const clean=settingsForCloud(item.rawCloud,settings);semanticPointCloud(item.rawCloud,clean,{strict:true});item.entry.columnSettings=clean;item.entry.columnView=null;await loadCloudSelection({preserveCamera:true});}
+    }};
+    mountOnlinePreview({viewer:isWire?'wireframe':'pointcloud',captureCamera:()=>cameraControls?.capture(),configuration:onlineConfiguration,applyView:async view=>{if(view.pointSettings&&onlineConfiguration.points)await onlineConfiguration.points.apply(view.pointSettings);if(view.palette)paletteControls?.setOptions(view.palette);applyPresentationControls(view);if(view.camera)cameraControls?.restore(view.camera,{checkScene:false});},ready:()=>!!(loaded.cloud||loaded.wire),cancelParse:()=>{loadController?.abort();revision++;processingControls?.cancel();$('loading').hidden=true;},replaceFile:async(file,preset,signal)=>{
       clear();for(const entry of entries)for(const old of [entry.file,...entry.wires||[],...entry.clouds||[]])if(old)cached.forget(old);
       entries=[];receive([file],false);$('point-limit').value='1000000';if(signal.aborted)return;
       applyPreviewPreset(preset);

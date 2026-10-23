@@ -3,7 +3,7 @@ const sessions = new WeakMap();
 const isolated = new WeakSet();
 export function isPreviewSession(host = globalThis) {
   if (isolated.has(host)) return true;
-  try { if (!host.Capacitor?.isNativePlatform?.() && ['preview','compare'].some(key=>new URLSearchParams(host.location?.hash?.slice(1) || '').has(key))) isolated.add(host); } catch {}
+  try { if (!host.Capacitor?.isNativePlatform?.() && (['preview','compare'].some(key=>new URLSearchParams(host.location?.hash?.slice(1) || '').has(key)) || /(?:^|\/)(?:compare|lod)\.html$/.test(host.location?.pathname||'') && new URLSearchParams(host.location?.search||'').has('dataset'))) isolated.add(host); } catch {}
   return isolated.has(host);
 }
 export function preferenceStorage(host = globalThis) {

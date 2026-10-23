@@ -1,3 +1,4 @@
+import { decodeBwvpcNode } from './bwvpc.js';
 import { readPointCloud } from '../cloud/point-io.js';
 
 /** One short-lived worker per selected cloud. Its owner terminates it on newer
@@ -8,7 +9,7 @@ export async function parseComparisonCloudMessage(message, post, parse = readPoi
   try {
     if (!(buffer instanceof ArrayBuffer)) throw Error('Point-cloud worker requires file bytes');
     if (!Number.isSafeInteger(maxPoints) || maxPoints < 1 || maxPoints > 1000000) throw Error('Point-cloud worker limit must be between 1 and 1000000');
-    const cloud = await parse(new File([buffer], filename), {
+    const cloud = filename.endsWith('.bpc') ? decodeBwvpcNode(buffer, message.expected) : await parse(new File([buffer], filename), {
       maxPoints,
       onProgress: progress => post({type: 'progress', id, progress}),
     });

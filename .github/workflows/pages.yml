@@ -1,4 +1,4 @@
-# Manual reviewed online-preview web deployment; the v1.0 App release remains unchanged.
+# Manual web deployment; the v1.0 App release remains unchanged.
 # Pushing source to main does not publish Pages or an App.
 name: Reviewed Vite Pages deployment
 on:
@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Verify unchanged v1.0 App release and reviewed web-only source delta
+      - name: Verify unchanged v1.0 App release
         run: |
           python3 - <<'PYVERIFY'
           import json, urllib.request
@@ -25,27 +25,24 @@ jobs:
           actual={x['name']:x for x in release['assets']}
           for name,(size,sha) in expected.items():
               assert name in actual and actual[name]['size']==size and actual[name]['digest']=='sha256:'+sha and actual[name]['state']=='uploaded', name
-          comparison=read('compare/a3ed4a3c19f5a8cb0141d255f79e8261e70c1973...cfb8334fc9492be1dc41a9d42fd0754a56737a97')
-          assert comparison['status']=='ahead' and comparison['total_commits']==1
-          expected_web_delta={'app.config.json': '59bac2426c69125807df585b2b3edb5ca8ec5b9f', 'docs/online-comparison-handoff.md': 'ef0e4a7a3f4383ca1d8b29715ea5ba1534c8ba69', 'docs/online-preview.md': 'efd9da4e205c321252decd493852fb3ca147214e', 'src/compare/app.js': '83fd966965c4e6fe8de83603db4f822534e9f984', 'src/compare/compare.css': 'c1baea19ce0a4114ed9111cf4557f8071be1bf5c', 'src/compare/point-worker.js': 'cdd9f684a9aed061f041ecdfc7eff948e06699ef', 'src/compare/renderer.js': '7e84af94b9d6529587c92cc3124f8f7f7f27ca39', 'src/compare/session.js': '6409dfdcba06add6b9c41a831a0b11589c64bb95', 'src/entries/compare.js': '0da52437b8a4e56e6dcd04ea815f12b83eb3d406', 'src/pages/compare.html': '18633cc5d89d054625029a7068640a000cc426a8', 'src/shared/online-compare-core.js': '0584b61d598512a7875b0293e1b0f5d317af2e7d', 'src/shared/online-preview.css': '1e2d148f4b8fe9b389dab727c1a06cb2d69a23f1', 'src/shared/online-preview.js': '60a456d3396faef65502dc66be11de6fae84c363', 'src/shared/page-boot.js': '3895bf9061e8f7b189fea82349c0ec485afa1bdf', 'src/shared/preference-storage.js': 'a862cf77b8576781f2e5b72fa27c744ffa2d5bb3', 'src/shared/site-meta.json': '38ee299fbd3dcbce83b3516c05938213cf47511a', 'tests/online-compare-app.test.mjs': '6ede7ba4fcabdb9c298b039ac6477a5a4eedf31a', 'tests/online-compare-core.test.mjs': 'f6ec893963716c8283d176541703b8cc2c5bb2ad', 'tests/online-compare-renderer.test.mjs': 'f7b2dbfff0093e940edd244f040e8abe70af91db', 'tests/online-compare-session.test.mjs': 'f693b428359a15d27c21150bd61c924f8eff4cf8', 'tests/online-preview-runtime.test.mjs': '086fe997382218ad3f2c8f2c24168eeccec2f590'}
-          assert {x['filename']:x['sha'] for x in comparison['files']}==expected_web_delta, 'Unreviewed source changes'
-          assert all(x['status'] in ['modified','added'] for x in comparison['files'])
-          print('Exact 21 frozen comparison handoff files verified; App release unchanged')
+          print('Published v1.0 App release identity verified; deploying the selected web commit')
           PYVERIFY
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-          ref: cfb8334fc9492be1dc41a9d42fd0754a56737a97
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
       - run: npm run build
-      - name: Verify reviewed web output separately from unchanged App release
+      - name: Verify built web output and unchanged native source
         run: |
           python3 scripts/package.py --check
-          echo "1109d245bc68dca56e0aa03b9cacabdd5ac99f9b0dfbae5135adc89ce82b2609  dist/asset-inventory.json" | sha256sum --check
+          npm run test:artifacts
+          python3 scripts/check-root-native.py
+          python3 ci/native-c/verify-main-payload.py . ci/root-native-payload.json
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist

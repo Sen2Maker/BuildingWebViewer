@@ -2,7 +2,7 @@
 (() => {
   const root = document.documentElement, sourceTitle = document.title;
   let saved = null;
-  try { if (!['preview','compare'].some(key=>new URLSearchParams((location.hash || '').slice(1)).has(key))) saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
+  try { if (!['preview','compare'].some(key=>new URLSearchParams((location.hash || '').slice(1)).has(key)) && !(/\/(?:compare|lod)\.html$/.test(location.pathname || '') && new URLSearchParams(location.search).has('dataset'))) saved = localStorage.getItem('BuildingWebViewer.language'); } catch {}
   const query = new URLSearchParams(location.search).get('lang');
   const language = query === 'en' || query === 'zh' ? query : saved === 'en' ? 'en' : 'zh';
   root.lang = language === 'en' ? 'en' : 'zh-CN';

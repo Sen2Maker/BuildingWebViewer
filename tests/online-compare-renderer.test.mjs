@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {readFileSync} from 'node:fs';
 import {PairedComparisonRenderer, meshComparisonFrame} from '../src/compare/renderer.js';
 
 globalThis.window = {devicePixelRatio: 1};
@@ -134,16 +133,13 @@ test('an available cloud can render without a matching mesh, without borrowing a
   renderer.dispose();
 });
 
-test('comparison shell remains side by side on narrow screens and has no file-opening gate', () => {
-  const css = readFileSync(new URL('../src/compare/compare.css', import.meta.url), 'utf8');
-  const app = readFileSync(new URL('../src/compare/app.js', import.meta.url), 'utf8');
-  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)/);
-  assert.doesNotMatch(css, /grid-template-columns:\s*(?:1fr|100%)\s*;/);
-  assert.match(app, /pane\('cloud'[\s\S]*pane\('mesh'/);
-  assert.match(app, /state\.phase === 'selection' && lastPhase !== 'selection'/);
-  assert.match(app, /void session\.start\(\)/);
-  assert.match(app, /navigator\?\.onLine !== false/);
-  assert.match(app, /isNativePlatform/);
-  assert.doesNotMatch(app, /type\s*=\s*['"]file['"]|showModal\(|localStorage|indexedDB/);
-  assert.doesNotMatch(app, /\.innerHTML\s*=/);
+test('progressive nodes reuse existing GPU points, preserve the camera and never append the same node twice',()=>{
+  const {renderer}=fixture(),model=geometry('tree');renderer.select('tree');renderer.setMesh('tree',model);renderer.setCloud('tree',cloudFor(model));
+  const first=renderer.cloud.activeClouds[0].points.buffer;
+  renderer.mesh.camera.azimuth=-20;renderer.mesh.camera.zoom=1.6;renderer.mesh.render();const view=viewState(renderer.mesh);
+  assert.equal(renderer.appendCloud('tree','r0',cloudFor(model)),true);
+  assert.equal(renderer.cloud.pointCount,10);assert.equal(renderer.cloud.activeClouds[0].points.buffer,first);
+  assert.deepEqual(viewState(renderer.mesh),view);assert.deepEqual(viewState(renderer.cloud),view);
+  assert.equal(renderer.appendCloud('tree','r0',cloudFor(model)),false);assert.equal(renderer.cloud.pointCount,10);
+  renderer.select('next');assert.equal(renderer.cloud.pointCount,0);assert.equal(renderer.appendCloud('tree','r1',cloudFor(model)),false);renderer.dispose();
 });

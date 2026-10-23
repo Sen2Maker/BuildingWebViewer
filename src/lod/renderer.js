@@ -324,6 +324,7 @@ export class MeshViewer {
     };
     this.edgePositions = {all: retainPositions(allEdges), feature: retainPositions(featureEdges)};
     this.navigationTriangles=retainPositions(triangles);
+    this.placements=placements;
     if(clouds.length&&!this.pointLayer)this.pointLayer=new MeshPointLayer(this.gl);
     this.pointLayer?.setItems(clouds,placements);this.pointLayer?.setOptions(this.options);
     this.pointCount=clouds.reduce((n,item)=>n+item.cloud.count,0);
@@ -334,6 +335,16 @@ export class MeshViewer {
     this.sceneBounds = prepared.length ? [[-totalWidth / 2, -totalDepth / 2, 0], [totalWidth / 2, totalDepth / 2, maxHeight]] : [[-5, -5, 0], [5, 5, 10]];
     this.target = prepared.length ? [0, 0, maxHeight / 2] : [0, 0, 5];
     this.fit();
+  }
+
+  /** Append/rebind point blocks without rebuilding mesh geometry or changing the camera. */
+  setClouds(clouds) {
+    if(clouds.length&&!this.pointLayer)this.pointLayer=new MeshPointLayer(this.gl);
+    this.pointLayer?.setItems(clouds,this.placements||new Map());
+    this.pointLayer?.setOptions(this.options);
+    this.sceneData={...this.sceneData,clouds};
+    this.pointCount=clouds.reduce((n,item)=>n+item.cloud.count,0);
+    this.render();
   }
 
   setOptions(options) {

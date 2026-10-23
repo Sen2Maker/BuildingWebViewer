@@ -1,10 +1,27 @@
 # Online preview and share links (web only)
 
-Open the website home page and choose **Online preview / Share**. Paste an HTTPS raw-data URL, choose point cloud, mesh or wireframe and its actual file format, and optionally enter a small visual preset. The generated link opens the appropriate existing viewer. It does not upload data or grant access to a private file.
+Open the home page, choose **Online mode → Online data preview and sharing**, then:
+
+1. Read the public HTTPS/CORS guidance and expandable endpoint template. Choose **Paired view · Point cloud + mesh** or a toolbox tool (**Mesh viewer**, **Wireframe viewer**, **Point-cloud viewer**). For an individual tool, choose a direct file URL or JSON index separately. The index is filtered to the selected tool; an empty ID picks its first matching entry, and a mismatched ID is reported before navigation. Gaussian splats, point-cloud editing and CAD are listed as local-only until their online adapters exist. Supply the URL and optional initial ID / selected building IDs.
+2. Choose **Open data · verify first**. The browser fetches and parses the initial resource. A paired index checks both mesh and points; BWVPC checks its manifest and root chunk, with later detail loaded by the viewer. Errors stay in the dialog with retry guidance; cancellation or edited input invalidates pending checks. Passing this check does not verify every building in a catalog.
+3. The existing viewer opens and shows **Configure & share**. The grouped editor covers layout/layers, mesh appearance and scale, point style/size/opacity/solid color, outlines, labels, grid, and palette reversal with automatic or fixed scalar bounds. Its field section shows actual attribute names and three sample values. Assign RGB or HSV channels and their numeric range, then apply the mapping. Data with only XYZ explicitly has no color channels; RGB is disabled in this editor instead of suggesting nonexistent colors. Close the popup to rotate/zoom or use the normal display and camera panels.
+4. Choose **Generate share link** to capture the current dataset, selected scope, supported display options and primary camera. The recipient opens the original viewer directly; the configuration popup does not interrupt recipients.
+
+No data is uploaded by this workflow. The preflight and viewer each read the initial resource; there is no cross-page raw-data cache. A localhost viewer link is for local testing; externally shareable links must be generated on the deployed website.
+
+The homepage example uses 100 visually reviewed buildings selected for clean roof outlines and varied forms. It goes through exactly this workflow with a prefilled URL and selection, not a separate example page. This is an aesthetic demo, not a representative accuracy benchmark. Full report links remain available independently and are not the homepage default. The selected ID list limits navigation, not access permission to the public source catalog.
+
+## Ready-to-use building comparison
+
+The homepage has Local / Online modes. The online entry opens the existing Mesh viewer (`lod.html`) with its existing two-viewport layout: point cloud on the left and mesh on the right (stacked vertically on narrow screens). The viewer keeps its familiar toolbar, display controls and camera synchronization; its mode indicator changes from Local mode to Online mode when a comparison link is active. Local and online views share the Previous/Next arrows centered in the preview heading, with the current position / total between them and the display-mode selector on the right. Online comparison uses single-ID navigation. Local single-ID positions follow the filtered natural order; local group navigation shows a contiguous range or the selected count for scattered selections. There is no separate bottom navigation bar.
+
+A compact link such as `lod.html?dataset=bwv-test4000&building=1` carries the building selection; navigation keeps the address tied to the displayed building. Configure & share generates a link for the current selection and view. `quality=original` explicitly selects the original XYZ source; the normal entry uses progressive BWVPC data. Ordinary `lod.html` continues to open the local viewer. Old `compare.html` links are compatibility entries that replace themselves with the same-directory `lod.html` address, preserving the query, fragment and language.
+
+For BWVPC, the root is visible first and verified nodes are appended one at a time. This reduces the first download and lets the user stop at useful detail. See [BWVPC v1](BWVPC.md) for the additive octree contract, point budgets, binary layout and current limits. The older XYZ transport chunks described later still assemble the entire file; they are a different mechanism.
 
 ## Direct point-cloud / mesh comparison
 
-Use **Compare · Share**, choose the paired comparison mode, supply the public index URL and initial building ID, and share the generated `compare.html#compare=...` link. Opening it starts that building directly: point cloud on the left, mesh on the right. It does not require the recipient to browse a catalog first. Both panes remain side by side on phones, with a compact ID, Previous/Next and ID search control rather than a large instructions banner.
+Use **Online data preview and sharing**, choose a paired index, supply the public index URL and initial building ID, and verify it. In the viewer, configure the presentation and generate a `lod.html#compare=...&view=...` link. Opening it starts that building directly in the existing Mesh viewer: point cloud on the left, mesh on the right. It does not require the recipient to browse a catalog first. The existing viewport, layer and camera controls remain available; building navigation belongs to this same page. This is an online data source for the existing viewer, not a second comparison interface.
 
 The index is loaded first. The current mesh is fetched, integrity-checked and displayed before waiting for its point cloud. Point parsing uses a module worker when available and deterministic display sampling (250,000 points by default, bounded to at most 1,000,000). Sampling never rewrites the original object and does not reduce network bytes. A short point-count label identifies sampling. Both panes use the same mesh-derived origin and real scale; camera synchronization preserves alignment and does not refit when the delayed point cloud arrives.
 
@@ -39,7 +56,7 @@ The existing Drive directory shape `schema_version: 1` / `buildings` is also acc
 
 ## Share URL and temporary settings
 
-The URL fragment contains a JSON descriptor under `preview`. Direct-file descriptors use `schemaVersion`, `url`, `viewer`, `format`, optional `name`, `preset`, `bytes`, `sha256`. Directory links use `schemaVersion`, `manifest`, optional `entry`, `viewer`, `preset`. Prefer the link builder rather than manually escaping JSON.
+The URL fragment contains a JSON descriptor under `preview`. Direct-file descriptors use `schemaVersion`, `url`, `viewer`, `format`, optional `name`, `preset`, `bytes`, `sha256`. Directory links use `schemaVersion`, `manifest`, optional `entry`, `viewer`, `preset`. Prefer the guided workflow rather than manually escaping JSON. Paired descriptors use `compare`, with optional ordered `buildingIds` (up to 5,000; no duplicates; initial ID must be included). The `view` fragment is version 1 and contains validated `controls` plus a primary `camera` snapshot. It restores supported layout/layer/color/grid/point settings and the primary camera after initial loading. The optional `pointSettings` stores the existing column order/tags/custom labels, RGB scale (auto/1/255/65535), HSV scale (degrees/unit/opencv) and color space; it is validated against the loaded schema before use. `palette` stores the actual palette, reversal and manual range. Mapping uses the existing semantic point-cloud logic; invalid/missing fields and incomplete channels report errors. Unapplied mapping drafts and invalid numeric ranges block link generation. Independent unsynchronized pane cameras, processing results, local overlays and arbitrary renderer state are not serialized. BWVPC v1 carries XYZ only, so it cannot provide true RGB colors.
 
 Presets are strict visual options, not executable code. Common options are `grid` (boolean), `palette` (`current`, `viridis`, `inferno`, `grayscale`, `blue-white-red`), `reverse` (boolean). Point-cloud/wireframe options add `pointSize` (1–32, step 0.5), `pointOpacity` (0.1–1, step 0.05), `pointColor` (six-digit hex), `colorMode` (`solid` or `height`). Wireframe additionally supports `wireColor`. LOD supports only the common options. Unknown keys or invalid types fail clearly. An unselected directory preset uses common options only; per-entry presets may use viewer-specific options.
 
@@ -53,7 +70,7 @@ The browser fetches with omitted credentials, no referrer, CORS mode, no-store a
 
 Only absolute HTTPS URLs are accepted. Embedded credentials, fragments, common secret query parameters and obvious local/private literal addresses are rejected. Hostname checks are lexical, not DNS or network-security enforcement. HTTPS hosts that resolve privately remain subject to browser protections and CORS. Use only trusted data sources. The URL may expose dataset addresses, names and presets to anyone receiving it; do not embed access tokens, signed URLs, private filenames or confidential datasets in a public example.
 
-No user's Drive dataset, filenames, IDs, credentials or contents are included in shipped source or test fixtures. Testing uses synthetic resources. Browser visual/device validation remains a separate check from parser, state and network unit tests.
+No private Drive data or credentials are included in shipped source or test fixtures. The user-authorized public example includes its public endpoint and 100 selected IDs; geometry remains on the public data host. Testing uses synthetic resources. Browser visual/device validation remains a separate check from parser, state and network unit tests.
 
 ## Retry, cancellation and deadlines
 
@@ -131,9 +148,7 @@ Use a manifest-entry share link rather than putting a long chunk array into a UR
 
 ### Sharing a chunked dataset without leaking local settings
 
-In **Online preview / Share**, choose **JSON index**, paste the public `manifest.json` URL, and leave the file-format field disabled. The same builder handles v1 ordinary-file directories and v2 mixed/chunked directories. Do not paste one `part-0001.xyz` URL as the complete model. The generated directory reference still has link `schemaVersion: 1`; the fetched directory declares its own schema version independently.
-
-Open the directory, locate the desired dataset, then copy that row's link to share a direct selection. The row link stores only the directory URL, entry ID, viewer and explicitly entered common visual preset. It does not copy chunk arrays, local project IDs, browser preferences or file contents into the URL. Each visit rechecks the directory and downloads only the selected entry. Directory presets support common grid/palette/reverse options; viewer-specific options belong in individual directory entries. Generating a link does not fetch the data or prove that the remote host is accessible.
+In **Online data preview and sharing**, choose the desired tool, then **Dataset index · JSON** under Data connection and paste the public `manifest.json` URL. Specify an entry ID or leave it blank to validate the first entry. Do not use one part file as the complete model. After verification, configure the original viewer and generate its share link. The reference stores the index URL and selected entry; it does not copy chunk arrays or file contents into the URL. Each visit rechecks the index and selected entry. Older directory links still support searchable browsing.
 
 ## Offline static-resource readiness check
 
@@ -153,9 +168,7 @@ The checker is intentionally a dedicated-resource-bundle tool, not a source-repo
 
 ## Recommended appearance in shared links
 
-The builder now fills in an editable recommendation rather than relying on the recipient's saved settings. Common defaults are grid off, Viridis palette and no palette reversal. Point-cloud/wireframe links add point size 3, full opacity and height coloring. Mesh and unselected-index links use only common options. Switching viewer type updates an untouched recommendation, but never replaces edited JSON; clearing the preset field restores that viewer's recommendation on generation.
-
-Selecting a directory row creates an explicit preset with this precedence: recommended viewer defaults, then the entry's preset, then the shared directory preset. Thus an author's explicit choices take precedence. No saved local profile is read. The existing renderers fit the camera to the loaded model bounds automatically, without guessed coordinates. Background remains the existing viewer default because background/camera values are not accepted share-preset fields. These are useful initial settings, not a promise of the best appearance for every dataset; adjust the allowed options after visual review.
+The guided workflow starts with explicit recommended presets: grid off, Viridis, no palette reversal, point size 3, full opacity and height coloring where supported. The viewer fits the loaded geometry initially. Users then adjust the actual viewer controls and camera, and generate a new link from that visible configuration. There is no raw preset-JSON editor in the main flow. Local saved settings are not copied into the shared online profile.
 
 For ordinary public object storage, use the final HTTPS object URL with CORS allowed for the website origin. A normal XYZ object up to the existing 64 MiB viewer cap can be loaded directly; 16 MiB transport chunking is optional, not required by this viewer. Keep storage credentials out of source, links and manifests. The separate 25 MiB offline readiness profile targets file-size-limited static hosting; it is not a Rainyun bucket limit and should not be interpreted as one.
 
@@ -168,3 +181,9 @@ The index still loads metadata only. Selecting one entry downloads only its one 
 ## Large directory browsing
 
 The directory builds searchable labels once per successful metadata load. It retains only the latest keyword/type filter result, so moving between 40-row pages does not rescan or rebuild strings for all entries. Case/outer whitespace variations use the same normalized search; a changed keyword or type performs a fresh bounded scan. Reloading the index creates a fresh search cache and cannot reuse rows from the prior directory. Search and pagination never download model assets. Synthetic 8,000-entry regression tests check operation counts and entry ordering rather than timing assumptions.
+
+## Full-catalog report presentation
+
+The report entry is `lod.html?dataset=bwv-test4000&building=194&presentation=report-v1&lang=zh`. It uses the complete public catalog, with no selected-ID restriction, and the same viewer/settings code as custom share links. It opens at building 194, with cloud left / mesh right (top / bottom on phones), size 3 circular height-colored points, full opacity, Viridis with automatic per-building range, solid surface-colored mesh with outlines, real scale, synchronized cameras, and grid/labels off. Each building fits its camera automatically; the preset does not reuse one building's absolute camera bounds. It is a versioned preset; later appearance presets should receive another name to preserve report links.
+
+Pages deployment is manual. It checks out the exact dispatch commit, runs tests/build/artifact and native-identity checks, then publishes only `dist/`. Pushing source alone does not deploy. The published v1.0 App release identity remains verified independently.

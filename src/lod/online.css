@@ -1,0 +1,16 @@
+/* Online data lives in the same workspace, inspector and existing viewports. */
+body[data-tool="lod"] .app-header .local-tag{display:inline-flex;align-items:center;white-space:nowrap}
+.online-workspace .project-batch,.online-workspace .format-help,.online-workspace .cloud-batch-actions,.online-workspace #project-root{display:none}
+.online-workspace .online-local-link{display:block;padding:10px 12px;border:1px solid #d8e5dd;border-radius:7px;text-decoration:none;text-align:center;color:#416957;background:#f6faf7;font-size:12px}
+.online-source{font-size:11px;color:#7d9085;line-height:1.6;margin:10px 0}
+.online-building-row{display:block;width:100%;text-align:left;padding:11px 12px;min-height:42px;margin:3px 0;font-size:12px;background:transparent;border:1px solid transparent;border-radius:6px;color:#476558}
+.online-building-row[aria-pressed=true]{background:#edf5ef;border-color:#b9cfc1;color:#254e3b;font-weight:600}
+.online-catalog-pages{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;padding:10px 0}.online-catalog-pages button{font-size:11px}
+.online-refinement{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;flex:none;font-size:11px;color:#71887a}.online-refinement[hidden]{display:none}.online-refinement button{padding:7px 12px;font-size:11px}
+.online-workspace .scene-note{display:none}.online-workspace #selected-models{font-weight:600;color:#456654;min-height:0;padding:4px 0}
+@media(max-width:700px){
+ body.online-workspace[data-tool="lod"] .viewer-grid[data-panels="2"]{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr));overflow-x:hidden}
+ body[data-tool="lod"] .app-header .local-tag{font-size:10px}.online-workspace .app-header h1{max-width:calc(100vw - 170px)}
+ body.online-workspace[data-tool="lod"] .main-heading>.button-row{display:flex}
+ .online-workspace .viewport-bottom .legend{display:none}.online-refinement button{min-height:36px}
+}

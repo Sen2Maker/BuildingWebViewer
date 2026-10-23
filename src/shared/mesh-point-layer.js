@@ -31,11 +31,16 @@ export class MeshPointLayer {
     const key=JSON.stringify([options.pointColorMode,options.pointColor,options.palette,options.reverse,options.pointRgbFields,options.range]);if(key===this.colorKey)return;
     const mode=options.pointColorMode||'height',field=mode.startsWith('field:')?mode.slice(6):null;
     let min=Infinity,max=-Infinity;
-    if(mode==='height'||field)for(const e of this.entries){const cloud=e.item.cloud,values=field?cloud.fields?.[field]:null;if(field&&!values)continue;for(let i=0;i<cloud.count;i++){const v=field?values[i]:cloud.positions[i*3+2];if(Number.isFinite(v)){min=Math.min(min,v);max=Math.max(max,v);}}}
+    if(mode==='height'||field)for(const e of this.entries){const cloud=e.item.cloud,values=field?cloud.fields?.[field]:null;if(field&&!values)continue;
+      if(mode==='height'&&e.item.colorBounds){min=Math.min(min,e.item.colorBounds[0][2]);max=Math.max(max,e.item.colorBounds[1][2]);continue;}
+      for(let i=0;i<cloud.count;i++){const v=field?values[i]:cloud.positions[i*3+2];if(Number.isFinite(v)){min=Math.min(min,v);max=Math.max(max,v);}}}
     this.fallbacks=[];this.colorRange=min<=max?(options.range?{...options.range}:{min,max}):null;this.effectiveColorMode=mode;
-    for(const e of this.entries){const result=pointDisplayColors(e.item.cloud,e.count,{colorMode:mode,rgbFields:options.pointRgbFields,palette:options.palette,reverse:options.reverse,range:this.colorRange});
+    for(const e of this.entries){
+      const range=this.colorRange||options.range||(e.item.colorBounds?{min:e.item.colorBounds[0][2],max:e.item.colorBounds[1][2]}:null);
+      const entryColorKey=JSON.stringify([key,range]);
+      if(e.colorKey===entryColorKey){if(e.fallback)this.fallbacks.push(e.fallback);continue;}const result=pointDisplayColors(e.item.cloud,e.count,{colorMode:mode,rgbFields:options.pointRgbFields,palette:options.palette,reverse:options.reverse,range});
       if(mode==='solid'){const color=rgbHex(options.pointColor||'#547d99');for(let i=0;i<e.count;i++)result.values.set(color,i*3);}
-      if(result.fallback)this.fallbacks.push(result.fallback);
+      e.fallback=result.fallback;e.colorKey=entryColorKey;if(result.fallback)this.fallbacks.push(result.fallback);
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER,e.color);this.gl.bufferData(this.gl.ARRAY_BUFFER,result.values,this.gl.STATIC_DRAW);
     }this.colorKey=key;
   }

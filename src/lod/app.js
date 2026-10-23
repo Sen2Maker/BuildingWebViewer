@@ -1,4 +1,9 @@
+import {defaultPointSettings,semanticPointCloud} from '../pointcloud/point-dataset.js';
+import {settingsForCloud} from '../shared/online-point-settings.js';
 import { mountOnlinePreview, applyPreviewPreset } from '../shared/online-preview.js';
+import {readCompareDescriptor} from '../shared/online-compare-core.js';
+import {mountOnlineLod} from './online.js';
+import {applyPresentationControls} from '../shared/online-presentation.js';
 import { meshReferenceModels } from './mesh-data.js';
 import { CloudFileCache } from '../cloud/cloud-cache.js';
 import { createViewerComparison } from '../shared/viewer-comparison.js';
@@ -27,6 +32,8 @@ import { mountPaletteControls, paletteGradient } from '../shared/palette-control
 
 initializeLocale();
 const $ = (id) => document.getElementById(id);
+const onlineRequested=new URLSearchParams(location.search).has('dataset')||new URLSearchParams(location.hash.slice(1)).has('compare');
+let online=null,onlineReference=[],onlineBounds=null,onlineNodes=new Set();
 let animationControls=null,meshMode='multiple',meshPreference=null,lastMeshId=null;
 let meshPendingColorMode=null;
 let meshPaneCount=1,meshVariants=[null,null,null],meshCloudPreference=null,meshCloudItems=[],paneModels=[[],[],[]],meshViewers=[];
@@ -36,6 +43,7 @@ const meshComparison=createViewerComparison(activeMeshViewers,()=>$('mesh-sync-c
 function meshCloudFiles(entry){return (entry?.clouds||[]).filter(file=>!entry.excludedFileKeys?.includes(entry.sourceKeys?.get(file)));}
 function paneOptions(i){const layer=$(`mesh-layers-${i+1}`).value;return {...options,showMesh:layer!=='cloud',showPoints:layer!=='mesh'};}
 function updateMeshDataControls(){
+ if(online){online.controls();return;}
  const active=catalogById.get(lastMeshId),files=meshFiles(active),clouds=meshCloudFiles(active);
  $('mesh-compare-count').value=String(meshPaneCount);$('mesh-sync-camera').closest('label').hidden=meshPaneCount===1;
  for(let i=0;i<3;i++){const select=$(`mesh-variant-${i+1}`),chosen=resolveObjectFile(files,i===0?meshPreference:meshVariants[i],i);select.replaceChildren();
@@ -57,7 +65,7 @@ function meshPointFields(){
 
 const number = (value) => Number(value).toLocaleString('zh-CN');
 let catalog = [], catalogById = new Map(), selected = new Set();
-let cache = new Map(), currentModels = [], viewer, generation = 0, controller;
+let cache = new Map(), currentModels = [], viewer, generation = 0, controller, onlinePointSettings=null;
 const modelProject = new ViewerProject();
 let modelTree = null,mobileSession=null,mobileKnownIds=[];
 let labelElements = new Map(), latestLabels = [];
@@ -119,8 +127,13 @@ function renderMeshMode(){
   const multiple=meshMode==='multiple',filtered=filteredModels();$('mesh-mode-select').value=meshMode;
   $('mesh-mode-note').textContent=multiple?t('勾选多个 ID，以独立模型陈列；显示设置应用到所有已选 ID。'):t('单个 ID：← / → 或 [ / ] 切换；按自然编号顺序，遵循搜索筛选。');
   const active=catalogById.get(lastMeshId)||catalogById.get(orderedIds().at(-1));
-  $('previous-mesh-id').parentElement.hidden=multiple;
+  $('previous-mesh-id').hidden=multiple;$('next-mesh-id').hidden=multiple;
   $('previous-group').hidden=!multiple;$('next-group').hidden=!multiple;
+  const entries=multiple?catalog:[...filtered].sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true}));
+  const positions=entries.flatMap((entry,index)=>(multiple?selected.has(entry.id):entry===active)?[index+1]:[]);
+  const contiguous=positions.every((position,index)=>!index||position===positions[index-1]+1);
+  const position=!positions.length?'0':positions.length===1?String(positions[0]):contiguous?`${positions[0]}–${positions.at(-1)}`:t('已选 {0}',[positions.length]);
+  $('mesh-navigation-position').textContent=`${position} / ${entries.length}`;
   for(const id of ['previous-mesh-id','next-mesh-id'])$(id).disabled=multiple||!filtered.length||adjacentObjectEntry(filtered,active,id==='previous-mesh-id'?-1:1)===active;
   const files=meshFiles(active);$('mesh-file-select').replaceChildren();
   for(const [index,file] of files.entries()){const option=document.createElement('option');option.value=String(index);option.textContent=file.name;$('mesh-file-select').append(option);}
@@ -132,7 +145,7 @@ function navigateMesh(direction){if(meshMode!=='single')return;const entry=adjac
 $('mesh-mode-select').onchange=()=>{meshMode=$('mesh-mode-select').value==='single'?'single':'multiple';if(meshMode==='single'&&selected.size>1)selectIds([selected.has(lastMeshId)?lastMeshId:orderedIds().at(-1)]);else renderList();};
 $('mesh-file-select').onchange=()=>{const entry=catalogById.get(lastMeshId);if(!entry)return;meshPreference=objectFilePreference(meshFiles(entry),$('mesh-file-select').value);syncMeshFiles();renderList();loadSelection();};
 $('previous-mesh-id').onclick=()=>navigateMesh(-1);$('next-mesh-id').onclick=()=>navigateMesh(1);
-document.addEventListener('keydown',event=>{const direction=objectNavigationDirection(event,{multiple:meshMode!=='single',flying:!!viewer?.fly?.active});if(direction){event.preventDefault();navigateMesh(direction);}});
+document.addEventListener('keydown',event=>{if(onlineRequested)return;const direction=objectNavigationDirection(event,{multiple:meshMode!=='single',flying:!!viewer?.fly?.active});if(direction){event.preventDefault();navigateMesh(direction);}});
 function renderSelection(syncInput = true) {
   $('selection-count').textContent = t('已勾选 {0} 个', [selected.size]);
   $('previous-group').disabled = !selected.size; $('next-group').disabled = !selected.size;
@@ -155,6 +168,7 @@ function renderSelection(syncInput = true) {
   if (syncInput) $('batch-ids').value = orderedIds().join(', ');
 }
 function selectIds(ids) {
+  if(online){if(ids.length)online.select(String(ids.at(-1)));return true;}
   let unique = [...new Set(ids.map(String))];
   if(meshMode==='single'&&unique.length>1)unique=unique.slice(-1);
   const invalid = unique.filter(id => !catalogById.has(id));
@@ -166,6 +180,7 @@ function applyBatch(append) {
   catch (error) { showError(error.message); }
 }
 async function loadSelection() {
+ if(online){renderOnlineScene(true);return;}
  const version=++generation;controller?.abort();controller=new AbortController();const signal=controller.signal,ids=orderedIds();
  configureMeshPanes();
  if(!ids.length){meshFileCache.setActive([]);currentModels=[];paneModels=[[],[],[]];meshCloudItems=[];meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.setModels([])));cameraControls?.refresh();animationControls?.refresh();renderLabels([]);updateHeightLegend();$('loading').hidden=true;$('empty-state').hidden=false;$('screenshot').disabled=true;$('scene-stats').textContent=t('未选择模型');for(let i=1;i<=3;i++)$(`mesh-panel-label-${i}`).textContent='';return;}
@@ -207,7 +222,7 @@ function updateHeightLegend() {
     paletteControls?.setDataRange?.(range);
   }
 }
-function updateMeshPaneLabels(){for(let i=0;i<meshPaneCount;i++)setNameSummary($(`mesh-panel-label-${i+1}`),orderedIds().map(id=>{const model=paneModels[i]?.find(m=>String(m.id)===String(id));return `${id} / ${paneOptions(i).showMesh?(model?.name||t('仅点云')):t('仅点云')}`;}),t('未加载数据'));}
+function updateMeshPaneLabels(){if(online){online.labels();return;}for(let i=0;i<meshPaneCount;i++)setNameSummary($(`mesh-panel-label-${i+1}`),orderedIds().map(id=>{const model=paneModels[i]?.find(m=>String(m.id)===String(id));return `${id} / ${paneOptions(i).showMesh?(model?.name||t('仅点云')):t('仅点云')}`;}),t('未加载数据'));}
 function updateOptions() {
   const savedView = cameraControls?.preserveView && $('scale-mode').value !== options.scale ? cameraControls.capture() : null;
   options = {...options,mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
@@ -309,6 +324,7 @@ function init() {
     ensureViewer();
     mountViewerLayout({getViewers: activeMeshViewers,pauseSync:meshComparison.pause});
     if(!isMobileApp()&&!animationControls)animationControls=mountCameraAnimation({adapter:createMeshAnimationAdapter({getViewer:()=>viewer,getModels:()=>currentModels,getScene:()=>({ids:currentModels.map(m=>String(m.id)),scale:options.scale})}),toolbar:document.querySelector('.viewer-toolbar'),anchor:$('viewport')});
+    if(onlineRequested){startOnlineWorkspace();return;}
     if (!modelTree) modelTree = mountProjectTree({
       project: modelProject, container: $('model-list'), root: $('project-root'), controls: $('project-controls'),
       getEntries: () => catalog, getSelected: () => new Set(catalog.filter(model => selected.has(model.id))),
@@ -353,10 +369,69 @@ for(let i=0;i<3;i++){
 for(const id of ['mesh-point-color-mode','mesh-point-color','mesh-point-style'])$(id).onchange=updateOptions;
 for(const id of ['mesh-point-size','mesh-point-opacity'])$(id).oninput=updateOptions;
 
+const onlineConfiguration={
+ getPalette:()=>paletteControls?.getOptions(),setPalette:value=>paletteControls?.setOptions(value),
+ points:{get:()=>{const item=meshCloudItems[0];return item?{cloud:item.rawCloud||item.cloud,settings:item.cloud.semantics||defaultPointSettings(item.cloud)}:null;},
+  apply:async settings=>{const next=meshCloudItems.map(item=>{const raw=item.rawCloud||item.cloud;return {...item,rawCloud:raw,cloud:semanticPointCloud(raw,settingsForCloud(raw,settings),{strict:true})};});onlinePointSettings=settings;meshCloudItems=next;meshPointFields();if(online)renderOnlineScene(true);else meshComparison.pause(()=>activeMeshViewers().forEach(v=>{v.setClouds(next);v.setOptions(paneOptions(meshViewers.indexOf(v)));}));}}
+};
+
 init();
 
-mountOnlinePreview({viewer:'lod',cancelParse:()=>{controller?.abort();generation++;$('loading').hidden=true;},replaceFile:async(file,preset,signal)=>{
+if(!onlineRequested)mountOnlinePreview({viewer:'lod',captureCamera:()=>cameraControls?.capture(),applyView:applyOnlineView,configuration:onlineConfiguration,ready:()=>!!(currentModels.length||meshCloudItems.length),cancelParse:()=>{controller?.abort();generation++;$('loading').hidden=true;},replaceFile:async(file,preset,signal)=>{
   removeModelEntries([...catalog]);folderReady([file]);if(signal.aborted)return;
   applyPreviewPreset(preset);selected=new Set(catalog.map(entry=>entry.id));lastMeshId=[...selected].at(-1)||null;syncMeshFiles();renderSelection();renderList();await loadSelection();
   if(!signal.aborted){applyPreviewPreset(preset);$('source-path').textContent=t('在线共享预览 · 仅本次页面');}
 }});
+
+function renderOnlineScene(preserve=false){
+  const saved=preserve&&onlineReference.length?cameraControls?.capture():null;
+  configureMeshPanes();paneModels=Array.from({length:meshPaneCount},()=>currentModels);
+  meshComparison.pause(()=>activeMeshViewers().forEach((v,i)=>{
+    v.setModels(currentModels,{referenceModels:onlineReference,clouds:meshCloudItems});v.setOptions(paneOptions(i));
+  }));
+  if(saved)cameraControls.restore(saved,{checkScene:false});else meshComparison.sync();
+  $('screenshot').disabled=!onlineReference.length;cameraControls?.refresh();animationControls?.refresh();updateOptions();
+}
+async function applyOnlineView(view){
+  if(view.pointSettings)await onlineConfiguration.points.apply(view.pointSettings);
+  if(view.palette)paletteControls?.setOptions(view.palette);
+  if(view.controls['mesh-compare-count'])meshPaneCount=Number(view.controls['mesh-compare-count']);
+  applyPresentationControls(view,{exclude:['mesh-compare-count']});
+  if(online)renderOnlineScene(true);else await loadSelection();
+  if(view.camera)cameraControls?.restore(view.camera,{checkScene:false});
+}
+function startOnlineWorkspace(){
+  if(online)return;
+  if(isMobileApp()||!/^https?:$/.test(location.protocol))throw Error('在线资源仅供网页版使用 / Online resources require the web viewer');
+  const descriptor=readCompareDescriptor();
+  meshPaneCount=2;meshMode='single';
+  $('mesh-layers-1').value='cloud';$('mesh-layers-2').value='mesh';$('mesh-sync-camera').checked=true;
+  $('show-labels').checked=false;$('show-grid').checked=descriptor.preset.grid;
+  $('mesh-point-color-mode').value=descriptor.preset.colorMode||'height';
+  $('mesh-point-size').value=descriptor.preset.pointSize;$('mesh-point-opacity').value=descriptor.preset.pointOpacity;
+  if(descriptor.preset.pointColor)$('mesh-point-color').value=descriptor.preset.pointColor;
+  online=mountOnlineLod({descriptor,onError:showError,refresh:()=>renderOnlineScene(true),captureCamera:()=>cameraControls?.capture(),applyView:applyOnlineView,configuration:onlineConfiguration,isFlying:()=>!!viewer?.fly?.active,
+    onReset:id=>{
+      generation++;controller?.abort();selected=new Set([id]);lastMeshId=id;cache.clear();currentModels=[];meshCloudItems=[];onlineReference=[];onlineBounds=null;onlineNodes=new Set();
+      renderOnlineScene();
+    },
+    onMesh:({id,mesh})=>{
+      currentModels=[{...mesh,id,name:'final.obj'}];cache.set(id,currentModels[0]);onlineReference=meshReferenceModels([currentModels],[]);renderOnlineScene();
+    },
+    onCloud:({id,cloud,bounds})=>{
+      const rawCloud=cloud;if(onlinePointSettings)cloud=semanticPointCloud(rawCloud,settingsForCloud(rawCloud,onlinePointSettings),{strict:true});
+      onlineBounds=bounds;meshCloudItems=[{id,key:'root',rawCloud,cloud,colorBounds:bounds}];onlineNodes.add('r');
+      onlineReference=meshReferenceModels([currentModels],[{id,cloud:{bounds}}]);meshPointFields();renderOnlineScene();
+    },
+    onRefinement:({id,nodeId,cloud})=>{
+      if(id!==lastMeshId||onlineNodes.has(nodeId))return;
+      const rawCloud=cloud;if(onlinePointSettings)cloud=semanticPointCloud(rawCloud,settingsForCloud(rawCloud,onlinePointSettings),{strict:true});
+      const next=[...meshCloudItems,{id,key:nodeId,rawCloud,cloud,colorBounds:onlineBounds}];
+      meshComparison.pause(()=>activeMeshViewers().forEach(v=>v.setClouds(next)));
+      meshCloudItems=next;onlineNodes.add(nodeId);
+    },
+  });
+  configureMeshPanes();
+  applyPreviewPreset({grid:descriptor.preset.grid,palette:descriptor.preset.palette,reverse:descriptor.preset.reverse});updateOptions();
+  void online.start();
+}
