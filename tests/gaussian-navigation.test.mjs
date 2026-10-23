@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CameraNavigation, cameraNavigationSettings, cameraNavigationScale, CAMERA_NAV_DEFAULTS} from '../src/shared/camera-navigation.js';
+import {CameraNavigation, cameraNavigationSettings, cameraNavigationScale, cameraNavigationDefaults, CAMERA_NAV_DEFAULTS} from '../src/shared/camera-navigation.js';
 import {GaussianViewer} from '../src/gaussian/renderer.js';
 import {gsViewSpec} from '../src/shared/camera-geometry.js';
 
@@ -9,6 +9,16 @@ test('settings restore validates stale or malformed local preferences', () => {
   const s = cameraNavigationSettings({rotateSpeed: -10, panSpeed: 'fast', zoomSpeed: Infinity, smoothingMs: 50000, smoothing: false, adaptive:'no'});
   assert.equal(s.rotateSpeed, .05); assert.equal(s.panSpeed, .65); assert.equal(s.zoomSpeed, .55);
   assert.equal(s.smoothingMs, 350); assert.equal(s.smoothing, false); assert.equal(s.adaptive, true);
+});
+
+test('touch defaults and reset use mobile speeds while retaining explicit preferences', () => {
+  const defaults = cameraNavigationDefaults(true);
+  const settings = cameraNavigationSettings(null, defaults);
+  assert.deepEqual([settings.rotateSpeed, settings.panSpeed, settings.zoomSpeed], [.9, .9, .8]);
+  assert.equal(cameraNavigationDefaults(false), CAMERA_NAV_DEFAULTS);
+  const restored = cameraNavigationSettings({rotateSpeed:.5,zoomSpeed:1.2},defaults);
+  assert.deepEqual([restored.rotateSpeed,restored.panSpeed,restored.zoomSpeed],[.5,.9,1.2]);
+  assert.deepEqual(cameraNavigationSettings({rotateSpeed:NaN,panSpeed:'bad'},defaults),settings);
 });
 
 test('time-based smoothing gives the same displacement at 30, 60 and 120 Hz', () => {

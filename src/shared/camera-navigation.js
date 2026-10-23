@@ -3,9 +3,15 @@ export const CAMERA_NAV_DEFAULTS = Object.freeze({
   rotateSpeed: 0.3, panSpeed: 0.65, zoomSpeed: 0.55,
   pivot: 'view', adaptive: true, smoothing: true, smoothingMs: 100,
 });
+export const TOUCH_CAMERA_NAV_DEFAULTS = Object.freeze({...CAMERA_NAV_DEFAULTS,
+  rotateSpeed: 0.9, panSpeed: 0.9, zoomSpeed: 0.8,
+});
+export function cameraNavigationDefaults(touch = globalThis.matchMedia?.('(pointer: coarse)').matches ?? false) {
+  return touch ? TOUCH_CAMERA_NAV_DEFAULTS : CAMERA_NAV_DEFAULTS;
+}
 export const CAMERA_NAV_STORAGE = 'BuildingWebViewer.camera.navigation.v2';
-export function cameraNavigationSettings(value = {}) {
-  const result = {...CAMERA_NAV_DEFAULTS};
+export function cameraNavigationSettings(value = {}, defaults = cameraNavigationDefaults()) {
+  const result = {...defaults};
   for (const key of ['rotateSpeed', 'panSpeed', 'zoomSpeed', 'smoothingMs']) {
     const v = value?.[key], lo = key === 'smoothingMs' ? 20 : 0.05, hi = key === 'smoothingMs' ? 350 : 2;
     if (typeof v === 'number' && Number.isFinite(v)) result[key] = Math.max(lo, Math.min(hi, v));

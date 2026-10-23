@@ -250,6 +250,8 @@ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .scene-note{display:no
 }
 
 /* Equal side columns keep browsing centered regardless of the controls on either side. */
+.object-browser-options{display:contents}
+.object-browser-controls>.object-browser-more{display:none}
 .main-heading.centered-object-heading{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px 12px}
 .centered-object-heading>div:first-child{grid-column:1;grid-row:1;min-width:0}
 .centered-object-heading>.object-id-navigation{grid-column:2;grid-row:1;justify-self:center}
@@ -258,7 +260,17 @@ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .scene-note{display:no
 .centered-object-heading .button-row{flex:none;margin:0}.centered-object-heading .button-row:empty{display:none}
 @media(max-width:700px){
  .main-heading.centered-object-heading{gap:6px}
+ .centered-object-heading .object-id-navigation button{min-width:44px;min-height:44px}
  .centered-object-heading>div:first-child p{max-width:100%}
  .centered-object-heading>.object-browser-controls{gap:4px}
  .centered-object-heading .object-browser-controls select{font-size:10px;padding:7px 4px}
+ /* The heading stays one row; secondary actions open over the scene. */
+ .centered-object-heading>.object-browser-controls{position:relative;min-width:0}
+ .object-browser-controls>.object-browser-more{display:block;min-width:0;min-height:44px;height:44px;padding:0 9px;font-size:11px;white-space:nowrap}
+ .centered-object-heading .object-browser-options{display:none;position:absolute;z-index:40;top:calc(100% + 6px);right:0;width:220px;max-width:calc(100vw - 24px);padding:10px;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid #dce6e1;border-radius:10px;background:#fff;box-shadow:0 8px 24px #183c2920}
+ .centered-object-heading .options-open>.object-browser-options{display:flex}
+ .centered-object-heading .object-browser-options>.button-row{width:100%;display:flex}
+ .centered-object-heading .object-browser-options>.button-row button{width:100%;min-height:44px;font-size:12px}
+ .centered-object-heading .object-browser-options>select{flex:1;min-width:0;min-height:44px;font-size:12px}
+ .centered-object-heading .object-browser-help>div{max-width:calc(100vw - 44px);width:260px}
 }

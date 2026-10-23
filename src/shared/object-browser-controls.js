@@ -13,6 +13,23 @@ export function mountObjectBrowserControls({root = document} = {}) {
       heading.append(navigation);
     }
     if (actions) controls.prepend(actions);
+    const doc = controls.ownerDocument;
+    const options = doc.createElement('div'); options.className = 'object-browser-options';
+    options.id = 'mesh-browser-options';
+    options.append(...controls.children);
+    const toggle = doc.createElement('button'); toggle.type = 'button'; toggle.className = 'object-browser-more';
+    toggle.textContent = doc.documentElement.lang === 'en' ? 'More ···' : '更多 ···';
+    toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', options.id);
+    controls.append(toggle, options);
+    const close = () => { controls.classList.remove('options-open'); toggle.setAttribute('aria-expanded', 'false'); };
+    toggle.addEventListener('click', () => {
+      const open = controls.classList.toggle('options-open'); toggle.setAttribute('aria-expanded', String(open));
+    });
+    root.addEventListener('click', event => { if (!controls.contains(event.target)) close(); });
+    options.addEventListener('click', event => { if (event.target.closest('button')) close(); });
+    controls.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && controls.classList.contains('options-open')) { close(); toggle.focus(); }
+    });
   }
   const help = controls.querySelector('details');
   root.addEventListener('click', event => {

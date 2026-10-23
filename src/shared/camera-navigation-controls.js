@@ -1,4 +1,4 @@
-import { CAMERA_NAV_DEFAULTS } from './camera-navigation.js';
+import { cameraNavigationDefaults } from './camera-navigation.js';
 
 export function mountCameraNavigationControls(container, viewer) {
   const en = document.documentElement.lang === 'en', label = (zh, english) => en ? english : zh;
@@ -45,7 +45,7 @@ export function mountCameraNavigationControls(container, viewer) {
   const help = node('p', label('靠近模型、缩小视野时更细腻。平滑时间越大，跟随越柔和、延迟越明显；关闭即直接响应。Ctrl / ⌘ 拖动可临时降至 20% 速度。设置自动保存在本机浏览器。', 'Closer views and narrower fields of view allow finer control. Longer smoothing is softer but adds latency; switch it off for direct input. Ctrl / ⌘ drag uses 20% speed. Preferences are saved in this browser.'));
   help.className = 'presentation-help'; section.append(help);
   const reset = node('button', label('恢复默认手感', 'Reset navigation')); reset.type = 'button';
-  reset.onclick = () => { viewer.setNavigation(CAMERA_NAV_DEFAULTS); refresh(); }; section.append(reset);
+  reset.onclick = () => { viewer.setNavigation(cameraNavigationDefaults()); refresh(); }; section.append(reset);
   function refresh(editing = null) {
     pivot.value=viewer.navigation.settings.pivot;
     for (const [key, field] of fields) {
