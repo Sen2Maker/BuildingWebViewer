@@ -8,8 +8,8 @@ BADGING="package: name='io.github.sen2maker.buildingwebviewer' versionCode='1' v
 class Tests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);(self.root/'ci').mkdir();self.apk=self.root/'app-release-unsigned.apk'
-  b=b'ordinary fixture';self.entries={'AndroidManifest.xml':b'compiled-placeholder','classes.dex':b'dex-placeholder','resources.arsc':b'resources-placeholder','assets/public/index.html':b}
-  (self.root/'ci/root-native-payload.json').write_text(json.dumps({'files':[{'path':'mobile/android/app/src/main/assets/public/index.html','bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}]}))
+  b=b'ordinary fixture';self.entries={'AndroidManifest.xml':b'compiled-placeholder','classes.dex':b'dex-placeholder','resources.arsc':b'resources-placeholder','assets/public/index.html':b,'assets/native-bridge.js':b}
+  (self.root/'ci/root-native-payload.json').write_text(json.dumps({'files':[{'path':'mobile/android/app/src/main/assets/public/index.html','bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()},{'path':'mobile/native-patches/runtime/native-bridge.js','bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}]}))
  def tearDown(self):self.tmp.cleanup()
  def make(self):
   with zipfile.ZipFile(self.apk,'w') as z:
@@ -30,7 +30,7 @@ class Tests(unittest.TestCase):
  def test_one_profile(self):
   self.profiles();del self.entries['assets/dexopt/baseline.profm']
   with self.assertRaises(ValueError):self.runcheck()
- def test_good_fixture(self):self.assertEqual(self.runcheck()['assetFilesVerified'],1)
+ def test_good_fixture(self):self.assertEqual(self.runcheck()['assetFilesVerified'],2)
  def test_signed(self):
   with self.assertRaises(ValueError):self.runcheck(code=0,error='')
  def test_unrelated_signature_error(self):
@@ -41,6 +41,12 @@ class Tests(unittest.TestCase):
   with self.assertRaises(ValueError):self.runcheck(badging=BADGING.replace("sdkVersion:'30'","sdkVersion:'29'"))
  def test_debuggable(self):
   with self.assertRaises(ValueError):self.runcheck(badging=BADGING+'application-debuggable\n')
+ def test_changed_bridge(self):
+  self.entries['assets/native-bridge.js']=b'unpatched'
+  with self.assertRaises(ValueError):self.runcheck()
+ def test_missing_bridge(self):
+  del self.entries['assets/native-bridge.js']
+  with self.assertRaises(ValueError):self.runcheck()
  def test_changed_asset(self):
   self.entries['assets/public/index.html']=b'wrong'
   with self.assertRaises(ValueError):self.runcheck()

@@ -14,6 +14,9 @@ def inspect(apk, root, aapt, apksigner):
  manifest=json.loads((root/'ci/root-native-payload.json').read_text())
  prefix='mobile/android/app/src/main/assets/'
  expected={'assets/'+r['path'][len(prefix):]:r for r in manifest['files'] if r['path'].startswith(prefix)}
+ bridge=[r for r in manifest['files'] if r['path']=='mobile/native-patches/runtime/native-bridge.js']
+ if len(bridge)!=1: raise ValueError('Missing exact frozen native bridge identity')
+ expected['assets/native-bridge.js']=bridge[0]
  with zipfile.ZipFile(apk) as z:
   names=z.namelist()
   if sum(i.file_size for i in z.infolist())>512*1024*1024 or any(i.file_size>128*1024*1024 for i in z.infolist()): raise ValueError('Expanded APK size exceeds bound')
