@@ -1,0 +1,51 @@
+// Inspection only. This init script NEVER authorizes task actions or an APK build.
+// Configuration code is not sandboxed; source identity checks run first in CI.
+import groovy.json.JsonOutput
+import org.gradle.api.GradleException
+
+if (!gradle.startParameter.dryRun || System.getenv('CAP_PUBLISH') != 'false') {
+    throw new GradleException('Unsigned graph inspection requires --dry-run and CAP_PUBLISH=false')
+}
+for (String key : ['android.builder.sdkDownload', 'org.gradle.java.installations.auto-download']) {
+    if (gradle.startParameter.projectProperties[key] != 'false') {
+        throw new GradleException('Explicit no-download property required: ' + key)
+    }
+}
+if (gradle.startParameter.taskNames != [':app:assembleRelease'] ||
+    !gradle.startParameter.excludedTaskNames.isEmpty()) {
+    throw new GradleException('Only an unexcluded :app:assembleRelease dry run is permitted')
+}
+gradle.taskGraph.whenReady { graph ->
+    def app = gradle.rootProject.project(':app')
+    def android = app.extensions.getByName('android')
+    if (android.defaultConfig.applicationId != 'io.github.sen2maker.buildingwebviewer' ||
+        android.buildTypes.getByName('release').signingConfig != null ||
+        android.defaultConfig.signingConfig != null) {
+        throw new GradleException('Unexpected application identity or release signing configuration')
+    }
+    def tasks = graph.allTasks
+    if (tasks.size() > 2000) throw new GradleException('Unbounded task graph')
+    def rows = []
+    tasks.each { task ->
+        if (!(task.project.path in [':app', ':capacitor-android', ':capacitor-cordova-android-plugins']) ||
+            (task.path.toLowerCase(Locale.ROOT) =~ /(sign|publish|upload|install|connected|keystore)/).find() ||
+            (task.name.toLowerCase(Locale.ROOT).contains('debug') && task.name != 'stripReleaseDebugSymbols') ||
+            task instanceof org.gradle.api.tasks.Exec || task instanceof org.gradle.api.tasks.JavaExec) {
+            throw new GradleException('Unexpected task in unsigned graph: ' + task.path)
+        }
+        def types = []
+        for (Class type = task.class; type != null; type = type.superclass) types.add(type.name)
+        def outputRows = task.outputs.files.files.collect { file ->
+            def base = task.project.buildDir.canonicalFile.toPath()
+            def output = file.canonicalFile.toPath()
+            if (!output.startsWith(base)) throw new GradleException('Output outside build directory: ' + task.path)
+            base.relativize(output).toString()
+        }
+        if (outputRows.size() > 500) throw new GradleException('Unbounded output inventory')
+        rows.add([path: task.path, types: types, actions: task.actions.size(), outputs: outputRows.sort()])
+    }
+    println('ROOT_UNSIGNED_GRAPH_REVIEW=' + JsonOutput.toJson([
+        schema: 1, dryRun: true, taskActionsAuthorized: false,
+        apkBuilt: false, signingAuthorized: false, tasks: rows
+    ]))
+}

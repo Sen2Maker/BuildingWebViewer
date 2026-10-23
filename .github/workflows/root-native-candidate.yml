@@ -1,0 +1,65 @@
+name: Actual root native candidate checks
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', 'ci/root-native/**', 'ci/root-native-files.json', 'ci/root-native-payload.json', '.github/workflows/root-native-candidate.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: root-native-candidate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  root-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      CAP_PUBLISH: 'false'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Use isolated ephemeral Gradle cache
+        run: printf 'GRADLE_USER_HOME=%s/bwv-root-native-gradle\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Verify actual root native sources and finalized payload
+        run: |
+          python3 -B scripts/check-root-native.py
+          python3 -B ci/native-c/verify-main-payload.py . ci/root-native-payload.json
+      - name: Require preinstalled full Java 21 and Android 36 tools
+        run: bash ci/native-c/preflight-hosted-native.sh .
+      - name: Install integrity-locked public dependencies without lifecycle scripts
+        working-directory: mobile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Apply reviewed native transport overlay without regenerating frozen payload
+        working-directory: mobile
+        run: python3 -B scripts/apply-capacitor-root-lock.py
+      - name: Verify installed overlay and final root payload
+        run: python3 -B ci/native-c/verify-main-payload.py . ci/root-native-payload.json --installed
+      - name: Check exact compile lint unit task graph
+        working-directory: mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
+            -I ../../ci/root-native/guard-compile.gradle \
+            -Pandroid.builder.sdkDownload=false -Porg.gradle.java.installations.auto-download=false \
+            --dry-run :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
+      - name: Compile actual root App and run lint and JVM tests
+        working-directory: mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache --continue \
+            -I ../../ci/root-native/guard-compile.gradle \
+            -Pandroid.builder.sdkDownload=false -Porg.gradle.java.installations.auto-download=false \
+            :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
+      - name: Require exact JVM records and lint diagnostics
+        if: always()
+        run: python3 -B ci/native-c/check-native-results.py . ci/native-c/expected-junit.json
+      - name: Inspect unsigned packaging graph without executing task actions
+        working-directory: mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
+            -I ../../ci/root-native/inspect-unsigned-graph.gradle \
+            -Pandroid.builder.sdkDownload=false -Porg.gradle.java.installations.auto-download=false \
+            --dry-run :app:assembleRelease
+# No APK assembly actions, keys, signing, upload, release, deployment or SDK installation.
+# After actual graph review, a separate scoped change may authorize unsigned assembly.
