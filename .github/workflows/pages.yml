@@ -1,4 +1,4 @@
-# Manual v1.0 deployment bound to the actual public release and exact asset digests.
+# Manual reviewed web-only polish; the v1.0 App release remains unchanged.
 # Pushing source to main does not publish Pages or an App.
 name: Reviewed Vite Pages deployment
 on:
@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Verify published v1.0 source and release assets
+      - name: Verify unchanged v1.0 App release and reviewed web-only source delta
         run: |
           python3 - <<'PYVERIFY'
           import json, urllib.request
@@ -25,20 +25,27 @@ jobs:
           actual={x['name']:x for x in release['assets']}
           for name,(size,sha) in expected.items():
               assert name in actual and actual[name]['size']==size and actual[name]['digest']=='sha256:'+sha and actual[name]['state']=='uploaded', name
-          print('Published v1.0 source and all asset digests verified; no license or runtime capability changed')
+          comparison=read('compare/1cbbbf5e1ad875e552e1993fe1adf100b75e601d...0d53e0044425c1eb2f2bc31c22fcaf23499ef7d2')
+          assert comparison['status']=='ahead' and comparison['total_commits']==2
+          expected_web_delta={'app.config.json': '50018330414b3871c5c323a82fc5ac361191e02b', 'scripts/prepare.py': 'd05e5036baf4d0405b402cc66b40bf84b930c8ba', 'tests/hub-presentation.test.mjs': '48207e873d684fc15eb02e0f1762355e2276a980', 'assets/icons/drafting.svg': '963ace73676625f9419e850caeb7c551b29bcc50', 'assets/css/site-footer.css': '49fbe6f655e442f33d7d8a906a2b551d7aa7ba41', 'src/shared/site-footer.html': 'dda71f6c043866c2332317da16091ad1c20810ac', 'src/pages/index.html': '0d2dd783255b919a25c2efd958956562315aa284', '.github/workflows/pages.yml': 'dc6209152f38330a96ea343bb9d2455301168865'}
+          assert {x['filename']:x['sha'] for x in comparison['files']}==expected_web_delta, 'Unreviewed source changes'
+          assert all(x['status'] in ['modified','added'] for x in comparison['files'])
+          print('Exact seven web files plus existing Pages workflow verified; App release unchanged')
           PYVERIFY
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-          ref: 1cbbbf5e1ad875e552e1993fe1adf100b75e601d
+          ref: 0d53e0044425c1eb2f2bc31c22fcaf23499ef7d2
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
       - run: npm run build
-      - name: Verify generated web package after exact public-release checks
-        run: python3 scripts/package.py --check
+      - name: Verify reviewed web output separately from unchanged App release
+        run: |
+          python3 scripts/package.py --check
+          echo "126cd72ed6b11b0cd2dceadef647b756af53aaee99242687fc1eb4421a31c0fa  dist/asset-inventory.json" | sha256sum --check
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
