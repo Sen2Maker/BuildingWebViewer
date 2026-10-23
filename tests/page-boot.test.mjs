@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {execFileSync} from 'node:child_process';
+// Exercise freshly rendered templates, not artifacts left by an earlier build.
+execFileSync('python3', ['scripts/prepare.py'], {cwd: new URL('../', import.meta.url), stdio: 'pipe'});
 const boot = fs.readFileSync(new URL('../src/shared/page-boot.js',import.meta.url),'utf8');
 function start(query, stored, blocked=false) {
   const classes = new Set(), timers = new Map(); let removed=false;
