@@ -26,19 +26,23 @@ gradle.taskGraph.whenReady { graph ->
     def tasks = graph.allTasks
     if (tasks.size() > 2000) throw new GradleException('Unbounded task graph')
     def rows = []
+    def rejected = []
     tasks.each { task ->
         if (!(task.project.path in [':app', ':capacitor-android', ':capacitor-cordova-android-plugins']) ||
             (task.path.toLowerCase(Locale.ROOT) =~ /(sign|publish|upload|install|connected|keystore)/).find() ||
             (task.name.toLowerCase(Locale.ROOT).contains('debug') && !(task.name in ['stripReleaseDebugSymbols', 'mergeReleaseNativeDebugMetadata'])) ||
             task instanceof org.gradle.api.tasks.Exec || task instanceof org.gradle.api.tasks.JavaExec) {
-            throw new GradleException('Unexpected task in unsigned graph: ' + task.path)
+            rejected.add('Unexpected task in unsigned graph: ' + task.path)
         }
         def types = []
         for (Class type = task.class; type != null; type = type.superclass) types.add(type.name)
         def outputRows = task.outputs.files.files.collect { file ->
             def base = task.project.buildDir.canonicalFile.toPath()
             def output = file.canonicalFile.toPath()
-            if (!output.startsWith(base)) throw new GradleException('Output outside build directory: ' + task.path)
+            if (!output.startsWith(base)) {
+                rejected.add('Output outside build directory: ' + task.path)
+                return '<outside-build-directory>'
+            }
             base.relativize(output).toString()
         }
         if (outputRows.size() > 500) throw new GradleException('Unbounded output inventory')
@@ -46,6 +50,7 @@ gradle.taskGraph.whenReady { graph ->
     }
     println('ROOT_UNSIGNED_GRAPH_REVIEW=' + JsonOutput.toJson([
         schema: 1, dryRun: true, taskActionsAuthorized: false,
-        apkBuilt: false, signingAuthorized: false, tasks: rows
+        apkBuilt: false, signingAuthorized: false, rejected: rejected, tasks: rows
     ]))
+    if (!rejected.isEmpty()) throw new GradleException('Inspection only; review required: ' + rejected.join(', '))
 }
