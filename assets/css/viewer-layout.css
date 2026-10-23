@@ -252,6 +252,7 @@ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .scene-note{display:no
 /* Equal side columns keep browsing centered regardless of the controls on either side. */
 .object-browser-options{display:contents}
 .object-browser-controls>.object-browser-more{display:none}
+.mobile-pane-toggle{display:none}
 .main-heading.centered-object-heading{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px 12px}
 .centered-object-heading>div:first-child{grid-column:1;grid-row:1;min-width:0}
 .centered-object-heading>.object-id-navigation{grid-column:2;grid-row:1;justify-self:center}
@@ -273,4 +274,11 @@ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .scene-note{display:no
  .centered-object-heading .object-browser-options>.button-row button{width:100%;min-height:44px;font-size:12px}
  .centered-object-heading .object-browser-options>select{flex:1;min-width:0;min-height:44px;font-size:12px}
  .centered-object-heading .object-browser-help>div{max-width:calc(100vw - 44px);width:260px}
+ body[data-tool="lod"] .workspace .viewer-grid:not([data-panels="1"]){grid-template-columns:minmax(0,1fr);grid-template-rows:var(--mobile-pane-rows,repeat(2,minmax(0,1fr)));overflow-x:hidden;gap:6px}
+ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .mobile-pane-toggle{display:inline-flex;align-items:center;justify-content:center;flex:none;margin-left:auto;min-width:56px;min-height:36px;padding:0 9px;font-size:11px;border:0;background:transparent;color:#486f60}
+ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .comparison-heading{padding:0 3px 0 9px;min-height:38px;gap:8px}
+ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .mobile-pane-collapsed>.viewport{display:none}
+ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .mobile-pane-collapsed>.comparison-heading{border-radius:8px}
+ .shared-scene-overlays>.viewport-bottom{top:8px;right:8px;bottom:auto;left:auto;pointer-events:none}
+ .shared-scene-overlays>.viewport-bottom .zoom-controls{pointer-events:auto}
 }

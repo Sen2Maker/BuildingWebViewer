@@ -9,7 +9,7 @@ body[data-tool="lod"] .app-header .local-tag{display:inline-flex;align-items:cen
 .online-refinement{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;flex:none;font-size:11px;color:#71887a}.online-refinement[hidden]{display:none}.online-refinement button{padding:7px 12px;font-size:11px}
 .online-workspace .scene-note{display:none}.online-workspace #selected-models{font-weight:600;color:#456654;min-height:0;padding:4px 0}
 @media(max-width:700px){
- body.online-workspace[data-tool="lod"] .viewer-grid[data-panels="2"]{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr));overflow-x:hidden}
+ body.online-workspace[data-tool="lod"] .viewer-grid[data-panels="2"]{grid-template-columns:minmax(0,1fr);grid-template-rows:var(--mobile-pane-rows,repeat(2,minmax(0,1fr)));overflow-x:hidden}
  body[data-tool="lod"] .app-header .local-tag{font-size:10px}.online-workspace .app-header h1{max-width:calc(100vw - 170px)}
  body.online-workspace[data-tool="lod"] .main-heading>.button-row{display:flex}
  .online-workspace .viewport-bottom .legend{display:none}.online-refinement button{min-height:36px}

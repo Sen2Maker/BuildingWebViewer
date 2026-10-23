@@ -24,6 +24,7 @@ import { initializeLocale } from '../shared/i18n.js';
 import { t } from '../shared/i18n.js';
 import { mountPointDrop } from '../shared/point-drop.js';
 import { mountViewerLayout } from '../shared/viewer-layout.js';
+import { mountMobileViewerPanes } from '../shared/mobile-viewer-panes.js';
 import { MeshViewer } from './renderer.js';
 import { parseOBJ } from './obj-parser.js';
 import { parseLodIds } from './selection.js';
@@ -32,6 +33,7 @@ import { mountPaletteControls, paletteGradient } from '../shared/palette-control
 
 initializeLocale();
 const $ = (id) => document.getElementById(id);
+const mobileViewerPanes = mountMobileViewerPanes($('viewer-grid'));
 const onlineRequested=new URLSearchParams(location.search).has('dataset')||new URLSearchParams(location.hash.slice(1)).has('compare');
 let online=null,onlineReference=[],onlineBounds=null,onlineNodes=new Set();
 let animationControls=null,meshMode='multiple',meshPreference=null,lastMeshId=null;
@@ -56,6 +58,7 @@ function updateMeshDataControls(){
 function configureMeshPanes(){
  $('viewer-grid').dataset.panels=String(meshPaneCount);$('mesh-panel-heading-1').hidden=meshPaneCount===1;
  for(let i=1;i<3;i++){$(`mesh-panel-${i+1}`).hidden=i>=meshPaneCount;if(i<meshPaneCount&&!meshViewers[i]){meshViewers[i]=new MeshViewer($(`mesh-scene-${i+1}`),{onError:showError});meshComparison.install(meshViewers[i]);}if(i>=meshPaneCount&&meshViewers[i]){meshViewers[i].destroy();meshViewers[i]=null;}}
+ mobileViewerPanes.update(meshPaneCount);
  updateMeshDataControls();
 }
 function meshPointFields(){
