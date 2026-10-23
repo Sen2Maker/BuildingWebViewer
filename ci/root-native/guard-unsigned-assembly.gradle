@@ -1,0 +1,49 @@
+// Exact observed unsigned graph. Authorizes no keys, signing, install or publishing.
+// Configuration code is not sandboxed; frozen source/payload validation runs first.
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import org.gradle.api.GradleException
+if (System.getenv('CAP_PUBLISH') != 'false') throw new GradleException('CAP_PUBLISH=false required')
+for (String key : ['android.builder.sdkDownload', 'org.gradle.java.installations.auto-download']) {
+    if (gradle.startParameter.projectProperties[key] != 'false') throw new GradleException('Explicit no-download property required')
+}
+if (gradle.startParameter.taskNames != [':app:assembleRelease'] || !gradle.startParameter.excludedTaskNames.isEmpty()) {
+    throw new GradleException('Only exact unsigned assembleRelease is authorized')
+}
+gradle.taskGraph.whenReady { graph ->
+    def app = gradle.rootProject.project(':app')
+    def android = app.extensions.getByName('android')
+    if (android.defaultConfig.applicationId != 'io.github.sen2maker.buildingwebviewer' ||
+        android.buildTypes.getByName('release').signingConfig != null || android.defaultConfig.signingConfig != null) {
+        throw new GradleException('Wrong package or non-null release signing configuration')
+    }
+    def bytes = new File(gradle.rootProject.projectDir, '../../ci/root-native/unsigned-task-policy.json').bytes
+    if (MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() != 'df78bb3826a74348d3f96c31780d32dc3883ac80fbd1241cdf1b1ee9d3bb5c58') {
+        throw new GradleException('Unsigned task policy drift')
+    }
+    def policy = new JsonSlurper().parse(bytes)
+    if (policy.schema != 1 || policy.signingAuthorized != false || policy.target != ':app:assembleRelease' ||
+        policy.gradleVersion != gradle.gradleVersion || policy.agpVersion != '8.13.0') throw new GradleException('Unexpected policy version')
+    def rules = policy.tasks.collectEntries { [(it.path): it] }
+    def paths = graph.allTasks.collect { it.path }
+    if (rules.size() != 143 || paths.size() != rules.size() || (paths as Set) != rules.keySet()) {
+        throw new GradleException('Unsigned task graph drift')
+    }
+    graph.allTasks.each { task ->
+        def rule = rules[task.path]
+        if (task.class.name != rule.type || task.actions.size() != rule.actions ||
+            task instanceof org.gradle.api.tasks.Exec || task instanceof org.gradle.api.tasks.JavaExec) {
+            throw new GradleException('Unsigned task implementation/actions drift: ' + task.path)
+        }
+        def root = task.project.buildDir.canonicalFile.toPath()
+        def outputs = task.outputs.files.files.collect { file ->
+            def path = file.canonicalFile.toPath()
+            if (!path.startsWith(root)) throw new GradleException('Output outside build directory: ' + task.path)
+            root.relativize(path).toString()
+        }.sort()
+        if (outputs != rule.outputs) throw new GradleException('Unsigned output drift: ' + task.path)
+    }
+    // writeReleaseSigningConfigVersions only writes AGP version flags JSON; null signing
+    // is independently mandatory above. The exact observed task/class/output is pinned.
+    println('ROOT_UNSIGNED_GRAPH_ACCEPTED: 143 exact tasks; unsigned package only; no install, sign or release')
+}

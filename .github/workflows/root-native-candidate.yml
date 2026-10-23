@@ -54,12 +54,36 @@ jobs:
       - name: Require exact JVM records and lint diagnostics
         if: always()
         run: python3 -B ci/native-c/check-native-results.py . ci/native-c/expected-junit.json
-      - name: Inspect unsigned packaging graph without executing task actions
+      - name: Test unsigned APK inspection guards
+        run: python3 -B ci/root-native/test-unsigned-apk.py
+      - name: Verify exact unsigned packaging graph before task actions
         working-directory: mobile/android
         run: |
           bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
-            -I ../../ci/root-native/inspect-unsigned-graph.gradle \
+            -I ../../ci/root-native/guard-unsigned-assembly.gradle \
             -Pandroid.builder.sdkDownload=false -Porg.gradle.java.installations.auto-download=false \
             --dry-run :app:assembleRelease
-# No APK assembly actions, keys, signing, upload, release, deployment or SDK installation.
-# After actual graph review, a separate scoped change may authorize unsigned assembly.
+      - name: Assemble unsigned actual-root release APK
+        working-directory: mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
+            -I ../../ci/root-native/guard-unsigned-assembly.gradle \
+            -Pandroid.builder.sdkDownload=false -Porg.gradle.java.installations.auto-download=false \
+            :app:assembleRelease
+      - name: Inspect compiled unsigned APK and exact frozen assets
+        run: |
+          python3 -B ci/root-native/verify-unsigned-apk.py \
+            mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk . \
+            "$ANDROID_HOME/build-tools/36.0.0/aapt" "$ANDROID_HOME/build-tools/36.0.0/apksigner" \
+            unsigned-apk-verification.json
+      - name: Retain verified unsigned APK for inspection, not a production release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: main-unsigned-apk-${{ github.sha }}
+          path: |
+            mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk
+            unsigned-apk-verification.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+# No keys, signing, install, production release, deployment or SDK installation.
