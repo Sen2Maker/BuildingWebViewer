@@ -117,3 +117,20 @@ test('actual C bundled-root identity asset:public is accepted and fixture-only m
   const report=await new SelfTestRunner(host({native:adapter,readAsset:async ctx=>({...await canaryReader(ctx),rootIdentity:'asset:public'})})).run();
   assert.equal(find(report,'native.runtime').status,STATUS.PASS);assert.equal(find(report,'native.bridge').status,STATUS.PASS);assert.equal(find(report,'runtime.assets').status,STATUS.PASS);assert.equal(report.environment.fixtureOnly,true);
 });
+
+for (const stage of ['ROOT','CREATE_TREE','WRITE_FILE','EXCLUSIVE_CREATE','HARD_LINK','SYMBOLIC_LINK','DIRECTORY_STREAM','SECURE_READ','FILE_NOFOLLOW','DIRECTORY_NOFOLLOW','ATOMIC_RENAME','DIRECTORY_FORCE','CLEANUP']) {
+ test(`filesystem fixed stage ${stage} retains FAIL and verified cleanup`, async () => {
+  const {adapter}=simulatedNative({probeFilesystem:async()=>({failureCode:`FILESYSTEM_PROBE_${stage}`,rawError:'/private/secret-path'})});
+  const report=await new SelfTestRunner(host({native:adapter})).run();
+  assert.equal(find(report,'native.filesystem').status,STATUS.FAIL);
+  assert.equal(find(report,'native.filesystem').code,`FILESYSTEM_PROBE_${stage}`);
+  assert.equal(report.summary.automaticOutcome,'FAILED');assert.equal(report.cleanup,'VERIFIED');
+  assert.ok(!serializeReport(report).includes('secret-path'));
+ });
+}
+test('filesystem rejects unknown or private failure codes without echo', async () => {
+ const {adapter}=simulatedNative({probeFilesystem:async()=>({failureCode:'FILESYSTEM_PROBE_/private/secret-path'})});
+ const report=await new SelfTestRunner(host({native:adapter})).run();
+ assert.equal(find(report,'native.filesystem').code,'INVALID_PROVIDER_EVIDENCE');
+ assert.equal(find(report,'native.filesystem').status,STATUS.FAIL);assert.ok(!serializeReport(report).includes('secret-path'));
+});

@@ -53,7 +53,10 @@ final class NativeDiagnosticService {
         return snapshot(handle,runId).put("runId",runId).put("challenge",challenge);
     }
     JSONObject filesystem(String handle,String runId)throws Exception {require(handle,runId);return operation(handle,scratch->{
-        FilesystemCapabilityProbe.Result r=FilesystemCapabilityProbe.run(scratch.root());scratch.checkCancelled();
+        FilesystemCapabilityProbe.Result r;
+        try { r=FilesystemCapabilityProbe.run(scratch.root()); }
+        catch (FilesystemCapabilityProbe.ProbeFailure failure) { scratch.checkCancelled(); return new JSONObject().put("failureCode", failure.code()); }
+        scratch.checkCancelled();
         return new JSONObject().put("providerClass",r.providerClass).put("directoryStreamClass",r.directoryStreamClass).put("secureTraversal",r.secureTraversal).put("unixLinkCount",r.unixLinkCount).put("fileNoFollow",r.fileNoFollow).put("directoryNoFollow",r.directoryNoFollow).put("exclusiveCreation",r.exclusiveCreation).put("atomicRename",r.atomicRename).put("directoryForce",r.directoryForce);
     });}
     JSONObject store(String handle,String runId)throws Exception {require(handle,runId);return operation(handle,scratch->DiagnosticStoreProbe.run(app,scratch));}

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "checkpoint": "M2-root-web-link-r1",
+  "checkpoint": "filesystem-stage-diagnostics-r1",
   "scope": "Native integration plus actual main payload. Full source manifest is additionally required to reassemble from Vite sources.",
   "files": [
     {
@@ -71,7 +71,7 @@
     {
       "path": "project/mobile/android/app/src/main/assets/public/asset-inventory.json",
       "bytes": 14681,
-      "sha256": "67cacf25dc035f8868c63e181aae3d57eea43182ab9fcacd8c951a8590f1ef27"
+      "sha256": "37a531a071d9af9fbc2cfbcbd58f45d47acca707524ae358ab5bc65a4436b537"
     },
     {
       "path": "project/mobile/android/app/src/main/assets/public/assets/camera-navigation-zUXesCZG.css",
@@ -115,8 +115,8 @@
     },
     {
       "path": "project/mobile/android/app/src/main/assets/public/assets/diagnostics/src/self-test-runner.mjs",
-      "bytes": 18319,
-      "sha256": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f"
+      "bytes": 18778,
+      "sha256": "3a7c10e9c26f3371cb12b435a3333fdba86b33d6510bfd34987f44266b7ba7ea"
     },
     {
       "path": "project/mobile/android/app/src/main/assets/public/assets/diagnostics/src/self-test-worker.mjs",
@@ -586,7 +586,7 @@
     {
       "path": "project/mobile/android/app/src/main/assets/public/native-web.json",
       "bytes": 240,
-      "sha256": "0746b1b234fee7e3c2801a15548adcdf19e1e80929dd601602c74624bb63d7b6"
+      "sha256": "eb30c9c7cb536f6d3bcd513911876beec1145579cec52a6170781301871084e1"
     },
     {
       "path": "project/mobile/android/app/src/main/assets/public/pointcloud.html",
@@ -690,8 +690,8 @@
     },
     {
       "path": "project/mobile/android/app/src/main/java/bwv/update/probe/FilesystemCapabilityProbe.java",
-      "bytes": 8042,
-      "sha256": "0a00585d040d8419c33b862cbf9dbd0ff47429f8916cf23141e9494a0f2cfbd8"
+      "bytes": 9371,
+      "sha256": "635fd266902c77dc4b428e7ab69573c5d29480fc14a129476bef57ede97fd200"
     },
     {
       "path": "project/mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/AndroidAssetSource.java",
@@ -770,13 +770,13 @@
     },
     {
       "path": "project/mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticRunner.java",
-      "bytes": 7666,
-      "sha256": "5d002ab17005a939389537ab1abd09ada292e03ca1f1bcfc6367577c1a0366a2"
+      "bytes": 7784,
+      "sha256": "2c145b374602ed0069c5c697bde9756a097df00f26b99be33e9577510a2558d3"
     },
     {
       "path": "project/mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticService.java",
-      "bytes": 9653,
-      "sha256": "f7f417e85d14397f7a77b6c4273f7916f853050ff571ef68321f3624d940fef0"
+      "bytes": 9834,
+      "sha256": "9cd4841ecf03a2ba3ffe970d0a5c8ca9d1abd9b7559de06d590df34b02233bcc"
     },
     {
       "path": "project/mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeGaussianActivity.java",
@@ -1181,7 +1181,7 @@
     {
       "path": "project/mobile/bundled-pins.json",
       "bytes": 220,
-      "sha256": "c6f47e4e001916c040af18a71f2fbe19b413da435f3d5f426e1cb9b0ea0a1b56"
+      "sha256": "fce97cdb5d8da276e10d91cdd8e9923e1f9cde9045e13b34dfe04a2294bcd3e4"
     },
     {
       "path": "project/mobile/capacitor.config.json",
@@ -1245,8 +1245,8 @@
     },
     {
       "path": "project/mobile/diagnostics-r1/src/self-test-runner.mjs",
-      "bytes": 18319,
-      "sha256": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f"
+      "bytes": 18778,
+      "sha256": "3a7c10e9c26f3371cb12b435a3333fdba86b33d6510bfd34987f44266b7ba7ea"
     },
     {
       "path": "project/mobile/diagnostics-r1/src/self-test-worker.mjs",
@@ -1285,8 +1285,8 @@
     },
     {
       "path": "project/mobile/diagnostics-r1/tests/runner.test.mjs",
-      "bytes": 12061,
-      "sha256": "a2dbee9948bfc54edd95af37781605f6965cf7c5bc8cc2db7e1882102870b840"
+      "bytes": 13390,
+      "sha256": "517ab015ab89ca4c12432e6ba061937e1b6f486b4912e2aee8aaa850e1ebfadd"
     },
     {
       "path": "project/mobile/diagnostics-r1/tests/validate-reports.py",
@@ -1441,7 +1441,7 @@
     {
       "path": "project/mobile/web/asset-inventory.json",
       "bytes": 14457,
-      "sha256": "ac870bd3e4775c86b1a10f7888e7be7a9dbba9c34f4a109f5a5e6d426c35755f"
+      "sha256": "db024161c65383e4112986df7a2aa4e3db8f4ec8423c54e876c6a0011ad21383"
     },
     {
       "path": "project/mobile/web/assets/camera-navigation-zUXesCZG.css",
@@ -1485,8 +1485,8 @@
     },
     {
       "path": "project/mobile/web/assets/diagnostics/src/self-test-runner.mjs",
-      "bytes": 18319,
-      "sha256": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f"
+      "bytes": 18778,
+      "sha256": "3a7c10e9c26f3371cb12b435a3333fdba86b33d6510bfd34987f44266b7ba7ea"
     },
     {
       "path": "project/mobile/web/assets/diagnostics/src/self-test-worker.mjs",
@@ -1946,7 +1946,7 @@
     {
       "path": "project/mobile/web/native-web.json",
       "bytes": 240,
-      "sha256": "0746b1b234fee7e3c2801a15548adcdf19e1e80929dd601602c74624bb63d7b6"
+      "sha256": "eb30c9c7cb536f6d3bcd513911876beec1145579cec52a6170781301871084e1"
     },
     {
       "path": "project/mobile/web/pointcloud.html",

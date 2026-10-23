@@ -134,6 +134,11 @@ export class SelfTestRunner {
         if (!needNative()) return unavailable();
         if (typeof native.probeFilesystem!=='function') return result(STATUS.UNSUPPORTED,'FILESYSTEM_PROBE_UNAVAILABLE');
         const reply=await invoke(ctx=>native.probeFilesystem({...ctx,handle:state.nativeHandle}));
+        if (reply?.failureCode !== undefined) {
+          const stages = ['ROOT','CREATE_TREE','WRITE_FILE','EXCLUSIVE_CREATE','HARD_LINK','SYMBOLIC_LINK','DIRECTORY_STREAM','SECURE_READ','FILE_NOFOLLOW','DIRECTORY_NOFOLLOW','ATOMIC_RENAME','DIRECTORY_FORCE','CLEANUP'];
+          if (!stages.some(stage => reply.failureCode === `FILESYSTEM_PROBE_${stage}`)) throw new Stop('INVALID_PROVIDER_EVIDENCE');
+          throw new Stop(reply.failureCode);
+        }
         const evidence={providerClass:token(reply?.providerClass),directoryStreamClass:token(reply?.directoryStreamClass)};
         if (!evidence.providerClass || !evidence.directoryStreamClass) throw new Stop('INVALID_PROVIDER_EVIDENCE');
         for (const key of ['secureTraversal','unixLinkCount','fileNoFollow','directoryNoFollow','exclusiveCreation','atomicRename','directoryForce']) {

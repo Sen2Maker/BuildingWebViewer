@@ -1,0 +1,31 @@
+{
+  "baseCommit": "5c6c60929d83fb9441d52dcc48aa0dbc5eeffe1b",
+  "purpose": "Preserve original M2 baseline; exact reviewed diagnostic-only source changes",
+  "changes": [
+    {
+      "path": "mobile/android/app/src/main/java/bwv/update/probe/FilesystemCapabilityProbe.java",
+      "before": "0a00585d040d8419c33b862cbf9dbd0ff47429f8916cf23141e9494a0f2cfbd8",
+      "after": "635fd266902c77dc4b428e7ab69573c5d29480fc14a129476bef57ede97fd200"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticRunner.java",
+      "before": "5d002ab17005a939389537ab1abd09ada292e03ca1f1bcfc6367577c1a0366a2",
+      "after": "2c145b374602ed0069c5c697bde9756a097df00f26b99be33e9577510a2558d3"
+    },
+    {
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/NativeDiagnosticService.java",
+      "before": "f7f417e85d14397f7a77b6c4273f7916f853050ff571ef68321f3624d940fef0",
+      "after": "9cd4841ecf03a2ba3ffe970d0a5c8ca9d1abd9b7559de06d590df34b02233bcc"
+    },
+    {
+      "path": "mobile/diagnostics-r1/src/self-test-runner.mjs",
+      "before": "302a2650aa0cb99a9e05010900311706a263d0cd5f8bcf91ecbdd8899a262d8f",
+      "after": "3a7c10e9c26f3371cb12b435a3333fdba86b33d6510bfd34987f44266b7ba7ea"
+    },
+    {
+      "path": "mobile/diagnostics-r1/tests/runner.test.mjs",
+      "before": "a2dbee9948bfc54edd95af37781605f6965cf7c5bc8cc2db7e1882102870b840",
+      "after": "517ab015ab89ca4c12432e6ba061937e1b6f486b4912e2aee8aaa850e1ebfadd"
+    }
+  ]
+}

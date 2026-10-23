@@ -1,7 +1,7 @@
 {
-  "build": "main-app-f2d5c3d7073e1e8a1f5b950f",
+  "build": "main-app-262b5325072917a8f5a9484f",
   "inventoryBytes": 14681,
-  "inventorySha256": "67cacf25dc035f8868c63e181aae3d57eea43182ab9fcacd8c951a8590f1ef27",
+  "inventorySha256": "37a531a071d9af9fbc2cfbcbd58f45d47acca707524ae358ab5bc65a4436b537",
   "fixtureOnly": false,
   "postSyncFinalized": true
 }

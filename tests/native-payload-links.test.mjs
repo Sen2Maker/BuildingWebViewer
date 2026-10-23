@@ -6,12 +6,19 @@ const root=new URL('../',import.meta.url);
 const read=p=>readFileSync(new URL(p,root));
 const json=p=>JSON.parse(read(p));
 const sha=b=>createHash('sha256').update(b).digest('hex');
-test('refreshed root native implementation remains identical to reviewed M2',()=>{
+test('root native source matches M2 plus exact diagnostic-only delta',()=>{
  const baseline=json('ci/native-c/native-files.json');
+ const delta=json('ci/root-native/diagnostic-source-delta.json');
+ const reviewed=new Map(delta.changes.map(row=>[row.path,row]));
+ assert.equal(reviewed.size,5);
+ const seen=new Set();
  for(const row of baseline.files){
   if(row.path==='mobile/bundled-pins.json'||row.path.startsWith('mobile/web/')||row.path.startsWith('mobile/android/app/src/main/assets/public/'))continue;
-  assert.equal(sha(read(row.path)),row.sha256,row.path);
+  const change=reviewed.get(row.path);
+  if(change){assert.equal(change.before,row.sha256,row.path);seen.add(row.path);}
+  assert.equal(sha(read(row.path)),change?.after??row.sha256,row.path);
  }
+ assert.equal(seen.size,reviewed.size);
 });
 test('both native payload copies have verified CAD web links, not sibling local routes',()=>{
  for(const prefix of ['mobile/web/','mobile/android/app/src/main/assets/public/']){

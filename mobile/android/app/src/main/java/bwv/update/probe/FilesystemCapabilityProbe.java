@@ -46,54 +46,73 @@ public final class FilesystemCapabilityProbe {
                 + ",directoryNoFollow=" + directoryNoFollow + ",createNew=" + exclusiveCreation
                 + ",atomicRename=" + atomicRename + ",directoryForce=" + directoryForce; }
     }
+    public enum Stage { ROOT, CREATE_TREE, WRITE_FILE, EXCLUSIVE_CREATE, HARD_LINK, SYMBOLIC_LINK, DIRECTORY_STREAM, SECURE_READ, FILE_NOFOLLOW, DIRECTORY_NOFOLLOW, ATOMIC_RENAME, DIRECTORY_FORCE, CLEANUP }
+    public static final class ProbeFailure extends IOException {
+        private final Stage stage;
+        private ProbeFailure(Stage stage, Throwable cause) { super("FILESYSTEM_PROBE_" + stage.name(), cause); this.stage = stage; }
+        public String code() { return "FILESYSTEM_PROBE_" + stage.name(); }
+    }
     /** Caller supplies application filesDir, not an untrusted URI or external-storage path. */
     public static Result run(Path applicationFilesDir) throws IOException {
+        Stage stage = Stage.ROOT;
+        try {
         if (!applicationFilesDir.isAbsolute() || !applicationFilesDir.normalize().equals(applicationFilesDir)
                 || Files.isSymbolicLink(applicationFilesDir) || !Files.isDirectory(applicationFilesDir, LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Expected real application-private files directory");
+        stage = Stage.CREATE_TREE;
         Path own = Files.createTempDirectory(applicationFilesDir, "bwv-fs-probe-");
         try {
             Path left = Files.createDirectory(own.resolve("left")), right = Files.createDirectory(own.resolve("right"));
             Path original = left.resolve("original"); byte[] expected = {1, 2, 3, 4};
+            stage = Stage.WRITE_FILE;
             try (FileChannel output = FileChannel.open(original, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
                 ByteBuffer bytes = ByteBuffer.wrap(expected); while (bytes.hasRemaining()) output.write(bytes); output.force(true);
             }
+            stage = Stage.EXCLUSIVE_CREATE;
             boolean exclusive;
             try (FileChannel unexpected = FileChannel.open(original, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                 exclusive = !unexpected.isOpen();
             } catch (java.nio.file.FileAlreadyExistsException expectedFailure) { exclusive = true; }
+            stage = Stage.HARD_LINK;
             boolean links = false;
             try {
                 Path hard = right.resolve("hardlink"); Files.createLink(hard, original);
                 links = linkCount(original) == 2 && linkCount(hard) == 2;
                 Files.delete(hard); links &= linkCount(original) == 1;
             } catch (UnsupportedOperationException unsupported) { /* capability remains false */ }
+            stage = Stage.SYMBOLIC_LINK;
             Path fileLink = left.resolve("file-link"), directoryLink = left.resolve("directory-link");
             Files.createSymbolicLink(fileLink, original); Files.createSymbolicLink(directoryLink, right);
             boolean fileNoFollow = false, directoryNoFollow = false, secure = false;
             String streamClass;
+            stage = Stage.DIRECTORY_STREAM;
             try (DirectoryStream<Path> directory = Files.newDirectoryStream(left)) {
                 streamClass = directory.getClass().getName();
                 if (directory instanceof SecureDirectoryStream<?>) {
                     @SuppressWarnings("unchecked") SecureDirectoryStream<Path> handle = (SecureDirectoryStream<Path>) directory;
                     Set<java.nio.file.OpenOption> options = new HashSet<>(); options.add(StandardOpenOption.READ); options.add(LinkOption.NOFOLLOW_LINKS);
+            stage = Stage.SECURE_READ;
                     try (var channel = handle.newByteChannel(Paths.get("original"), options)) {
                         ByteBuffer read = ByteBuffer.allocate(4); while (read.hasRemaining()) { if (channel.read(read) == -1) break; }
                         secure = Arrays.equals(read.array(), expected);
                     }
+            stage = Stage.FILE_NOFOLLOW;
                     try (var unexpected = handle.newByteChannel(Paths.get("file-link"), options)) {
                         fileNoFollow = !unexpected.isOpen();
                     } catch (IOException expectedFailure) { fileNoFollow = true; }
+            stage = Stage.DIRECTORY_NOFOLLOW;
                     try (var unexpected = handle.newDirectoryStream(Paths.get("directory-link"), LinkOption.NOFOLLOW_LINKS)) {
                         unexpected.iterator(); directoryNoFollow = false;
                     } catch (IOException expectedFailure) { directoryNoFollow = true; }
                 }
             }
+            stage = Stage.ATOMIC_RENAME;
             Path moved = right.resolve("renamed"); boolean atomic;
             try {
                 Files.move(original, moved, StandardCopyOption.ATOMIC_MOVE);
                 atomic = !Files.exists(original, LinkOption.NOFOLLOW_LINKS) && Arrays.equals(Files.readAllBytes(moved), expected);
             } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) { atomic = false; }
+            stage = Stage.DIRECTORY_FORCE;
             boolean directoryForce;
             try {
                 for (Path directory : new Path[]{left, right, own}) {
@@ -105,13 +124,15 @@ public final class FilesystemCapabilityProbe {
                     secure, links, fileNoFollow, directoryNoFollow, exclusive, atomic, directoryForce);
         } finally {
             // Only the just-created probe tree. Never follows its intentionally created symbolic links.
-            Files.walkFileTree(own, new SimpleFileVisitor<Path>() {
+            try { Files.walkFileTree(own, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException { Files.delete(file); return FileVisitResult.CONTINUE; }
                 @Override public FileVisitResult postVisitDirectory(Path directory, IOException error) throws IOException {
                     if (error != null) throw error; Files.delete(directory); return FileVisitResult.CONTINUE;
                 }
-            });
+            }); } catch (IOException | RuntimeException | LinkageError cleanupFailure) { throw new ProbeFailure(Stage.CLEANUP, cleanupFailure); }
         }
+        } catch (ProbeFailure failure) { throw failure; }
+          catch (IOException | RuntimeException | LinkageError failure) { throw new ProbeFailure(stage, failure); }
     }
     private static long linkCount(Path path) throws IOException {
         Object value = Files.getAttribute(path, "unix:nlink", LinkOption.NOFOLLOW_LINKS);
