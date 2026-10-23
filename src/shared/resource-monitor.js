@@ -1,5 +1,6 @@
 import { t } from './i18n.js';
 import { mountRenderDiagnostics } from './render-diagnostics-lite.js';
+import { mountFooterHints } from './footer-hints.js';
 
 export function viewerResourceStats(viewers) {
   const totals = {models:0, triangles:0, points:0, edges:0, bufferBytes:0, contextLost:false};
@@ -47,8 +48,10 @@ export function mountResourceMonitor({root=document, getViewers=()=>[]}) {
   const note=make('p',t('JS 堆内存不是页面总内存；几何缓冲仅统计已上传的数据（含缓存），不含驱动、纹理和帧缓冲，也不是显存总占用。数据规模按各视窗合计。'));
   const rateNote=make('p',t('刷新率用于观察界面响应，不等于模型渲染帧率。仅展开时采样；后台暂停。系统占用请使用任务管理器。'));
   panel.append(heading,list,note,rateNote);mountRenderDiagnostics(panel,getViewers);
-  const projectLinks=footer.querySelector('.project-links');if(projectLinks)panel.append(projectLinks);
+  const notice=footer.querySelector('.project-links a[href$="/notices.html"]');
+  if(notice){const links=make('nav');links.className='resource-notices';links.setAttribute('aria-label',t('第三方声明'));links.append(notice);panel.append(links);}
   details.append(summary,panel);footer.prepend(details);
+  const disposeHints=mountFooterHints(footer);
   let frame=null,last=0,frames=0,lastRate=null,disposed=false;
   const count=n=>Number(n).toLocaleString();
   function refresh() {
@@ -76,5 +79,5 @@ export function mountResourceMonitor({root=document, getViewers=()=>[]}) {
   const onOutside=event=>{if(details.open && !details.contains(event.target))details.open=false;};
   root.addEventListener('visibilitychange',sample);root.addEventListener('keydown',onKey);root.addEventListener('pointerdown',onOutside);
   refresh();
-  return ()=>{disposed=true;stop();root.removeEventListener('visibilitychange',sample);root.removeEventListener('keydown',onKey);root.removeEventListener('pointerdown',onOutside);details.remove();};
+  return ()=>{disposed=true;stop();disposeHints();root.removeEventListener('visibilitychange',sample);root.removeEventListener('keydown',onKey);root.removeEventListener('pointerdown',onOutside);details.remove();};
 }

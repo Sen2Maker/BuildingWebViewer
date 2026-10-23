@@ -25,6 +25,7 @@ import { t } from '../shared/i18n.js';
 import { mountPointDrop } from '../shared/point-drop.js';
 import { mountViewerLayout } from '../shared/viewer-layout.js';
 import { mountMobileViewerPanes } from '../shared/mobile-viewer-panes.js';
+import { readViewerDisplayInputs } from '../shared/viewer-display-inputs.js';
 import { MeshViewer } from './renderer.js';
 import { parseOBJ } from './obj-parser.js';
 import { parseLodIds } from './selection.js';
@@ -227,8 +228,9 @@ function updateHeightLegend() {
 }
 function updateMeshPaneLabels(){if(online){online.labels();return;}for(let i=0;i<meshPaneCount;i++)setNameSummary($(`mesh-panel-label-${i+1}`),orderedIds().map(id=>{const model=paneModels[i]?.find(m=>String(m.id)===String(id));return `${id} / ${paneOptions(i).showMesh?(model?.name||t('仅点云')):t('仅点云')}`;}),t('未加载数据'));}
 function updateOptions() {
-  const savedView = cameraControls?.preserveView && $('scale-mode').value !== options.scale ? cameraControls.capture() : null;
-  options = {...options,mode: $('display-mode').value, scale: $('scale-mode').value, colors: $('color-mode').value, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
+  const display=readViewerDisplayInputs(document,options);
+  const savedView = cameraControls?.preserveView && display.scale !== options.scale ? cameraControls.capture() : null;
+  options = {...options,...display, edges: $('show-edges').checked, labels: $('show-labels').checked, grid: $('show-grid').checked, ...paletteControls?.getOptions()};
   options={...options,pointColorMode:$('mesh-point-color-mode').value,pointColor:$('mesh-point-color').value,pointSize:Number($('mesh-point-size').value),pointOpacity:Number($('mesh-point-opacity').value),pointStyle:$('mesh-point-style').value};
   meshComparison.pause(()=>activeMeshViewers().forEach((v,i)=>v.setOptions(paneOptions(i))));
   $('mesh-point-size-value').value=options.pointSize;$('mesh-point-opacity-value').value=Math.round(options.pointOpacity*100)+'%';
@@ -358,7 +360,7 @@ function init() {
   } catch (error) {
     $('scene-stats').textContent = t('查看器暂时无法启动');
     $('loading').hidden = true;
-    showError(t("查看器启动失败：{0}。请使用支持 WebGL 的浏览器。", [error.message]), true);
+    showError(t("查看器启动失败：{0}", [error.message]), true);
     $('empty-state').hidden = false;
   }
 }
@@ -379,6 +381,7 @@ const onlineConfiguration={
 };
 
 init();
+window.addEventListener('pageshow',event=>{if(event.persisted&&viewer&&!viewer.disposed)updateOptions();});
 
 if(!onlineRequested)mountOnlinePreview({viewer:'lod',captureCamera:()=>cameraControls?.capture(),applyView:applyOnlineView,configuration:onlineConfiguration,ready:()=>!!(currentModels.length||meshCloudItems.length),cancelParse:()=>{controller?.abort();generation++;$('loading').hidden=true;},replaceFile:async(file,preset,signal)=>{
   removeModelEntries([...catalog]);folderReady([file]);if(signal.aborted)return;

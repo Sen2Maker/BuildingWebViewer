@@ -351,6 +351,7 @@ export const EN_MESSAGES = {
   "选择含 OBJ 的目录 · 文件仅在本机读取": "Choose an OBJ folder · Files stay on your device",
   "查看器暂时无法启动": "Viewer could not start",
   "查看器启动失败：{0}。请使用支持 WebGL 的浏览器。": "Viewer startup failed: {0}. Use a browser with WebGL support.",
+  "查看器启动失败：{0}": "Viewer startup failed: {0}",
   "{0}必须是有限数值": "{0} must be a finite number",
   "{0}需要 {1} 个数值": "{0} requires {1} values",
   "相机坐标空间无效": "Invalid camera coordinate space",

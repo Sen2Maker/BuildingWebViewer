@@ -1,5 +1,5 @@
 /** User-triggered diagnostics of existing renderers. No new GL context or render profile. */
-export function collectRenderDiagnostics(viewers, host = globalThis) {
+export function collectRenderDiagnostics(viewers, host = globalThis, {onPreview} = {}) {
   const rect = element => {
     const r=element?.getBoundingClientRect?.();
     return r?{x:r.x,y:r.y,width:r.width,height:r.height}:null;
@@ -13,9 +13,10 @@ export function collectRenderDiagnostics(viewers, host = globalThis) {
     schemaVersion:1,capturedAt:new Date().toISOString(),
     browser:{userAgent:host.navigator?.userAgent||'',platform:host.navigator?.platform||'',maxTouchPoints:host.navigator?.maxTouchPoints||0},
     viewport:{width:host.innerWidth,height:host.innerHeight,devicePixelRatio:host.devicePixelRatio,visualWidth:host.visualViewport?.width,visualHeight:host.visualViewport?.height,dynamicViewportUnits:host.CSS?.supports?.('height','100dvh')},
+    displayInputs:Object.fromEntries(['display-mode','scale-mode','color-mode'].map(id=>[id,host.document?.getElementById(id)?.value??null])),
     panes:Array.from(viewers).filter(Boolean).map((viewer,index)=>{
       const canvas=viewer.canvas,gl=viewer.gl;
-      const css=element=>{const s=element&&host.getComputedStyle?.(element);return s?{display:s.display,position:s.position,width:s.width,height:s.height,flex:s.flex,gridTemplateRows:s.gridTemplateRows}:null;};
+      const css=element=>{const s=element&&host.getComputedStyle?.(element);return s?{display:s.display,visibility:s.visibility,opacity:s.opacity,position:s.position,width:s.width,height:s.height,flex:s.flex,gridTemplateRows:s.gridTemplateRows,transform:s.transform,filter:s.filter,zIndex:s.zIndex,contentVisibility:s.contentVisibility}:null;};
       const pane={index:index+1,canvas:rect(canvas),parent:rect(canvas.parentElement),canvasCss:css(canvas),parentCss:css(canvas.parentElement),backingStore:{width:canvas.width,height:canvas.height},geometry:{meshes:viewer.models?.length||0,triangles:viewer.triangleCount||0,points:viewer.pointCount||0},pendingFrame:viewer.frame!==null&&viewer.frame!==undefined,contextLost:!!viewer.contextLost};
       if(!gl){pane.error='No WebGL context';return pane;}
       try{
@@ -35,6 +36,10 @@ export function collectRenderDiagnostics(viewers, host = globalThis) {
             const rgba=new Uint8Array(4);gl.readPixels(Math.min(w-1,Math.floor(w*x)),Math.min(h-1,Math.floor(h*y)),1,1,gl.RGBA,gl.UNSIGNED_BYTE,rgba);samples.push(Array.from(rgba));
           }
           pane.pixels={background,samples,uniqueColors:new Set(samples.map(v=>v.join(','))).size};
+          if(onPreview&&w*h<=4194304){
+            const rgba=new Uint8Array(w*h*4);gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+            onPreview({index:index+1,width:w,height:h,rgba});pane.preview={width:w,height:h,status:'captured'};
+          }
           pane.errorsAfterReadback=errors(gl);
         }
       }catch(error){pane.diagnosticError=error.message||String(error);}
@@ -49,15 +54,24 @@ export function mountRenderDiagnostics(container,getViewers) {
   const section=make('section');section.className='render-diagnostics-lite';
   const run=make('button',en?'Render diagnostics (temporary)':'渲染诊断（临时）');run.type='button';
   const status=make('p');status.setAttribute('role','status');
+  const previews=make('div');previews.className='diagnostic-previews';
   const output=make('textarea');output.readOnly=true;output.hidden=true;output.rows=12;output.setAttribute('aria-label',en?'Render diagnostic result':'渲染诊断结果');
   const copy=make('button',en?'Copy diagnostic result':'复制诊断结果');copy.type='button';copy.hidden=true;
   run.onclick=()=>{
-    const result=collectRenderDiagnostics(getViewers(),doc.defaultView||globalThis);output.value=JSON.stringify(result,null,2);output.hidden=copy.hidden=false;
+    previews.replaceChildren();
+    const result=collectRenderDiagnostics(getViewers(),doc.defaultView||globalThis,{onPreview:({index,width,height,rgba})=>{
+      const canvas=doc.createElement('canvas');canvas.width=width;canvas.height=height;
+      const context=canvas.getContext('2d'),image=context.createImageData(width,height),stride=width*4;
+      for(let y=0;y<height;y++)image.data.set(rgba.subarray((height-1-y)*stride,(height-y)*stride),y*stride);
+      context.putImageData(image,0,0);
+      const figure=make('figure'),caption=make('figcaption',en?`Pane ${index} readback`:`视窗 ${index} 读回图`),preview=make('img');
+      preview.alt=caption.textContent;preview.src=canvas.toDataURL('image/png');figure.append(caption,preview);previews.append(figure);
+    }});output.value=JSON.stringify(result,null,2);output.hidden=copy.hidden=false;
     status.textContent=en?`Captured ${result.panes.length} pane(s). Copy the result for inspection.`:`已检查 ${result.panes.length} 个视窗。请复制结果发来检查。`;
   };
   copy.onclick=async()=>{
     try{await doc.defaultView.navigator.clipboard.writeText(output.value);status.textContent=en?'Diagnostic result copied.':'诊断结果已复制。';}
     catch{output.focus();output.select();status.textContent=en?'Select and copy the result.':'请长按已选中的内容，选择复制。';}
   };
-  section.append(run,status,output,copy);container.append(section);
+  section.append(run,status,previews,output,copy);container.append(section);
 }

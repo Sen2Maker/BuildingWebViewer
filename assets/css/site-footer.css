@@ -8,12 +8,20 @@
 
 /* Stay in normal flow: attribution must never cover canvas controls. */
 body:not([data-tool])>footer{flex-wrap:wrap;row-gap:3px}
-/* Keep viewer hints beside the monitor; project links live inside its panel. */
+/* Keep the status and attribution fixed; shrink only the hint when space is tight. */
 .workspace>main>footer{flex-wrap:nowrap;justify-content:flex-start;min-height:30px;gap:8px;padding-block:4px}
 .workspace>main>footer .resource-monitor{margin:0;flex:none}
 .workspace>main>footer .touch-hint{width:auto;max-width:none;white-space:nowrap}
-.workspace>main>footer .resource-panel .project-links{justify-content:flex-start;gap:8px 12px;width:auto;margin:14px 0 0!important;padding-top:10px;border-top:1px solid #e1e9e4;text-align:left}
+.workspace>main>footer>.project-links{margin-left:auto!important;width:auto;flex:none;flex-wrap:nowrap;gap:8px;font-size:10px}
+.workspace>main>footer>.footer-hints{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow:hidden;white-space:nowrap;font-size:10px}
+.workspace>main>footer .footer-hints>span{flex:none;max-width:none;width:auto;white-space:nowrap;overflow:visible;font-size:inherit}
+.resource-notices{margin:14px 0 0;padding-top:10px;border-top:1px solid #e1e9e4;font-size:10px}
+.resource-notices a{color:#668477;text-decoration:none}
 .render-diagnostics-lite{margin-top:14px;padding-top:12px;border-top:1px solid #e1e9e4}
 .render-diagnostics-lite button{min-height:36px;font-size:11px}
 .render-diagnostics-lite textarea{display:block;box-sizing:border-box;width:100%;min-height:150px;max-height:240px;margin:8px 0;font:10px/1.5 monospace;white-space:pre;overflow:auto}
+.diagnostic-previews{display:flex;gap:8px;margin:8px 0}
+.diagnostic-previews:empty{display:none}.diagnostic-previews figure{margin:0;flex:1;min-width:0}
+.diagnostic-previews figcaption{font-size:10px;margin-bottom:4px}.diagnostic-previews img{display:block;width:100%;height:auto;max-height:160px;object-fit:contain;border:1px solid #dce6e1;border-radius:5px;background:#f3f5f6}
 @media(max-width:700px){body:not([data-tool]){grid-template-rows:60px minmax(0,1fr) 72px}.project-links{column-gap:12px;row-gap:4px}.workspace>main>footer .project-links{justify-content:flex-end}}
+@media(max-width:700px){.workspace>main>footer>.footer-hints{font-size:9px}.workspace>main>footer>.project-links{width:auto;font-size:9px;gap:8px}}
