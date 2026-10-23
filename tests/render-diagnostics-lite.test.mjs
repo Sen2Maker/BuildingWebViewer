@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectRenderDiagnostics} from '../src/shared/render-diagnostics-lite.js';
+import {collectRenderDiagnostics,renderDiagnosticSummary} from '../src/shared/render-diagnostics-lite.js';
 
 function fixture({lost=false,fail=false,hidden=false}={}) {
   const queue=[1282,0],calls={renders:0,reads:0};
@@ -33,4 +33,13 @@ test('lost or folded canvases are not sampled; failure in one pane does not hide
   assert.equal(lost.calls.renders,0);assert.equal(lost.calls.reads,0);assert.equal(hidden.calls.reads,0);
   assert.equal(report.panes.length,4);assert.equal(report.panes[2].renderError,'driver draw failure');
   assert.equal(report.panes[3].redraw,'completed');
+});
+
+test('clipboard summary keeps every pane and failure while excluding verbose metadata',()=>{
+  const report=collectRenderDiagnostics([fixture().viewer,fixture({fail:true}).viewer],{navigator:{userAgent:'Mozilla/5.0 (Linux; Android 15) Chrome/121.0 MQQBrowser/6.2 TBS/047925 QQ/9.2.65 ExtraPrivateMetadata'}});
+  const summary=renderDiagnosticSummary(report);
+  assert(summary.length<1500);assert.match(summary,/QQ\/9.2.65/);assert.match(summary,/TBS\/047925/);
+  assert.match(summary,/视窗 1/);assert.match(summary,/视窗 2/);assert.match(summary,/0x502/);
+  assert.match(summary,/driver draw failure/);assert(!summary.includes('ExtraPrivateMetadata'));
+  assert(!summary.includes('fragmentHighFloat'));assert.match(renderDiagnosticSummary(report,true),/Pane 2/);
 });
