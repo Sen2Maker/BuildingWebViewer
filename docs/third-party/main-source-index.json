@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "status": "proposed_additive_overlay_not_applied_not_published",
+  "application_license_selected": false,
+  "third_party_rights_overridden": false,
+  "current_final_apk_resolution": "unknown_not_proven_by_historical_apk",
+  "baseline": "Web/source v1.11.0 build 9abb7abaca240dba; historical APK v1.10.0",
+  "source_archives_manifest": "source-archives-manifest.json",
+  "components": [
+    {
+      "name": "Mediabunny",
+      "version": "1.61.4",
+      "commit": "d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1",
+      "license": "MPL-2.0",
+      "evidence_scope": "current frozen Web video bundle; 66 npm TS source files match exact full source archive",
+      "source_url": "https://github.com/Vanilagy/mediabunny/tree/d901f02d5fdd33d7a7488bd8b9393f76a98b2eb1",
+      "archive": "source-archives/mediabunny-d901f02d-source.tar.gz",
+      "source_complete_for_shared_gap": true,
+      "source_to_binary_compile_tested": false,
+      "js_rebundling_byte_match": true
+    },
+    {
+      "name": "Apache Cordova Android",
+      "version": "14.0.1",
+      "commit": "855fab238c3d314c8a3e97a51c20fcae9ccaa18f",
+      "license": "Apache-2.0",
+      "source_url": "https://github.com/apache/cordova-android/tree/855fab238c3d314c8a3e97a51c20fcae9ccaa18f",
+      "evidence_scope": "current declaration and historical APK; not final new APK resolved"
+    },
+    {
+      "name": "Kotlin stdlib",
+      "version": "2.0.21",
+      "commit": "284e9b4041bd815b5b1b489070bbb1f1db6de35c",
+      "license": "Apache-2.0 with specific upstream-derived portions including Boost-1.0",
+      "archive": "source-archives/kotlin-stdlib-2.0.21-sources.jar",
+      "source_url": "https://github.com/JetBrains/kotlin/tree/284e9b4041bd815b5b1b489070bbb1f1db6de35c",
+      "evidence_scope": "historical APK DEX runtime self-identification; final resolution unknown"
+    },
+    {
+      "name": "kotlinx.coroutines",
+      "version": "1.8.1",
+      "commit": "cd696d3f8f4afdbc735915c2bded974616331b55",
+      "license": "Apache-2.0",
+      "source_url": "https://github.com/Kotlin/kotlinx.coroutines/tree/cd696d3f8f4afdbc735915c2bded974616331b55",
+      "evidence_scope": "historical APK version markers; final resolution unknown"
+    },
+    {
+      "name": "libarchive-android",
+      "version": "1.1.6",
+      "commit": "d3ee9c472173fcaf28e737f59dd34ef6cf3d1c88",
+      "license": "Apache-2.0 wrapper; native components separately licensed",
+      "archive": "source-archives/libarchive-android-d3ee9c47-source.tar.gz",
+      "source_url": "https://github.com/zhanghai/libarchive-android/tree/d3ee9c472173fcaf28e737f59dd34ef6cf3d1c88",
+      "source_archive_includes_submodules": false,
+      "patch_path": "build-materials/libarchive-android/library/src/main/jni/libarchive.patch"
+    },
+    {
+      "name": "libarchive",
+      "version": "3.8.1",
+      "commit": "9525f90ca4bd14c7b335e2f8c84a4607b0af6bdf",
+      "license": "per-file BSD-2-Clause/BSD-3-Clause/public-domain and offered alternatives; source notices retained",
+      "archive": "source-archives/libarchive-9525f90c-source.tar.gz",
+      "source_url": "https://github.com/libarchive/libarchive/tree/9525f90ca4bd14c7b335e2f8c84a4607b0af6bdf",
+      "listed_source_headers": 158,
+      "notice_blocks": 91,
+      "native_rebuild_tested": false
+    },
+    {
+      "name": "LZ4 including xxhash",
+      "version": "1.10.0",
+      "commit": "ebb370ca83af193212df4dcbadcc5d87bc0de2f0",
+      "license": "BSD-2-Clause library",
+      "source_url": "https://github.com/lz4/lz4/tree/ebb370ca83af193212df4dcbadcc5d87bc0de2f0",
+      "xxhash_source_evidence": "evidence/lz4-xxhash.c"
+    },
+    {
+      "name": "bzip2",
+      "version": "1.0.8",
+      "commit": "6a8690fc8d26c815e798c588f796eabe9d684cf0",
+      "license": "bzip2-1.0.6 terms",
+      "source_url": "https://gitlab.com/bzip2/bzip2/-/tree/6a8690fc8d26c815e798c588f796eabe9d684cf0"
+    },
+    {
+      "name": "XZ/liblzma",
+      "version": "5.8.1",
+      "commit": "a522a226545730551f7e7c2685fab27cf567746c",
+      "license": "0BSD for linked liblzma; not all upstream tool/script licenses are runtime licenses",
+      "source_url": "https://github.com/tukaani-project/xz/tree/a522a226545730551f7e7c2685fab27cf567746c"
+    },
+    {
+      "name": "Zstandard",
+      "version": "1.5.7",
+      "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "license": "BSD-3-Clause route available; no new choice applied",
+      "source_url": "https://github.com/facebook/zstd/tree/f8745da6ff1ad1e7bab384bd1f9d742439278e99"
+    },
+    {
+      "name": "Mbed TLS/mbedcrypto",
+      "version": "2.28.10",
+      "commit": "2fc8413bfcb51354c8e679141b17b3f1a5942561",
+      "license": "Apache-2.0 OR GPL-2.0-or-later; alternatives preserved, no new choice applied",
+      "source_url": "https://github.com/Mbed-TLS/mbedtls/tree/2fc8413bfcb51354c8e679141b17b3f1a5942561"
+    },
+    {
+      "name": "NDK static zlib",
+      "declared_ndk": "28.1.13356709 / r28b",
+      "historical_binary_version_string": "1.3.0.1",
+      "exact_zlib_source_commit": null,
+      "license_inventory_complete": false,
+      "r28b_platform_prebuilts_commit": "35fbbcd449f03cbb515538d0572d564e9984ef13",
+      "source_url": "https://android.googlesource.com/platform/prebuilts/ndk/+/35fbbcd449f03cbb515538d0572d564e9984ef13/platform/sysroot/NOTICE",
+      "notice_discrepancy": "Official sysroot notice names zlib 1.2.12, not observed static 1.3.0.1; retained as evidence, not final exact attribution.",
+      "uncertainty_classification": "provenance_and_applicable_notices; not established incompatibility or automatic legal release blocker"
+    }
+  ],
+  "remaining_gates": [
+    "final new APK runtime/artifact resolution, hashes and notices",
+    "remaining JVM artifacts including separate Guava ListenableFuture, JetBrains/JSpecify and Chromium boundary interfaces",
+    "review native comment-block inventory against configured objects/headers and patch",
+    "publish and verify exact-version preferred source delivery with accessible links",
+    "integrate notices accessibly into final Web/APK without packaging giant source archives",
+    "confirm CAD separation and independently owned shared-code licensing separately"
+  ],
+  "no_native_build_or_replacement_test_performed": true,
+  "provenance_uncertainties_not_automatic_legal_blockers": [
+    "Static NDK zlib source/version/optimization attribution mapping remains uncertain. Known zlib terms do not require blanket binary attribution or full corresponding source; mismatch alone does not establish noncompliance.",
+    "Native byte-identical reproduction/attestation was not performed and is not asserted as a standalone statutory condition."
+  ],
+  "confirmed_obligations_to_integrate": [
+    "Mediabunny MPL preferred source must be made available with source notice; full material now obtained, delivery not yet applied.",
+    "Preserve applicable Cordova/coroutines Apache NOTICE and license texts and relevant native BSD copyright/disclaimer texts.",
+    "Final distributions must not purport to restrict upstream rights through application NC terms."
+  ]
+}

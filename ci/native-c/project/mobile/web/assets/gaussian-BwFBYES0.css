@@ -1,0 +1,19 @@
+.gs-edit-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line,#dbe6df)}
+.gs-edit-toolbar button{font-size:12px;padding:6px 9px;min-height:30px}
+.gs-edit-toolbar label{display:flex;align-items:center;gap:5px;font-size:11px;color:#657b72}
+.gs-edit-toolbar input[type=range]{width:75px;accent-color:#48846b}
+.gs-edit-toolbar output{min-width:33px}.gs-edit-stats{display:flex;gap:14px;flex-wrap:wrap;padding:6px 0;font-size:11px;line-height:1.5}
+.gs-edit-status{color:#85613e;font-variant-numeric:tabular-nums}.gs-edit-hint{color:#7c9086}
+.gs-selection-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+.gs-camera-field{display:grid;grid-template-columns:1fr 72px;gap:8px;margin:14px 0;align-items:center;font-size:12px}
+.gs-camera-field input[type=range]{grid-column:1;width:100%;accent-color:#48846b}.gs-camera-field input[type=number]{grid-column:2;width:72px}
+#camera-controls select,#bookmark-controls input,#bookmark-controls select,#settings-panel-data select{width:100%;margin:6px 0;max-width:100%}
+#bookmark-controls button,#settings-panel-data button{margin:6px 5px 0 0}.gs-draft{font-size:10px;color:#85613e;border:1px solid #e4d1b5;border-radius:4px;padding:3px 6px;margin-left:8px}
+@media(max-width:700px){.gs-edit-toolbar{gap:4px;padding:4px 0}.gs-edit-toolbar button{padding:5px 7px}.gs-edit-hint{display:none}.gs-edit-stats{padding:3px 0}.gs-edit-toolbar label{display:none}}
+
+.gs-edit-fields{border:0;padding:0;min-width:0;margin:12px 0}.gs-edit-fields:disabled{opacity:.45}.gs-edit-fields select{width:100%;margin:6px 0}#settings-panel-edit{padding:14px}.gs-edit-fields .gs-edit-hint{display:block}.gs-edit-fields .gs-edit-toolbar label{display:flex}.gs-edit-fields .gs-edit-toolbar button{min-height:40px}.gs-edit-fields>button{margin:8px 0}.inspector-tabs{overflow-x:auto;flex-shrink:0}
+.gs-active-edit{border-color:#c39154!important;color:#805c32!important;background:#fff6e9!important}
+
+.native-gaussian-entry{border:1px solid #c4dbd0;border-radius:10px;background:#edf6f1;padding:12px;margin:8px 0;display:flex;flex-wrap:wrap;align-items:center;gap:10px}.native-gaussian-entry label{display:flex;align-items:center;gap:8px;font-size:13px}.native-gaussian-entry p{flex-basis:100%;margin:0}.native-gaussian-entry button{padding:10px 14px;background:#246953;color:white;border-color:#246953}
+
+.native-view-hidden{display:none!important}

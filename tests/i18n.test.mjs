@@ -13,7 +13,7 @@ assert.equal(t('模型 {0}', ['中文文件名']), 'Model 中文文件名');
 assert.equal(t('模型 {0}', ['{1}']), 'Model {1}');
 assert.equal(t('用户自定义标签'),'用户自定义标签');
 const link={href:'pointcloud.html',getAttribute(){return this.href;},setAttribute(k,v){this.href=v;}};
-const doc={nodeType:9,documentElement:{},baseURI:'https://example.org/BuildingWebViewer/index.html',childNodes:[],querySelectorAll(){return [link];}};
+const doc={nodeType:9,documentElement:{},baseURI:'https://example.org/BuildingWebViewer/index.html',childNodes:[],querySelectorAll(selector){return selector==='a[data-app-link], a[data-app-route]'?[]:[link];}};
 initializeLocale(doc); assert.equal(link.href,'pointcloud.html?lang=en');assert.equal(doc.documentElement.lang,'en');
 setLanguage('zh');initializeLocale(doc);assert.equal(link.href,'pointcloud.html?lang=zh');
 setLanguage('en');initializeLocale(doc);assert.equal(link.href,'pointcloud.html?lang=en');

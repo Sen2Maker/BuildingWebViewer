@@ -1,13 +1,8 @@
-name: Deploy published release to GitHub Pages
+# Deliberately manual and fail closed until source/notice and release gates close.
+# Pushing source to main does not publish Pages or an App.
+name: Reviewed Vite Pages deployment
 on:
-  release:
-    types: [published]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Previously published stable release tag (for example v1.0.0)
-        required: true
-        type: string
 permissions:
   contents: read
 concurrency:
@@ -15,57 +10,24 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: read
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout the release tag
-        uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
-          fetch-depth: 0
-      - name: Require a published stable release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
-        run: |
-          python3 - <<'PY'
-          import json, os, re, urllib.request
-          tag = os.environ['RELEASE_TAG']
-          assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Use a stable version tag'
-          url = 'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/releases/tags/' + tag
-          request = urllib.request.Request(url, headers={'Authorization':'Bearer ' + os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json'})
-          with urllib.request.urlopen(request, timeout=30) as response: release = json.load(response)
-          assert not release['draft'] and not release['prerelease'], 'Release must be published and stable'
-          PY
-      - name: Validate and build the tagged release
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
-        run: |
-          python3 scripts/check.py
-          python3 build.py --site --zip
-          python3 scripts/release.py --check-tag "$RELEASE_TAG"
+          persist-credentials: false
       - uses: actions/setup-node@v4
-        if: hashFiles('mobile/package-lock.json') != ''
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: mobile/package-lock.json
-      - name: Build and verify the Android web update payload
-        if: hashFiles('mobile/package-lock.json') != ''
-        run: |
-          npm --prefix mobile ci
-          python3 mobile/prepare.py
-          python3 mobile/publish-manifest.py
-      - uses: actions/configure-pages@v5
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - run: npm run release:check
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: _site
+          path: dist
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
@@ -73,6 +35,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy
+      - uses: actions/deploy-pages@v4
         id: deployment
-        uses: actions/deploy-pages@v4

@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "checkpoint": "M1.1",
+  "suiteCount": 9,
+  "testCount": 32,
+  "allowSkipped": false,
+  "suites": [
+    {
+      "suite": "com.getcapacitor.BwvBridgeAuthorityTest",
+      "sourcePath": "mobile/android/app/src/test/java/com/getcapacitor/BwvBridgeAuthorityTest.java",
+      "sourceSha256": "5aa5d8a5d73546bbdde5dba2c5bc01c7da38384f07fd77e153dcc73759796a85",
+      "tests": [
+        "nativeNonceRequiredAndStaleSameUrlReplayRejected",
+        "importedFrameAndDiagnosticPageNeverGainProjectCapability",
+        "noUpdaterOrLegacyGenericPluginCapability",
+        "crossDocumentExportOwnershipDenied"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.DiagnosticTextTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/DiagnosticTextTest.java",
+      "sourceSha256": "5c234bb1ab3e2bee12794c139d18bfa69ac8202fccc14ded9127ad2c9f94f8b1",
+      "tests": [
+        "redactsQueriesAndLocalFilePaths",
+        "exposesToolRoutesWithoutProjectData",
+        "preservesWrongAuthorityForDiagnosis"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.NativeGaussianLayoutTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/NativeGaussianLayoutTest.java",
+      "sourceSha256": "3a5ec997aa641b424e951cd591e4500b1e6d4d935dd1857ae85a8a3105cd3b9e",
+      "tests": [
+        "portraitRetainsExistingPads",
+        "shortLandscapeKeepsControlsInsideCanvasWithoutScalingTouchTargets",
+        "keyboardSizedCanvasDoesNotClipAnActiveHud"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.NativeGaussianMotionTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/NativeGaussianMotionTest.java",
+      "sourceSha256": "a9ed1d4863fbc2185c1b24143c7495c2759cdab175667e70b38e2364b0977f0e",
+      "tests": [
+        "receivedInputConvergesAtDifferentFrameRates",
+        "immediateAndResetStopResidualMotion",
+        "shorterFilterRespondsFasterWithoutOvershoot"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.NativeGaussianNavigationTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/NativeGaussianNavigationTest.java",
+      "sourceSha256": "bcb28178609cde5f471de06b3f5fdabb2702354251b0fc9a0f5314f7a5d5160d",
+      "tests": [
+        "cameraAxesRemainDistinctAtEveryPitchAndHeading",
+        "oppositeInputsAndDiagonalSpeed",
+        "localYawAndPitchWorkAtPolesWithoutUnwantedRoll",
+        "leanPreservesHeadingAndHasDistinctAxis",
+        "fasterDefaultMigratesWithoutOverwritingCustomSensitivity"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.NativeGaussianOrbitTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/NativeGaussianOrbitTest.java",
+      "sourceSha256": "a75aa72175d915b2a975ef1f117ed77856799c799500b7e4ee9f96eea5cbd889",
+      "tests": [
+        "viewCenterUsesRobustDepthAndExcludesTransparentOrBehind",
+        "noHitIsExplicitAndFullDatasetRemainsUnmodified"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.NativeGaussianTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/NativeGaussianTest.java",
+      "sourceSha256": "4ca66d4ec11c4b8cc8942dae6696f2307c3793ab711bed59fd678890f5060f4a",
+      "tests": [
+        "exactDepthSortPreservesAllAndStableTies",
+        "allFormatsPreserveFullCountAndSphericalHarmonics",
+        "mergesSourcesWithoutSampling",
+        "fullPhoneSizedDatasetRemainsComplete",
+        "rejectsTruncationAndCapacityInsteadOfSampling"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.NativeRoutesTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/NativeRoutesTest.java",
+      "sourceSha256": "66cdf0ef4d7726dc3bccb00b95e8af8cc21f3932fbcad7f697cb7828979299f4",
+      "tests": [
+        "onlyBrowserHubIsRedirected",
+        "lifecycleNeverCallsUninitializedCapacitorMethod"
+      ]
+    },
+    {
+      "suite": "io.github.sen2maker.buildingwebviewer.PoliciesTest",
+      "sourcePath": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/PoliciesTest.java",
+      "sourceSha256": "5f84a3e43c76899d0fa6c9bee724407731d00b5a00c0c49d9f892c0c49f24852",
+      "tests": [
+        "rejectsPathEscapes",
+        "archiveNames",
+        "cadProjectFiles",
+        "cadWebAssets",
+        "updates"
+      ]
+    }
+  ]
+}

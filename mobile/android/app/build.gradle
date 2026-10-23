@@ -1,17 +1,32 @@
 apply plugin: 'com.android.application'
 
-def appVersion = new groovy.json.JsonSlurper().parse(file('../../../package.json')).version
-def appParts = appVersion.tokenize('.').collect { it.toInteger() }
+// Generated from the final post-injection asset inventory, never a runtime override.
+def bundlePinsFile = file('../../bundled-pins.json')
+if (!bundlePinsFile.isFile()) throw new GradleException('Run mobile/scripts/assemble-main-web.py and finalize-main-web.py before compiling the App candidate')
+def bundlePins = new groovy.json.JsonSlurper().parse(bundlePinsFile)
+if (bundlePins.fixtureOnly != false || bundlePins.postSyncFinalized != true) throw new GradleException('Full main payload and post-sync inventory are required; synthetic or pre-sync assets are forbidden')
+def quoted = { value -> groovy.json.JsonOutput.toJson(value.toString()) }
 
 android {
-    namespace = "io.github.sen2maker.buildingwebviewer.preview"
+    namespace = "io.github.sen2maker.buildingwebviewer"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildToolsVersion "36.0.0"
+    buildFeatures { buildConfig true }
+    compileOptions { coreLibraryDesugaringEnabled true }
     defaultConfig {
-        applicationId "io.github.sen2maker.buildingwebviewer.preview"
+        applicationId "io.github.sen2maker.buildingwebviewer"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode (appParts[0] * 1000000 + appParts[1] * 10000 + appParts[2] * 100 + 1)
-        versionName "${appVersion}-preview.1"
+        versionCode 1
+        versionName "1.0.0"
+        buildConfigField 'String', 'BUNDLE_INVENTORY_SHA256', quoted(bundlePins.inventorySha256)
+        buildConfigField 'long', 'BUNDLE_INVENTORY_BYTES', bundlePins.inventoryBytes.toString() + 'L'
+        buildConfigField 'String', 'BUNDLE_BUILD', quoted(bundlePins.build)
+        buildConfigField 'boolean', 'NATIVE_COMPILE_FIXTURE', 'false'
+        buildConfigField 'boolean', 'DIAGNOSTIC_ENABLED', 'true'
+        buildConfigField 'boolean', 'EXTERNAL_UPDATES_ENABLED', 'false'
+        buildConfigField 'int', 'NATIVE_API', '1'
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -34,6 +49,7 @@ repositories {
 }
 
 dependencies {
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
     implementation 'me.zhanghai.android.libarchive:library:1.1.6'
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"

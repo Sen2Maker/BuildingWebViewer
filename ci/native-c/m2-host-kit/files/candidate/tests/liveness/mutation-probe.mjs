@@ -1,0 +1,9 @@
+import assert from 'node:assert/strict';import {setup,tick,unknown} from './runtime-harness.mjs';
+const r=setup(),mode=process.argv[2];let state='pending',failure;
+if(mode==='reentry'){let attempts=0;r.w.androidBridge.postMessage=()=>{attempts++;throw Error('nested');};const options={toJSON(){try{r.w.Capacitor.toNative('BWVProjects','createProject',{}, {callback(){}});}catch(_){}return {};}};try{r.w.Capacitor.toNative('BWVProjects','createProject',options,{callback(){}});}catch(_){}assert.equal(attempts,1,'reentrant failure must stop outer provider entry');assert.equal(r.callbacks.size,0,'reentrant failure must not resurrect callback');r.close();process.exit(0);}
+if(mode==='terminal'){let calls=0;r.w.androidBridge.postMessage=s=>{r.reply(JSON.parse(s));throw Error('trailing');};try{r.w.Capacitor.toNative('BWVProjects','runtimeSnapshot',{}, {callback(){calls++;throw Error('consumer');}});}catch(_){}assert.equal(calls,1,'terminal throwing consumer must not receive failure twice');assert.equal(r.callbacks.size,0);r.close();process.exit(0);}
+process.on('unhandledRejection',()=>{}); // Characterize upstream resolve-only adapter without terminating before the assertion.
+const observe=p=>Promise.resolve(p).then(()=>state='fulfilled',e=>{state='rejected';failure=e;});
+if(mode==='remove'){const handle=await r.api.addListener('projectsChanged',()=>{});r.w.androidBridge.postMessage=()=>{throw Error('provider');};observe(handle.remove());}
+else {r.w.androidBridge.postMessage=()=>{throw Error('provider');};observe(mode==='add'?r.api.addListener('projectsChanged',()=>{}):r.api.createProject({name:'synthetic'}));}
+await tick();assert.equal(state,'rejected','provider failure must reject, never hang or falsely fulfill');assert.ok(unknown(failure),'provider-entered failure is outcome unknown');assert.equal(r.callbacks.size,0,'failed document must retire callback Map');r.close();console.log('PASS exception settlement probe '+mode);

@@ -1,6 +1,6 @@
 /* Inlined startup freshness gate. No polling, update banner or manual check UI. */
 (() => {
-  const pages = new Set(['index.html', 'lod.html', 'wireframe.html', 'pointcloud.html', 'gaussian.html', 'generate.html']);
+  const pages = new Set(['index.html', 'lod.html', 'wireframe.html', 'pointcloud.html', 'gaussian.html', 'generate.html', 'cad.html']);
   const current = document.querySelector('meta[name="application-build"]')?.content;
   const base = new URL('./', location.href);
   const networkUpdates = /^https?:$/.test(location.protocol) && !window.Capacitor?.isNativePlatform?.();

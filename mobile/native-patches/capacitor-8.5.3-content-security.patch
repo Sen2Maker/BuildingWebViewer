@@ -1,0 +1,84 @@
+--- C1/Bridge.java
++++ C2/Bridge.java
+@@ -263,15 +263,9 @@
+ 
+         // Start the local web server
+         JSInjector injector = getJSInjector();
+-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+-            String allowedOrigin = Uri.parse(appUrl).buildUpon().path(null).fragment(null).clearQuery().build().toString();
+-            try {
+-                WebViewCompat.addDocumentStartJavaScript(webView, injector.getScriptString(), Collections.singleton(allowedOrigin));
+-                injector = null;
+-            } catch (IllegalArgumentException ex) {
+-                Logger.warn("Invalid url, using fallback");
+-            }
+-        }
++        // BWV C2: do not register an origin-wide document-start injector. Imported routes
++        // share the origin but are data, not trusted app documents. The trusted asset
++        // HTML response pipeline below retains Capacitor's stream injector.
+         localServer = new WebViewLocalServer(context, this, injector, authorities, html5mode);
+         // BWV: native root must be explicit and pinned before any resource request.
+         if (serverPath == null || config.getServerUrl() != null) throw new IllegalStateException("Explicit local native root required");
+--- C1/WebViewLocalServer.java
++++ C2/WebViewLocalServer.java
+@@ -63,6 +63,7 @@
+     private final boolean html5mode;
+     private final JSInjector jsInjector;
+     private final Bridge bridge;
++    private final BwvDataOnlyAssetServer bwvDataOnlyServer;
+ 
+     /**
+      * A handler that produces responses for paths on the virtual asset server.
+@@ -152,6 +153,7 @@
+         this.protocolHandler = new AndroidProtocolHandler(context.getApplicationContext());
+         this.authorities = authorities;
+         this.bridge = bridge;
++        this.bwvDataOnlyServer = new BwvDataOnlyAssetServer(context);
+         this.jsInjector = jsInjector;
+     }
+ 
+@@ -205,6 +207,12 @@
+         }
+         if (handler == null) {
+             return null;
++        }
++
++        // BEFORE generic Range, local HTML, proxy, RouteProcessor or JSInjector handling.
++        // Always return a response, including denial/error; never fall through to asset HTML.
++        if (BwvDataOnlyRoutes.isReserved(loadingUrl.getEncodedPath(), loadingUrl.getPath())) {
++            return bwvDataOnlyServer.intercept(request);
+         }
+ 
+         if (isLocalFile(loadingUrl) || isMainUrl(loadingUrl) || !isAllowedUrl(loadingUrl) || isErrorUrl(loadingUrl)) {
+@@ -679,10 +687,9 @@
+                 }
+ 
+                 try {
+-                    if (path.startsWith(capacitorContentStart)) {
+-                        stream = protocolHandler.openContentUrl(url);
+-                    } else if (path.startsWith(capacitorFileStart)) {
+-                        stream = protocolHandler.openFile(path);
++                    if (BwvDataOnlyRoutes.isReservedPath(path)) {
++                        // A RouteProcessor must not smuggle data routes into an HTML response.
++                        throw new IOException("Data route cannot enter trusted asset pipeline");
+                     } else if (!isAsset) {
+                         if (routeProcessor == null) {
+                             path = basePath + url.getPath();
+--- C1/BridgeWebViewClient.java
++++ C2/BridgeWebViewClient.java
+@@ -26,7 +26,15 @@
+     @Override
+     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+         Uri url = request.getUrl();
++        if (BwvDataOnlyRoutes.isReserved(url.getEncodedPath(), url.getPath())) return true;
+         return bridge.launchIntent(url);
++    }
++
++    @Override
++    public boolean shouldOverrideUrlLoading(WebView view, String url) {
++        Uri uri = Uri.parse(url);
++        if (BwvDataOnlyRoutes.isReserved(uri.getEncodedPath(), uri.getPath())) return true;
++        return bridge.launchIntent(uri);
+     }
+ 
+     @Override

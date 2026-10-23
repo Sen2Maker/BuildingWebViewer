@@ -1,0 +1,283 @@
+{
+  "schema": 1,
+  "checkpoint": "M1.1",
+  "scope": "Thirty exact source indicators only. Not execution, a security proof, document-epoch simulation, runtime startup or device acceptance.",
+  "indicators": [
+    {
+      "id": "real_payload_flag",
+      "path": "mobile/android/app/build.gradle",
+      "required": [
+        "'NATIVE_COMPILE_FIXTURE', 'false'"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "external_updates_disabled",
+      "path": "mobile/android/app/build.gradle",
+      "required": [
+        "'EXTERNAL_UPDATES_ENABLED', 'false'"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "finalized_real_bundle_required",
+      "path": "mobile/android/app/build.gradle",
+      "required": [
+        "bundlePins.fixtureOnly != false",
+        "bundlePins.postSyncFinalized != true"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "api30_floor",
+      "path": "mobile/android/variables.gradle",
+      "required": [
+        "minSdkVersion = 30"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "backup_disabled",
+      "path": "mobile/android/app/src/main/AndroidManifest.xml",
+      "required": [
+        "android:allowBackup=\"false\"",
+        "android:dataExtractionRules=\"@xml/bwv_data_extraction_exclusions\""
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "modern_only_transport",
+      "path": "mobile/native-patches/patched/MessageHandler.java",
+      "required": [
+        "WebViewCompat.addWebMessageListener",
+        "Origin-bound native bridge is required"
+      ],
+      "forbidden": [
+        "addJavascriptInterface(",
+        "@JavascriptInterface",
+        "legacySendResponseMessage"
+      ]
+    },
+    {
+      "id": "main_frame_admission",
+      "path": "mobile/native-patches/patched/MessageHandler.java",
+      "required": [
+        "if (isMainFrame)",
+        "sourceOrigin.toString(), view.getUrl()"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "document_token_consumed",
+      "path": "mobile/native-patches/patched/MessageHandler.java",
+      "required": [
+        "String documentToken = methodData.getString(\"bwvDocumentToken\")",
+        "methodData.remove(\"bwvDocumentToken\")"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "reply_ui_turn",
+      "path": "mobile/native-patches/patched/MessageHandler.java",
+      "required": [
+        "bridge.executeOnMainThread(() -> {",
+        "expectedReply.postMessage(response)"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "reply_exact_owner",
+      "path": "mobile/native-patches/patched/MessageHandler.java",
+      "required": [
+        "replies.get(call) != expectedReply",
+        "BwvBridgeCallGuard.current(call, webView)"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "terminal_retirement",
+      "path": "mobile/native-patches/patched/MessageHandler.java",
+      "required": [
+        "if (!retain && replies.get(call) == expectedReply) call.release(bridge)",
+        "replies.remove(call)"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "app_dispatch_ui_other_work_io",
+      "path": "mobile/native-patches/patched/Bridge.java",
+      "required": [
+        "executeOnMainThread(currentThreadTask);",
+        "taskHandler.post(currentThreadTask);",
+        "\"BWVProjects\".equals(pluginId)",
+        "\"BWVSelfTest\".equals(pluginId)"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "saved_call_identity",
+      "path": "mobile/native-patches/patched/Bridge.java",
+      "required": [
+        "this.savedCalls.get(call.getCallbackId()) == call"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "native_random_nonce",
+      "path": "mobile/native-patches/BwvBridgeCallGuard.java",
+      "required": [
+        "new java.security.SecureRandom()",
+        "byte[] random = new byte[32]"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "fixed_origin",
+      "path": "mobile/native-patches/BwvBridgeCallGuard.java",
+      "required": [
+        "\"https\".equals(uri.getScheme())",
+        "\"localhost\".equals(uri.getRawAuthority())"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "document_object_binding",
+      "path": "mobile/native-patches/BwvBridgeCallGuard.java",
+      "required": [
+        "binding.view == view && DOCUMENTS.get(view) == binding.document",
+        "new Binding(view, token)"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "export_document_identity",
+      "path": "mobile/native-patches/BwvBridgeCallGuard.java",
+      "required": [
+        "a.view == b.view && a.document == b.document && DOCUMENTS.get(a.view) == a.document"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "native_navigation_retires_document",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
+      "required": [
+        "activity.documentStarted(url)",
+        "activity.documentStarted(null)"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "native_authorization_delivery",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
+      "required": [
+        "authorizeDocument(view,view.getUrl())",
+        "BwvBridgeCallGuard.samePage(url,view.getUrl())",
+        "window.bwvAuthorizeDocument"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "tls_fails_closed",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
+      "required": [
+        "handler.cancel();failure("
+      ],
+      "forbidden": [
+        "handler.proceed()"
+      ]
+    },
+    {
+      "id": "native_recovery_reachable",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
+      "required": [
+        "new Intent(activity,RecoveryActivity.class)",
+        "Native recovery and export"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "diagnostics_redaction",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
+      "required": [
+        "DiagnosticText.message(detail)",
+        "DiagnosticText.url(url)"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "bounded_local_startup_events",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
+      "required": [
+        "while(events.size()>60)events.removeFirst()",
+        "startup-diagnostics.txt"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "manual_report_export",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/StartupDiagnostics.java",
+      "required": [
+        "Local report only; share it manually if needed.",
+        "Intent.createChooser(share,"
+      ],
+      "forbidden": [
+        "HttpURLConnection",
+        "new URL("
+      ]
+    },
+    {
+      "id": "maintenance_disabled",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BWVProjectsPlugin.java",
+      "required": [
+        "MAINTENANCE_DISABLED_PENDING_BACKUP_ONLY_PROJECT_REVIEW"
+      ],
+      "forbidden": [
+        "store.cleanup()",
+        "store.emptyTrash()"
+      ]
+    },
+    {
+      "id": "listener_identity_tracking",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BWVProjectsPlugin.java",
+      "required": [
+        "listenerCalls.contains(saved)",
+        "listenerCalls.remove(saved);saved.release(bridge);call.release(bridge);"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "listener_bulk_retirement",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BWVProjectsPlugin.java",
+      "required": [
+        "for(PluginCall listener:listenerCalls)listener.release(bridge);listenerCalls.clear();"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "cad_download_unconfigured",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BWVProjectsPlugin.java",
+      "required": [
+        "CAD_APP_DOWNLOAD_PAGE_NOT_CONFIGURED"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "diagnostic_document_lease",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/BWVSelfTestPlugin.java",
+      "required": [
+        "BwvBridgeCallGuard.require(call,bridge.getWebView())",
+        "void documentStarted(){releaseOwned();}"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "native_bridge_failure_recovery",
+      "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/MainActivity.java",
+      "required": [
+        "diagnostics.record(\"BRIDGE_FAILURE\",failed.getClass().getSimpleName());recovery();return;",
+        "BwvBridgeCallGuard.destroyed(bridge.getWebView())"
+      ],
+      "forbidden": []
+    }
+  ]
+}

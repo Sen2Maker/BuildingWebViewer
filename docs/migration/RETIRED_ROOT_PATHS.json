@@ -1,0 +1,407 @@
+[
+  {
+    "path": "README.en.md",
+    "mode": "100644",
+    "sha": "2b8a6070d4482c3307cfa843e10e8c8b19c8eb19"
+  },
+  {
+    "path": "assets/js/cloud.bundle.js",
+    "mode": "100644",
+    "sha": "0f2e110a3804f35d139f471a88f24cc230039ae7"
+  },
+  {
+    "path": "assets/js/gaussian.bundle.js",
+    "mode": "100644",
+    "sha": "0e38567223a777ccbf904794cb8312dbbe6c1176"
+  },
+  {
+    "path": "assets/js/generate.bundle.js",
+    "mode": "100644",
+    "sha": "637ce1a5d814559c5937d9939fb21d0a35082383"
+  },
+  {
+    "path": "assets/js/hub.bundle.js",
+    "mode": "100644",
+    "sha": "1c6ea59c7b9da1fb0738e9f9cee7385575845f55"
+  },
+  {
+    "path": "assets/js/lod.bundle.js",
+    "mode": "100644",
+    "sha": "ff8518fcc387aefb3a94faf5f20a56996ba7f52e"
+  },
+  {
+    "path": "assets/js/mobile.bundle.js",
+    "mode": "100644",
+    "sha": "a685e026105a33d1f464831b20e83e0a159cfd16"
+  },
+  {
+    "path": "assets/mobile/index.html",
+    "mode": "100644",
+    "sha": "9e323409fc0621fa1d6b8711ccf6ed7f90f396a3"
+  },
+  {
+    "path": "build.py",
+    "mode": "100644",
+    "sha": "3b3a7a135f248130d2b51f2f59d68bd9b808f0fa"
+  },
+  {
+    "path": "gaussian.html",
+    "mode": "100644",
+    "sha": "6368c6a6350ad23497e55f1e1763b849516dc47c"
+  },
+  {
+    "path": "generate.html",
+    "mode": "100644",
+    "sha": "0abbb946c0f21719090ef1d4fc48d575eb942082"
+  },
+  {
+    "path": "index.html",
+    "mode": "100644",
+    "sha": "0da0e7030086d3e9aa72febda0ee0a515285890f"
+  },
+  {
+    "path": "lod.html",
+    "mode": "100644",
+    "sha": "be7d4602dc1a6f4854f5c078c03a4ad90ed14bfa"
+  },
+  {
+    "path": "mobile/.gitignore",
+    "mode": "100644",
+    "sha": "21a543e5f7614d2fe491b88e05f6b11d1f04d381"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/AnnouncementTest.java",
+    "mode": "100644",
+    "sha": "21d16f256a5fd4f8ee5f90e50b0003912aec324f"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/BackNavigationTest.java",
+    "mode": "100644",
+    "sha": "3d26c819b643d48baad235fcb042045c88021564"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/EditorWorkspaceTest.java",
+    "mode": "100644",
+    "sha": "a69bf378ce1a12f699a214e2f1481f1277d11507"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/GaussianMobileTest.java",
+    "mode": "100644",
+    "sha": "34cba28d803b3bc419b91b11dcd1aac06711aab4"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianRenderTest.java",
+    "mode": "100644",
+    "sha": "cf5c484cc6b4c7593c3d5f6be689e413f7fd69e8"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/NativeStorageTest.java",
+    "mode": "100644",
+    "sha": "085e7d1fbf0818ad65b076bc617d5fd00ccce759"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/SignedUpdateTest.java",
+    "mode": "100644",
+    "sha": "6d23c5200a40f6be93ee38ea45c6f603f27f4dc7"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/StartupTest.java",
+    "mode": "100644",
+    "sha": "3e40cb65bef2747884290be50b245a87cece4a7d"
+  },
+  {
+    "path": "mobile/android/app/src/androidTest/java/io/github/sen2maker/buildingwebviewer/preview/WebViewTestHelper.java",
+    "mode": "100644",
+    "sha": "e751cddc139c2a2c797e5aaf617de7b8e4a767d8"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/ApkUpdater.java",
+    "mode": "100644",
+    "sha": "6b3912661f97ba07c456df72563b3ec5d5935482"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/ArchiveImporter.java",
+    "mode": "100644",
+    "sha": "dc7f64183a7f18dab4749c8d25ef92c8e0254d2d"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/ArchivePolicy.java",
+    "mode": "100644",
+    "sha": "f86384950fca2e543a207cfadf5664180c1a58c0"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/BWVProjectsPlugin.java",
+    "mode": "100644",
+    "sha": "ed76e2b21d684035a7ed1921474cc7fcc0d330b5"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/BackNavigation.java",
+    "mode": "100644",
+    "sha": "577ad0c5dbaeba66c4f24936e2ad7b22bb519e37"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/DiagnosticText.java",
+    "mode": "100644",
+    "sha": "e3487276c527e6ea387c78c90128ab5a8897819f"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/MainActivity.java",
+    "mode": "100644",
+    "sha": "18467413703d3dd2f34e5d5e1a74a857b092c252"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianActivity.java",
+    "mode": "100644",
+    "sha": "ed57ba5dac8b0f1cf37975f6f17e730a72b9a6e2"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianCamera.java",
+    "mode": "100644",
+    "sha": "60aca21358a84e23e12726b962f7e414900a874a"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianData.java",
+    "mode": "100644",
+    "sha": "a3337da73a2e9b63113e136d8ed71d6683ff2c0f"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianJoystick.java",
+    "mode": "100644",
+    "sha": "dba9770f835e1ae7df6f0e71321ec5f36388025a"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianLayout.java",
+    "mode": "100644",
+    "sha": "92b0cfe76db7c02e8a685a0fd86088eccc185fba"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianMotion.java",
+    "mode": "100644",
+    "sha": "c6b6b0104a4f18e3a0199eff20d04c43d62f763a"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianNavigation.java",
+    "mode": "100644",
+    "sha": "f56726ac2a6a45b329e15b258de4211c66660ffc"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianOrbit.java",
+    "mode": "100644",
+    "sha": "0067e46635551603582d2889eca1d7b0fb4567d0"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianRenderer.java",
+    "mode": "100644",
+    "sha": "d2e1ee0fe1ca65ca03ccc36cabef8f68871052d4"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianSort.java",
+    "mode": "100644",
+    "sha": "be0e8ee1f616690b57631accfba81da68a3ecf12"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/NativeRoutes.java",
+    "mode": "100644",
+    "sha": "1c9c06be8984186c84cfafc727af5d5685946665"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/ProjectStore.java",
+    "mode": "100644",
+    "sha": "276badf57c1a460fb356f39f865de6bf5fa6cc25"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/SignedUpdate.java",
+    "mode": "100644",
+    "sha": "13f07f98af3ec88aa5a1ef6a4b4b473adb7dd266"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/StartupDiagnostics.java",
+    "mode": "100644",
+    "sha": "3039177ccf4d4fccf73ed9206f5e5934ead7270f"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/UpdateSignature.java",
+    "mode": "100644",
+    "sha": "2b94c0ff41e3feb39cc982dfd57bc151fd68ebc6"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/VersionPolicy.java",
+    "mode": "100644",
+    "sha": "1e703c2a26ef92e2158d67ca82f07237eca747cd"
+  },
+  {
+    "path": "mobile/android/app/src/main/java/io/github/sen2maker/buildingwebviewer/preview/WebUpdater.java",
+    "mode": "100644",
+    "sha": "29c021785b207ab9d8cdf86a2645e1a3dc1df3d9"
+  },
+  {
+    "path": "mobile/android/app/src/main/res/raw/update_trust.json",
+    "mode": "100644",
+    "sha": "2a881dab30f79d8dc3d022d4135e72752c542114"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/DiagnosticTextTest.java",
+    "mode": "100644",
+    "sha": "dc29505843db092b887e8d23c6852cfaa88d645d"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianLayoutTest.java",
+    "mode": "100644",
+    "sha": "96a24b23ccce24686ee15c02538e6df7c22dcecc"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianMotionTest.java",
+    "mode": "100644",
+    "sha": "3c96d56de4515db4793ba6529a27ac0f41511276"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianNavigationTest.java",
+    "mode": "100644",
+    "sha": "2a4d3dadf84d51daac16d16af388517fe5649ca3"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianOrbitTest.java",
+    "mode": "100644",
+    "sha": "3fcff5fa6e53f1e07c9178ab0c53c1c7e93e8888"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/NativeGaussianTest.java",
+    "mode": "100644",
+    "sha": "3f1e6d44a0ff5c117042c1123eb1a6dc66c30741"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/NativeRoutesTest.java",
+    "mode": "100644",
+    "sha": "ed959d5d2db0b2435ebbf01cf6566418546b53cd"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/PoliciesTest.java",
+    "mode": "100644",
+    "sha": "568e0820463cdd859643f1b7a73c2a393ead9f53"
+  },
+  {
+    "path": "mobile/android/app/src/test/java/io/github/sen2maker/buildingwebviewer/preview/UpdateSignatureTest.java",
+    "mode": "100644",
+    "sha": "5d8fa76bdb90293527666c27719d2f6fe020b023"
+  },
+  {
+    "path": "mobile/compat-build.mjs",
+    "mode": "100644",
+    "sha": "0eb1364963f7a51f943e5dbb5a5adce5360d5970"
+  },
+  {
+    "path": "mobile/compat-test.mjs",
+    "mode": "100644",
+    "sha": "bf9b9265887e638c70bd3be018c1c8e3af163924"
+  },
+  {
+    "path": "mobile/prepare.py",
+    "mode": "100644",
+    "sha": "90a6fb80f1e1b65f8a2b86b8c594aa754a1493c2"
+  },
+  {
+    "path": "mobile/publish-manifest.py",
+    "mode": "100644",
+    "sha": "3c0d84e975e44c4bfb2f7ed2c379c25db3559860"
+  },
+  {
+    "path": "mobile/sign-update.py",
+    "mode": "100644",
+    "sha": "dcf7ce6a11ae5cf3497d66b7f25fc9810f4d4c29"
+  },
+  {
+    "path": "mobile/test-app-shell.mjs",
+    "mode": "100644",
+    "sha": "527c1357116e0b9ed31b9a444af9500381cbc889"
+  },
+  {
+    "path": "mobile/test-fixtures.py",
+    "mode": "100644",
+    "sha": "1b692a5b3836e387cb7d5d79042f6ce84b03eda8"
+  },
+  {
+    "path": "mobile/test-gaussian-quality-ui.mjs",
+    "mode": "100644",
+    "sha": "c342dac3dea9b394d71700cf88584228c1f87636"
+  },
+  {
+    "path": "mobile/test-inspector-navigation.mjs",
+    "mode": "100644",
+    "sha": "09cbc753ef66a4cd815fea4ce01bb120ffe5e592"
+  },
+  {
+    "path": "mobile/test-signing.py",
+    "mode": "100644",
+    "sha": "25f4be886e4088df8f5880801bde616a8d934fa8"
+  },
+  {
+    "path": "mobile/update-release.json",
+    "mode": "100644",
+    "sha": "6ee9f10e27a72b6c68987ea568fb62460cbe4e82"
+  },
+  {
+    "path": "mobile/update_signing.py",
+    "mode": "100644",
+    "sha": "642ca6546074879618c1d9297f74eaef7c72862d"
+  },
+  {
+    "path": "pointcloud.html",
+    "mode": "100644",
+    "sha": "9e78939eb6ef79ebfca360016a997d4ab39912a2"
+  },
+  {
+    "path": "scripts/check.py",
+    "mode": "100644",
+    "sha": "ee9c69adbabd70a63d80a6078a9c76ab2435fbb6"
+  },
+  {
+    "path": "scripts/release.py",
+    "mode": "100644",
+    "sha": "f05fbb98585c4cb2472fa35d46e90c97d89456bb"
+  },
+  {
+    "path": "scripts/validation/gaussian-gl.py",
+    "mode": "100644",
+    "sha": "67402985ec35dabad222e747e40135e9eacf28b7"
+  },
+  {
+    "path": "server.py",
+    "mode": "100644",
+    "sha": "72f8ed7434b9590bdcfe3e1158139cba526161f5"
+  },
+  {
+    "path": "sitemap.xml",
+    "mode": "100644",
+    "sha": "4289acf53c86ede6f059ba1b023b0bb3dc6e2dcf"
+  },
+  {
+    "path": "start.sh",
+    "mode": "100755",
+    "sha": "2538a5659189dd42ccd30076dc412888347a79ec"
+  },
+  {
+    "path": "tests/browser/gaussian-projection.html",
+    "mode": "100644",
+    "sha": "61bf37f407f075b539929664d0a998eb70853175"
+  },
+  {
+    "path": "tests/browser/gaussian-projection.js",
+    "mode": "100644",
+    "sha": "4337307eb465cabcaa6d846cb87843c504dc7641"
+  },
+  {
+    "path": "tests/mobile-startup.test.mjs",
+    "mode": "100644",
+    "sha": "5aa252e4a7ed4af997f2aa5029f226e606059299"
+  },
+  {
+    "path": "version.json",
+    "mode": "100644",
+    "sha": "b3c60dbdaea9c5c5afbe23a137ba13b5463f6ff5"
+  },
+  {
+    "path": "wireframe.html",
+    "mode": "100644",
+    "sha": "e3cee130574a9f8824f6b5c9cbfc9a6e0295835a"
+  }
+]

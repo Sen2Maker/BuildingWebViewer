@@ -1,0 +1,1665 @@
+import { a as t } from "./i18n-B_brH6cQ.js";
+import { F as paletteUniforms, M as PALETTE_GLSL, N as currentPalettePreferences, R as validatePaletteOptions, _ as displaySampleIndices, g as currentPresentation, h as updateSceneGuides, s as mountTouchCamera } from "./camera-controls-De9mw6p_.js";
+import { a as installCameraNavigation, c as pickCloudNavigationDepth, i as StyledLineRenderer, o as navigationBasis, s as navigationMatrix, u as pointDisplayColors } from "./point-io-DAT5abDr.js";
+//#region src/pointcloud/point-dataset.js
+/** Column order and semantics never modify the source arrays or point positions. */
+var POINT_COLUMN_TAGS = {
+	scalar: t("普通数值"),
+	red: t("颜色 R"),
+	green: t("颜色 G"),
+	blue: t("颜色 B"),
+	hue: t("颜色 H"),
+	saturation: t("颜色 S"),
+	value: t("颜色 V"),
+	nx: t("法向量 X"),
+	ny: t("法向量 Y"),
+	nz: t("法向量 Z"),
+	intensity: t("强度"),
+	classification: t("分类"),
+	return_number: t("回波编号"),
+	gps_time: t("GPS 时间"),
+	custom: t("自定义标签")
+};
+function pointColumnKeys(cloud) {
+	const keys = [
+		"x",
+		"y",
+		"z",
+		...Object.keys(cloud.fields || {}).filter((key) => ![
+			"x",
+			"y",
+			"z"
+		].includes(key))
+	];
+	return cloud.columnOrder ? [...cloud.columnOrder.filter((key) => keys.includes(key)), ...keys.filter((key) => !cloud.columnOrder.includes(key))] : keys;
+}
+function defaultPointSettings(cloud) {
+	const order = pointColumnKeys(cloud), tags = Object.create(null), custom = Object.create(null);
+	const aliases = {
+		r: "red",
+		g: "green",
+		b: "blue",
+		h: "hue",
+		s: "saturation",
+		v: "value",
+		normal_x: "nx",
+		normal_y: "ny",
+		normal_z: "nz",
+		diffuse_red: "red",
+		diffuse_green: "green",
+		diffuse_blue: "blue"
+	};
+	const used = /* @__PURE__ */ new Set();
+	for (const key of order) {
+		const tag = Object.hasOwn(POINT_COLUMN_TAGS, key) && key !== "custom" ? key : Object.hasOwn(aliases, key) ? aliases[key] : null;
+		tags[key] = tag && !used.has(tag) ? tag : "scalar";
+		if (tag) used.add(tag);
+	}
+	if (cloud.semantics?.tags) for (const key of order) {
+		if (cloud.semantics.tags[key] && ![
+			"x",
+			"y",
+			"z"
+		].includes(key)) tags[key] = cloud.semantics.tags[key];
+		custom[key] = cloud.semantics.custom?.[key] || "";
+	}
+	return {
+		order,
+		tags,
+		custom,
+		rgbScale: cloud.semantics?.rgbScale || "auto",
+		hsvScale: cloud.semantics?.hsvScale || "degrees",
+		colorSpace: cloud.semantics?.colorSpace || "auto"
+	};
+}
+function pointTagKeys(settings, roles) {
+	return roles.map((role) => settings.order.find((key) => settings.tags[key] === role));
+}
+function validatePointSettings(cloud, settings) {
+	const keys = pointColumnKeys(cloud), used = /* @__PURE__ */ new Set(), customNames = /* @__PURE__ */ new Set();
+	if (!Array.isArray(settings.order) || settings.order.length !== keys.length || new Set(settings.order).size !== keys.length || keys.some((key) => !settings.order.includes(key))) throw Error(t("列顺序必须包含全部属性且不能重复"));
+	for (const key of keys) {
+		if ([
+			"x",
+			"y",
+			"z"
+		].includes(key)) continue;
+		const tag = settings.tags[key] || "scalar";
+		if (!Object.hasOwn(POINT_COLUMN_TAGS, tag)) throw Error(t("属性标签无效"));
+		if (tag === "custom") {
+			const name = String(settings.custom[key] || "").trim();
+			if (!name) throw Error(t("请填写 {0} 的自定义标签", [key]));
+			if (customNames.has(name)) throw Error(t("同一个点云内的自定义标签不能重名"));
+			customNames.add(name);
+		}
+		if (!["scalar", "custom"].includes(tag)) {
+			if (used.has(tag)) throw Error(t("标签“{0}”只能对应一列", [POINT_COLUMN_TAGS[tag]]));
+			used.add(tag);
+		}
+	}
+	if (![
+		"auto",
+		"1",
+		"255",
+		"65535"
+	].includes(settings.rgbScale) || ![
+		"degrees",
+		"unit",
+		"opencv"
+	].includes(settings.hsvScale) || ![
+		"auto",
+		"rgb",
+		"hsv"
+	].includes(settings.colorSpace)) throw Error(t("颜色取值范围无效"));
+}
+function pointFieldStats(values) {
+	let min = Infinity, max = -Infinity, finite = 0;
+	for (const value of values) if (Number.isFinite(value)) {
+		min = Math.min(min, value);
+		max = Math.max(max, value);
+		finite++;
+	}
+	return {
+		min: finite ? min : null,
+		max: finite ? max : null,
+		finite,
+		missing: values.length - finite,
+		count: values.length,
+		preview: Array.from(values.slice(0, 6))
+	};
+}
+function hsvPointRGB(h, s, v) {
+	h = (h % 360 + 360) % 360;
+	const c = v * s, x = c * (1 - Math.abs(h / 60 % 2 - 1)), m = v - c;
+	return (h < 60 ? [
+		c,
+		x,
+		0
+	] : h < 120 ? [
+		x,
+		c,
+		0
+	] : h < 180 ? [
+		0,
+		c,
+		x
+	] : h < 240 ? [
+		0,
+		x,
+		c
+	] : h < 300 ? [
+		x,
+		0,
+		c
+	] : [
+		c,
+		0,
+		x
+	]).map((value) => value + m);
+}
+function semanticPointCloud(cloud, settings, { strict = false } = {}) {
+	validatePointSettings(cloud, settings);
+	const rgbKeys = pointTagKeys(settings, [
+		"red",
+		"green",
+		"blue"
+	]), hsvKeys = pointTagKeys(settings, [
+		"hue",
+		"saturation",
+		"value"
+	]);
+	let space = settings.colorSpace === "auto" ? rgbKeys.every(Boolean) ? "rgb" : hsvKeys.every(Boolean) ? "hsv" : null : settings.colorSpace;
+	const selected = space === "rgb" ? rgbKeys : hsvKeys;
+	let rgb = cloud.fields.rgb || cloud.fields.rgba ? cloud.rgb : null, colorIssue = "";
+	if (space && selected.every(Boolean)) {
+		const channels = selected.map((key) => cloud.fields[key]);
+		let divisor = Number(settings.rgbScale);
+		if (space === "rgb" && settings.rgbScale === "auto") {
+			let max = 0;
+			for (const channel of channels) for (const value of channel) if (Number.isFinite(value)) max = Math.max(max, value);
+			divisor = max <= 1 ? 1 : max <= 255 ? 255 : 65535;
+		}
+		rgb = new Float32Array(cloud.count * 3);
+		let invalid = 0;
+		for (let i = 0; i < cloud.count; i++) {
+			let values = channels.map((channel) => channel[i]), valid = values.every(Number.isFinite);
+			if (space === "rgb") {
+				valid = valid && values.every((v) => v >= 0 && v <= divisor);
+				values = values.map((v) => v / divisor);
+			} else {
+				const [hmax, svmax] = settings.hsvScale === "unit" ? [1, 1] : settings.hsvScale === "opencv" ? [180, 255] : [360, 1];
+				valid = valid && values[0] >= 0 && values[0] <= hmax && values.slice(1).every((v) => v >= 0 && v <= svmax);
+				values = hsvPointRGB(values[0] * 360 / hmax, values[1] / svmax, values[2] / svmax);
+			}
+			if (!valid && settings.colorSpace === "auto" && space === "rgb" && hsvKeys.every(Boolean)) {
+				const h = cloud.fields[hsvKeys[0]][i], s = cloud.fields[hsvKeys[1]][i], v = cloud.fields[hsvKeys[2]][i];
+				const [hmax, svmax] = settings.hsvScale === "unit" ? [1, 1] : settings.hsvScale === "opencv" ? [180, 255] : [360, 1];
+				valid = [
+					h,
+					s,
+					v
+				].every(Number.isFinite) && h >= 0 && h <= hmax && s >= 0 && s <= svmax && v >= 0 && v <= svmax;
+				if (valid) values = hsvPointRGB(h * 360 / hmax, s / svmax, v / svmax);
+			}
+			if (!valid) {
+				invalid++;
+				values = [
+					.55,
+					.59,
+					.61
+				];
+			}
+			rgb.set(values, i * 3);
+		}
+		if (invalid) colorIssue = t("{0} 个点的 {1} 数值缺失或超出范围，颜色显示为灰色。", [invalid.toLocaleString(), space.toUpperCase()]);
+		if (strict && invalid) throw Error(colorIssue + t(" 请检查列标签与颜色范围。"));
+	} else if (space) {
+		colorIssue = t("颜色标签尚未配齐三列。");
+		rgb = null;
+	}
+	return {
+		...cloud,
+		rgb,
+		columnOrder: [...settings.order],
+		colorIssue,
+		semantics: JSON.parse(JSON.stringify(settings))
+	};
+}
+/** Construct one coherent merged schema, taking the first cloud's order then appending new fields. */
+function orderedPointExportSchema(items, { sourceIds = true } = {}) {
+	const properties = [], byName = /* @__PURE__ */ new Map(), identities = /* @__PURE__ */ new Map(), reserved = /* @__PURE__ */ new Set([
+		"x",
+		"y",
+		"z"
+	]);
+	let count = 0;
+	for (const { cloud } of items) for (const tag of Object.values((cloud.semantics || defaultPointSettings(cloud)).tags)) if (!["scalar", "custom"].includes(tag)) reserved.add(tag);
+	for (const [source, { cloud }] of items.entries()) {
+		if (!cloud?.count || cloud.positions.length !== cloud.count * 3) throw Error(t("点云数据不完整"));
+		count += cloud.count;
+		const settings = cloud.semantics || defaultPointSettings(cloud), order = cloud.columnOrder || settings.order;
+		const used = /* @__PURE__ */ new Set();
+		for (const key of order) {
+			const axis = [
+				"x",
+				"y",
+				"z"
+			].indexOf(key), tag = settings.tags[key] || "scalar";
+			if (axis < 0 && cloud.fields[key]?.length !== cloud.count) throw Error(t("属性 {0} 长度不匹配", [key]));
+			let base = axis >= 0 ? key : tag === "custom" ? settings.custom[key] : tag === "scalar" ? key : tag;
+			base = String(base).trim().toLowerCase().replace(/[^a-z0-9_]/g, "_") || "attribute";
+			if (axis < 0 && ["scalar", "custom"].includes(tag) && reserved.has(base)) base = `original_${base}`;
+			const identity = axis >= 0 ? `axis:${key}` : tag === "custom" ? `custom:${settings.custom[key]}` : tag === "scalar" ? `scalar:${key}` : `role:${tag}`;
+			let name = identities.get(identity), suffix = 2;
+			if (!name) {
+				name = base;
+				while (byName.has(name)) name = `${base}_${suffix++}`;
+				identities.set(identity, name);
+			}
+			if (used.has(name)) throw Error(t("同一文件含有重复的导出标签"));
+			used.add(name);
+			if (!byName.has(name)) {
+				const property = {
+					name,
+					sources: []
+				};
+				byName.set(name, property);
+				properties.push(property);
+			}
+			byName.get(name).sources[source] = axis >= 0 ? { axis } : { key };
+		}
+	}
+	if (!Number.isSafeInteger(count) || count > 4294967295) throw Error(t("导出点数超过支持范围"));
+	if (sourceIds) {
+		let name = "source_id", suffix = 2;
+		while (byName.has(name)) name = `source_id_${suffix++}`;
+		properties.push({
+			name,
+			source: true
+		});
+	}
+	return {
+		count,
+		properties
+	};
+}
+//#endregion
+//#region src/pointcloud/point-export.js
+/** Streaming serializers. Coordinates are always taken from the original Float64 positions. */
+function pointExportSchema(items, { sourceIds = true } = {}) {
+	if (!items.length) throw Error(t("没有可导出的点云"));
+	if (items.some((item) => item.cloud?.columnOrder || item.cloud?.semantics)) return orderedPointExportSchema(items, { sourceIds });
+	let count = 0;
+	const keys = /* @__PURE__ */ new Set();
+	for (const { cloud } of items) {
+		if (!cloud || !Number.isSafeInteger(cloud.count) || cloud.count < 1 || cloud.positions.length !== cloud.count * 3) throw Error(t("点云数据不完整"));
+		count += cloud.count;
+		for (const [key, values] of Object.entries(cloud.fields || {})) {
+			if (values.length !== cloud.count) throw Error(t("属性 {0} 长度不匹配", [key]));
+			if (![
+				"x",
+				"y",
+				"z"
+			].includes(key.toLowerCase())) keys.add(key);
+		}
+	}
+	if (!Number.isSafeInteger(count) || count > 4294967295) throw Error(t("导出点数超过支持范围"));
+	const properties = [
+		"x",
+		"y",
+		"z"
+	].map((name, axis) => ({
+		name,
+		axis
+	})), used = /* @__PURE__ */ new Set([
+		"x",
+		"y",
+		"z"
+	]);
+	function unique(raw) {
+		const base = raw.toLowerCase().replace(/[^a-z0-9_]/g, "_") || "attribute";
+		let name = base, suffix = 2;
+		while (used.has(name)) name = `${base}_${suffix++}`;
+		used.add(name);
+		return name;
+	}
+	const hasRGB = items.some(({ cloud }) => cloud.rgb);
+	if (hasRGB) {
+		for (const [channel, name] of [
+			"red",
+			"green",
+			"blue"
+		].entries()) properties.push({
+			name: unique(name),
+			channel
+		});
+		properties.push({
+			name: unique("rgb_valid"),
+			rgbValid: true
+		});
+	}
+	const colorKeys = /* @__PURE__ */ new Set([
+		"r",
+		"g",
+		"b",
+		"red",
+		"green",
+		"blue",
+		"diffuse_red",
+		"diffuse_green",
+		"diffuse_blue",
+		"rgb",
+		"rgba",
+		"rgb_valid"
+	]);
+	for (const key of keys) properties.push({
+		name: unique(hasRGB && colorKeys.has(key.toLowerCase()) ? `original_${key}` : key),
+		key
+	});
+	if (sourceIds) properties.push({
+		name: unique("source_id"),
+		source: true
+	});
+	return {
+		count,
+		properties
+	};
+}
+async function writePointExport(items, { format = "ply", sourceIds = true, signal, onProgress = () => {}, write, chunkPoints = 4096 } = {}) {
+	if (!["ply", "txt"].includes(format) || typeof write !== "function") throw Error(t("导出格式或写入目标无效"));
+	if (!Number.isInteger(chunkPoints) || chunkPoints < 1 || chunkPoints > 65536) throw Error(t("写出块大小无效"));
+	const { count, properties } = pointExportSchema(items, { sourceIds });
+	const encoder = new TextEncoder();
+	const check = () => {
+		if (signal?.aborted) throw new DOMException(t("已取消"), "AbortError");
+	};
+	const comments = ["BuildingWebViewer: coordinates as selected; concatenation without registration or deduplication."];
+	if (properties.some((p) => p.sources)) {
+		const first = items[0].cloud.semantics || {}, tags = Object.create(null), custom = Object.create(null);
+		for (const property of properties) {
+			const index = property.sources?.findIndex(Boolean) ?? -1, spec = property.sources?.[index], semantics = items[index]?.cloud.semantics;
+			tags[property.name] = semantics?.tags?.[spec?.key] || "scalar";
+			if (tags[property.name] === "custom") custom[property.name] = semantics.custom[spec.key];
+		}
+		comments.push(`bwv_columns ${JSON.stringify({
+			tags,
+			custom,
+			rgbScale: first.rgbScale || "auto",
+			hsvScale: first.hsvScale || "degrees",
+			colorSpace: first.colorSpace || "auto"
+		})}`);
+	}
+	items.forEach(({ name, cloud }, id) => {
+		comments.push(`source ${id} ${JSON.stringify({
+			name,
+			count: cloud.count,
+			originalTotal: cloud.totalCount,
+			processing: cloud.processing || null,
+			semantics: cloud.semantics || null,
+			columnOrder: cloud.columnOrder || null
+		})}`);
+	});
+	for (const property of properties) if (property.key && property.name !== property.key) comments.push(`property_map ${property.name} ${JSON.stringify(property.key)}`);
+	const safe = (text) => text.replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+	const header = format === "ply" ? [
+		"ply",
+		"format binary_little_endian 1.0",
+		...comments.map((text) => `comment ${safe(text)}`),
+		`element vertex ${count}`,
+		...properties.map((p) => `property double ${p.name}`),
+		"end_header",
+		""
+	].join("\n") : [
+		...comments.map((text) => `# ${safe(text)}`),
+		properties.map((p) => p.name).join(" "),
+		""
+	].join("\n");
+	check();
+	await write(encoder.encode(header));
+	let done = 0;
+	for (const [source, { cloud }] of items.entries()) {
+		const value = (property, i) => {
+			if (property.sources) {
+				const spec = property.sources[source];
+				return spec?.axis !== void 0 ? cloud.positions[i * 3 + spec.axis] : spec ? cloud.fields[spec.key][i] : NaN;
+			}
+			if (property.axis !== void 0) return cloud.positions[i * 3 + property.axis];
+			if (property.channel !== void 0) return cloud.rgb?.[i * 3 + property.channel] ?? 0;
+			if (property.rgbValid) return cloud.rgb && cloud.fields.rgb_valid?.[i] !== 0 ? 1 : 0;
+			if (property.source) return source;
+			return cloud.fields[property.key]?.[i] ?? NaN;
+		};
+		for (let start = 0; start < cloud.count; start += chunkPoints) {
+			check();
+			const end = Math.min(start + chunkPoints, cloud.count);
+			let bytes;
+			if (format === "ply") {
+				bytes = new Uint8Array((end - start) * properties.length * 8);
+				const view = new DataView(bytes.buffer);
+				let offset = 0;
+				for (let i = start; i < end; i++) for (const property of properties) {
+					view.setFloat64(offset, value(property, i), true);
+					offset += 8;
+				}
+			} else {
+				const lines = [];
+				for (let i = start; i < end; i++) lines.push(properties.map((property) => String(value(property, i))).join(" "));
+				bytes = encoder.encode(lines.join("\n") + "\n");
+			}
+			await write(bytes);
+			done += end - start;
+			onProgress({
+				done,
+				total: count
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+	}
+	check();
+	return {
+		count,
+		properties
+	};
+}
+//#endregion
+//#region src/shared/cloud-colors.js
+function displayColorOverride(value) {
+	return /^#[0-9a-f]{6}$/i.test(value || "") ? [
+		1,
+		3,
+		5
+	].map((i) => parseInt(value.slice(i, i + 2), 16) / 255) : null;
+}
+/** This inspector changes render metadata, never point attributes or exported values. */
+function mountCloudColors({ container, getItems, onChange }) {
+	const doc = container.ownerDocument, section = doc.createElement("section");
+	section.className = "inspector-section cloud-colors";
+	const title = doc.createElement("h3");
+	title.textContent = t("逐点云指定颜色");
+	const help = doc.createElement("p");
+	help.className = "presentation-help";
+	help.textContent = t("指定颜色优先于全局着色；恢复后使用全局规则。只改变显示，不修改原始 RGB / HSV。");
+	const rows = doc.createElement("div"), status = doc.createElement("p");
+	status.setAttribute("role", "status");
+	status.className = "presentation-help";
+	const reset = doc.createElement("button");
+	reset.textContent = t("全部恢复全局着色");
+	section.append(title, help, rows, reset, status);
+	container.append(section);
+	function apply(item, value) {
+		const before = item.entry.displayColor;
+		try {
+			item.entry.displayColor = value;
+			onChange();
+			status.textContent = "";
+			refresh();
+		} catch (error) {
+			item.entry.displayColor = before;
+			status.textContent = error.message;
+		}
+	}
+	function refresh() {
+		rows.replaceChildren();
+		const items = getItems();
+		reset.disabled = !items.some((item) => item.entry.displayColor);
+		if (!items.length) {
+			const empty = doc.createElement("p");
+			empty.className = "presentation-help";
+			empty.textContent = t("勾选并加载点云后，可逐个指定颜色。");
+			rows.append(empty);
+		}
+		for (const item of items) {
+			const row = doc.createElement("div");
+			row.className = "cloud-color-row";
+			const label = doc.createElement("label"), input = doc.createElement("input"), name = doc.createElement("span");
+			name.textContent = item.name;
+			name.title = item.name;
+			input.type = "color";
+			input.value = item.entry.displayColor || "#547d99";
+			input.setAttribute("aria-label", t("指定 {0} 的颜色", [item.name]));
+			input.onchange = () => apply(item, input.value);
+			label.append(name, input);
+			const button = doc.createElement("button");
+			button.textContent = t("恢复");
+			button.disabled = !item.entry.displayColor;
+			button.setAttribute("aria-label", t("恢复 {0} 的全局着色", [item.name]));
+			button.onclick = () => apply(item, null);
+			row.append(label, button);
+			rows.append(row);
+		}
+	}
+	reset.onclick = () => {
+		const items = getItems(), before = items.map((item) => item.entry.displayColor);
+		try {
+			for (const item of items) item.entry.displayColor = null;
+			onChange();
+			refresh();
+		} catch (error) {
+			items.forEach((item, i) => item.entry.displayColor = before[i]);
+			status.textContent = error.message;
+		}
+	};
+	refresh();
+	return { refresh };
+}
+//#endregion
+//#region src/cloud/cloud-renderer.js
+var CLOUD_DOT = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+var CLOUD_CLAMP = (value, low, high) => Math.max(low, Math.min(high, value));
+var CLOUD_VERTEX_SOURCE = `
+precision highp float;
+attribute vec3 position;
+attribute vec3 vertexColor;
+attribute vec2 scalarValue;
+uniform vec3 originOffset;
+uniform vec2 scalarTransform;
+uniform int colorMode;
+${PALETTE_GLSL}
+uniform mat4 matrix;
+uniform float pointSize;
+uniform int useVertexColor;
+uniform vec3 solidColor;
+varying vec3 color;
+void main() {
+  gl_Position = matrix * vec4(position + originOffset, 1.0);
+  gl_PointSize = pointSize;
+  color = useVertexColor == 1 ? vertexColor : solidColor;
+  if (colorMode == 2) color = paletteColor(position.z * scalarTransform.y + scalarTransform.x);
+  if (colorMode == 3) color = scalarValue.y > .5 ? paletteColor(scalarValue.x * scalarTransform.y + scalarTransform.x) : vec3(.55, .59, .61);
+}`;
+var CLOUD_FRAGMENT_SOURCE = `
+precision mediump float;
+uniform int isPoint;
+uniform float opacity;
+uniform int pointStyle;
+varying vec3 color;
+void main() {
+  float alpha = opacity;
+  vec3 shaded = color;
+  if (isPoint == 1 && pointStyle != 1) {
+    float radius = length(gl_PointCoord - vec2(.5));
+    if (radius > .5) discard;
+    alpha *= 1.0 - smoothstep(.40, .50, radius);
+    if (pointStyle == 2) {
+      vec2 xy = (gl_PointCoord - vec2(.5)) * 2.0;
+      vec3 n = vec3(xy.x, -xy.y, sqrt(max(0.0, 1.0-dot(xy,xy))));
+      float diffuse = max(0.0,dot(n,normalize(vec3(-.45,.6,1.))));
+      float spec = pow(max(0.0,dot(n,normalize(vec3(-.2,.3,1.)))),24.0);
+      shaded = color*(.32+.68*diffuse)+vec3(.22)*spec;
+    }
+  }
+  gl_FragColor = vec4(shaded, alpha);
+}`;
+function CLOUD_HEX(value, fallback) {
+	const text = String(value || "").replace(/^#/, "");
+	const hex = /^[\da-f]{3}$/i.test(text) ? text.split("").map((char) => char + char).join("") : text;
+	if (!/^[\da-f]{6}$/i.test(hex)) return fallback;
+	return [
+		0,
+		2,
+		4
+	].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
+}
+function CLOUD_BOUNDS(value) {
+	const bounds = Array.isArray(value) && value.length === 2 ? value : value?.min && value?.max ? [value.min, value.max] : null;
+	if (!bounds || bounds.some((point) => point.length !== 3 || !Array.from(point).every(Number.isFinite))) return null;
+	if (bounds[0].some((value, i) => value > bounds[1][i])) return null;
+	return bounds.map((point) => Array.from(point));
+}
+function CLOUD_UNION(bounds) {
+	const valid = bounds.filter(Boolean);
+	if (!valid.length) return null;
+	const min = [
+		Infinity,
+		Infinity,
+		Infinity
+	], max = [
+		-Infinity,
+		-Infinity,
+		-Infinity
+	];
+	for (const item of valid) for (let i = 0; i < 3; i++) {
+		min[i] = Math.min(min[i], item[0][i]);
+		max[i] = Math.max(max[i], item[1][i]);
+	}
+	return [min, max];
+}
+var CloudViewer = class {
+	constructor(canvas, { onError = () => {}, onViewChange = () => {} } = {}) {
+		this.canvas = canvas;
+		this.onError = onError;
+		this.onViewChange = onViewChange;
+		this.options = {
+			...currentPresentation(),
+			showPoints: true,
+			showWire: true,
+			pointSize: 2,
+			pointOpacity: 1,
+			colorMode: "height",
+			pointColor: "#547d99",
+			wireColor: "#ed8e48",
+			rgbFields: null,
+			grid: true,
+			...currentPalettePreferences()
+		};
+		this.data = {
+			cloud: null,
+			wire: null
+		};
+		this.camera = {
+			elevation: 38,
+			azimuth: -55,
+			zoom: 1,
+			pan: [0, 0]
+		};
+		this.target = [
+			0,
+			0,
+			0
+		];
+		this.origin = [
+			0,
+			0,
+			0
+		];
+		this.baseHeight = 10;
+		this.bounds = null;
+		this.referenceBounds = null;
+		this.cloudBounds = null;
+		this.wireBounds = null;
+		this.buffers = {};
+		this.entityCache = /* @__PURE__ */ new Map();
+		this.activeClouds = [];
+		this.wireEntry = null;
+		this.cacheClock = 0;
+		this.inactiveCacheLimit = 67108864;
+		this.pointCount = 0;
+		this.edgeCount = 0;
+		this.colorRange = null;
+		this.effectiveColorMode = "height";
+		this.colorFallback = null;
+		this.frame = null;
+		this.disposed = false;
+		this.contextLost = false;
+		this.listeners = [];
+		try {
+			this.gl = canvas.getContext("webgl", {
+				antialias: true,
+				alpha: false,
+				preserveDrawingBuffer: true
+			});
+			if (!this.gl) throw new Error(t("无法启用 WebGL，请检查浏览器的硬件加速设置。"));
+			this.initGL();
+		} catch (error) {
+			this.onError(error.message);
+			throw error;
+		}
+		installCameraNavigation(this);
+		this.pickOrbitDepth = (...args) => pickCloudNavigationDepth(this, ...args);
+		this.installEvents();
+		this.resizeObserver = new ResizeObserver(() => this.requestRender());
+		this.resizeObserver.observe(canvas);
+		this.render();
+	}
+	initGL() {
+		const gl = this.gl;
+		const compile = (type, source) => {
+			const shader = gl.createShader(type);
+			gl.shaderSource(shader, source);
+			gl.compileShader(shader);
+			if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+				const message = gl.getShaderInfoLog(shader);
+				gl.deleteShader(shader);
+				throw new Error(t("WebGL 着色器编译失败：{0}", [message]));
+			}
+			return shader;
+		};
+		const vertex = compile(gl.VERTEX_SHADER, CLOUD_VERTEX_SOURCE);
+		let fragment;
+		try {
+			fragment = compile(gl.FRAGMENT_SHADER, CLOUD_FRAGMENT_SOURCE);
+		} catch (error) {
+			gl.deleteShader(vertex);
+			throw error;
+		}
+		const program = gl.createProgram();
+		gl.attachShader(program, vertex);
+		gl.attachShader(program, fragment);
+		gl.linkProgram(program);
+		gl.deleteShader(vertex);
+		gl.deleteShader(fragment);
+		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+			const message = gl.getProgramInfoLog(program);
+			gl.deleteProgram(program);
+			throw new Error(t("WebGL 程序链接失败：{0}", [message]));
+		}
+		this.program = program;
+		this.locations = {
+			position: gl.getAttribLocation(program, "position"),
+			color: gl.getAttribLocation(program, "vertexColor"),
+			scalar: gl.getAttribLocation(program, "scalarValue")
+		};
+		for (const name of [
+			"matrix",
+			"pointSize",
+			"useVertexColor",
+			"solidColor",
+			"isPoint",
+			"opacity",
+			"pointStyle",
+			"originOffset",
+			"scalarTransform",
+			"colorMode",
+			"colorStops[0]"
+		]) this.locations[name] = gl.getUniformLocation(program, name);
+		this.styledLines = new StyledLineRenderer(gl);
+		this.uintIndices = gl.getExtension("OES_element_index_uint");
+		const range = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
+		this.pointSizeRange = range && range.length === 2 ? Array.from(range) : [1, 64];
+	}
+	installEvents() {
+		const listen = (name, fn, options) => {
+			this.canvas.addEventListener(name, fn, options);
+			this.listeners.push([
+				name,
+				fn,
+				options
+			]);
+		};
+		this.canvas.style.touchAction = "none";
+		this.canvas.style.cursor = "grab";
+		listen("contextmenu", (event) => event.preventDefault());
+		mountTouchCamera(this, listen);
+		listen("pointerdown", (event) => {
+			if (this.fly?.active || event.pointerType === "touch") return;
+			if (![
+				0,
+				1,
+				2
+			].includes(event.button)) return;
+			event.preventDefault();
+			this.canvas.setPointerCapture(event.pointerId);
+			this.beginOrbit(event.button !== 0 || event.shiftKey);
+			this.drag = {
+				id: event.pointerId,
+				x: event.clientX,
+				y: event.clientY,
+				pan: event.button !== 0 || event.shiftKey
+			};
+			this.canvas.style.cursor = "grabbing";
+		});
+		listen("pointermove", (event) => {
+			if (this.fly?.active || event.pointerType === "touch") return;
+			if (!this.drag || this.drag.id !== event.pointerId) return;
+			const dx = event.clientX - this.drag.x, dy = event.clientY - this.drag.y;
+			this.drag.x = event.clientX;
+			this.drag.y = event.clientY;
+			this.navigatePixels(dx, dy, this.drag.pan || event.shiftKey, event.ctrlKey || event.metaKey);
+			this.requestRender();
+		});
+		const finish = (event) => {
+			if (this.drag?.id !== event.pointerId) return;
+			this.drag = null;
+			this.canvas.style.cursor = "grab";
+			if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+		};
+		for (const name of [
+			"pointerup",
+			"pointercancel",
+			"lostpointercapture"
+		]) listen(name, finish);
+		listen("dblclick", (event) => {
+			if (this.fly?.active || event.button !== 0) return;
+			const rect = this.canvas.getBoundingClientRect();
+			this.focusOrbit(event.clientX - rect.left, event.clientY - rect.top);
+		});
+		listen("wheel", (event) => {
+			event.preventDefault();
+			const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.canvas.clientHeight : 1);
+			this.zoomBy(Math.exp(-CLOUD_CLAMP(delta, -500, 500) * .0015));
+		}, { passive: false });
+		listen("webglcontextlost", (event) => {
+			event.preventDefault();
+			this.stopNavigation();
+			this.contextLost = true;
+			this.onError(t("WebGL 显示上下文暂时丢失，正在等待浏览器恢复。"));
+		});
+		listen("webglcontextrestored", () => {
+			this.contextLost = false;
+			try {
+				const camera = {
+					...this.camera,
+					pan: [...this.camera.pan]
+				}, target = [...this.target], height = this.baseHeight;
+				this.buffers = {};
+				this.initGL();
+				const savedData = this.data;
+				this.entityCache = /* @__PURE__ */ new Map();
+				this.activeClouds = [];
+				this.wireEntry = null;
+				this.gridKey = null;
+				if (savedData.clouds) this.setClouds(savedData.clouds, {
+					...savedData,
+					preserveView: false
+				});
+				else this.setData(savedData);
+				this.camera = camera;
+				this.target = target;
+				this.baseHeight = height;
+				this.render();
+				this.onError("");
+			} catch (error) {
+				this.onError(error.message);
+			}
+		});
+	}
+	makeBuffer(values) {
+		const gl = this.gl, buffer = gl.createBuffer();
+		if (!buffer) throw new Error(t("无法分配显示缓冲区，请降低点云采样数量。"));
+		gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+		gl.bufferData(gl.ARRAY_BUFFER, values, gl.STATIC_DRAW);
+		const error = gl.getError();
+		if (error && error !== gl.NO_ERROR) {
+			gl.deleteBuffer(buffer);
+			throw new Error(error === gl.OUT_OF_MEMORY ? t("显存不足，请降低点云采样数量。") : t("WebGL 缓冲区上传失败（{0}）。", [error]));
+		}
+		return {
+			buffer,
+			count: values.length / 3,
+			byteLength: values.byteLength
+		};
+	}
+	ensureCache() {
+		this.entityCache ||= /* @__PURE__ */ new Map();
+		this.activeClouds ||= [];
+		this.cacheClock ||= 0;
+		this.inactiveCacheLimit ??= 67108864;
+	}
+	deleteEntity(entry) {
+		for (const item of [
+			entry?.points,
+			entry?.colors,
+			entry?.scalar,
+			entry?.sample
+		]) if (item) this.gl.deleteBuffer(item.buffer);
+	}
+	pruneCache() {
+		const active = new Set(this.activeClouds.map((entry) => entry.key));
+		const inactive = [...this.entityCache.values()].filter((entry) => !active.has(entry.key)).sort((a, b) => b.used - a.used);
+		let bytes = 0;
+		for (let i = 0; i < inactive.length; i++) {
+			const entry = inactive[i];
+			bytes += entry.retainedBytes + entry.gpuBytes;
+			if (i >= 2 || bytes > this.inactiveCacheLimit) {
+				this.deleteEntity(entry);
+				this.entityCache.delete(entry.key);
+			}
+		}
+	}
+	forgetClouds(keys) {
+		this.stopNavigation?.();
+		this.ensureCache();
+		if (this.activeClouds.some((entry) => keys.has(entry.key))) this.setClouds(this.activeClouds.filter((entry) => !keys.has(entry.key)).map((entry) => entry.item));
+		for (const key of keys) {
+			const entry = this.entityCache.get(key);
+			if (entry) {
+				this.deleteEntity(entry);
+				this.entityCache.delete(key);
+			}
+		}
+	}
+	clearCache() {
+		this.stopNavigation?.();
+		this.ensureCache();
+		const active = new Set(this.activeClouds.map((entry) => entry.key));
+		for (const [key, entry] of this.entityCache) if (!active.has(key)) {
+			this.deleteEntity(entry);
+			this.entityCache.delete(key);
+		}
+	}
+	createEntity(item) {
+		const cloud = item.cloud;
+		if (!cloud?.positions || cloud.positions.length % 3) throw new Error(t("点云坐标需要按 XYZ 三列排列。"));
+		const count = cloud.count ?? cloud.positions.length / 3;
+		if (!Number.isSafeInteger(count) || count < 0 || count * 3 > cloud.positions.length) throw new Error(t("点云数量与坐标数组不匹配。"));
+		const min = [
+			Infinity,
+			Infinity,
+			Infinity
+		], max = [
+			-Infinity,
+			-Infinity,
+			-Infinity
+		];
+		for (let i = 0; i < count * 3; i++) {
+			const value = cloud.positions[i], axis = i % 3;
+			if (!Number.isFinite(value)) throw new Error(t("点云包含非有限坐标。"));
+			min[axis] = Math.min(min[axis], value);
+			max[axis] = Math.max(max[axis], value);
+		}
+		const bounds = count ? CLOUD_UNION([[min, max], CLOUD_BOUNDS(cloud.bounds)]) : null;
+		const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [
+			0,
+			0,
+			0
+		];
+		const positions = new Float32Array(count * 3);
+		for (let i = 0; i < positions.length; i++) positions[i] = cloud.positions[i] - origin[i % 3];
+		const arrays = [
+			cloud.positions,
+			cloud.rgb,
+			...Object.values(cloud.fields || {})
+		].filter(ArrayBuffer.isView);
+		const retainedBytes = [...new Set(arrays.map((array) => array.buffer))].reduce((sum, buffer) => sum + buffer.byteLength, 0);
+		const entry = {
+			key: item.key,
+			cloud,
+			count,
+			bounds,
+			origin,
+			ranges: /* @__PURE__ */ new Map(),
+			points: null,
+			colors: null,
+			scalar: null,
+			retainedBytes,
+			gpuBytes: positions.byteLength,
+			used: ++this.cacheClock
+		};
+		entry.ranges.set("height", count ? {
+			min: min[2],
+			max: max[2]
+		} : null);
+		if (count) entry.points = this.makeBuffer(positions);
+		return entry;
+	}
+	createWire(wire) {
+		if (!wire) return null;
+		if (!Array.isArray(wire.vertices) || !Array.isArray(wire.edges)) throw new Error(t("线框需要 vertices 和 edges 数组。"));
+		const min = [
+			Infinity,
+			Infinity,
+			Infinity
+		], max = [
+			-Infinity,
+			-Infinity,
+			-Infinity
+		];
+		for (const edge of wire.edges) {
+			if (edge.length !== 2 || !edge.every((index) => Number.isInteger(index) && index >= 0 && index < wire.vertices.length)) throw new Error(t("线框包含无效边索引。"));
+			for (const index of edge) {
+				const point = wire.vertices[index];
+				if (point.length !== 3 || !point.every(Number.isFinite)) throw new Error(t("线框包含非有限坐标。"));
+				for (let axis = 0; axis < 3; axis++) {
+					min[axis] = Math.min(min[axis], point[axis]);
+					max[axis] = Math.max(max[axis], point[axis]);
+				}
+			}
+		}
+		const count = wire.edges.length, bounds = count ? CLOUD_UNION([[min, max], CLOUD_BOUNDS(wire.bounds)]) : null;
+		const origin = bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [
+			0,
+			0,
+			0
+		];
+		const positions = new Float32Array(count * 6);
+		let offset = 0;
+		for (const edge of wire.edges) for (const index of edge) for (let axis = 0; axis < 3; axis++) positions[offset++] = wire.vertices[index][axis] - origin[axis];
+		return {
+			wire,
+			count,
+			bounds,
+			origin,
+			buffer: count ? this.makeBuffer(positions) : null
+		};
+	}
+	setData({ cloud = null, wire = null, bounds = null, origin = null } = {}) {
+		this.setClouds(cloud ? [{
+			key: cloud,
+			name: "",
+			cloud
+		}] : [], {
+			wire,
+			bounds,
+			origin,
+			preserveView: false
+		});
+		this.data.cloud = cloud;
+	}
+	/** Independent immutable cloud objects share a camera; unchanged keys reuse GPU geometry. */
+	setClouds(items, { wire = null, bounds: referenceBounds = null, origin: referenceOrigin = null, preserveView = true } = {}) {
+		this.stopNavigation?.();
+		this.ensureCache();
+		if (!Array.isArray(items)) throw new Error(t("setClouds 需要点云条目数组。"));
+		const keys = /* @__PURE__ */ new Set(), created = [], next = [];
+		let wireEntry = this.wireEntry, grid, colorPlan;
+		try {
+			for (const item of items) {
+				if (!item || item.key === void 0 || keys.has(item.key)) throw new Error(t("每个点云需要唯一且稳定的 key。"));
+				keys.add(item.key);
+				let entry = this.entityCache.get(item.key);
+				if (!entry || entry.cloud !== item.cloud) {
+					entry = this.createEntity(item);
+					created.push(entry);
+				}
+				next.push(entry);
+			}
+			if (wireEntry?.wire !== wire) wireEntry = this.createWire(wire);
+			const cloudBounds = CLOUD_UNION(next.map((entry) => entry.bounds)), wireBounds = wireEntry?.bounds || null;
+			const sharedBounds = CLOUD_BOUNDS(referenceBounds), bounds = CLOUD_UNION([
+				cloudBounds,
+				wireBounds,
+				sharedBounds
+			]);
+			const validOrigin = Array.isArray(referenceOrigin) && referenceOrigin.length === 3 && referenceOrigin.every(Number.isFinite);
+			const origin = validOrigin ? [...referenceOrigin] : bounds ? bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2) : [
+				0,
+				0,
+				0
+			];
+			const gridKey = JSON.stringify([bounds, origin]);
+			grid = gridKey === this.gridKey ? this.buffers.grid : bounds ? this.makeBuffer(this.buildGrid(bounds, origin)) : null;
+			colorPlan = this.prepareColorState(next.map((entry, index) => ({
+				...entry,
+				item: items[index],
+				actual: entry
+			})));
+			const previousWorldTarget = this.target.map((value, axis) => value + this.origin[axis]);
+			const hadScene = !!this.bounds;
+			for (const entry of created) {
+				const replaced = this.entityCache.get(entry.key);
+				if (replaced) this.deleteEntity(replaced);
+				this.entityCache.set(entry.key, entry);
+			}
+			next.forEach((entry, index) => {
+				entry.item = items[index];
+				entry.used = ++this.cacheClock;
+			});
+			if (this.wireEntry && this.wireEntry !== wireEntry && this.wireEntry.buffer) this.gl.deleteBuffer(this.wireEntry.buffer.buffer);
+			if (this.buffers.grid && this.buffers.grid !== grid) this.gl.deleteBuffer(this.buffers.grid.buffer);
+			this.activeClouds = next;
+			this.wireEntry = wireEntry;
+			this.buffers = {
+				grid,
+				wire: wireEntry?.buffer || null
+			};
+			this.gridKey = gridKey;
+			this.data = {
+				cloud: items.length === 1 ? items[0].cloud : null,
+				clouds: items.map((item) => ({ ...item })),
+				wire,
+				bounds: sharedBounds,
+				origin: validOrigin ? [...referenceOrigin] : null
+			};
+			this.cloudBounds = cloudBounds;
+			this.wireBounds = wireBounds;
+			this.referenceBounds = sharedBounds;
+			this.bounds = bounds;
+			this.origin = origin;
+			this.pointCount = next.reduce((sum, entry) => sum + entry.count, 0);
+			this.edgeCount = wireEntry?.count || 0;
+			this.commitColorState(colorPlan);
+			this.pruneCache();
+			if (preserveView && hadScene && bounds) {
+				this.target = previousWorldTarget.map((value, axis) => value - origin[axis]);
+				this.render();
+			} else this.fit();
+		} catch (error) {
+			if (colorPlan && !colorPlan.committed) this.deleteColorPlan(colorPlan);
+			for (const entry of created) if (this.entityCache.get(entry.key) !== entry) this.deleteEntity(entry);
+			if (wireEntry !== this.wireEntry && wireEntry?.buffer) this.gl.deleteBuffer(wireEntry.buffer.buffer);
+			if (grid && grid !== this.buffers.grid) this.gl.deleteBuffer(grid.buffer);
+			this.onError(error.message);
+			throw error;
+		}
+	}
+	entryRange(entry, mode) {
+		if (entry.ranges.has(mode)) return entry.ranges.get(mode);
+		const name = mode.startsWith("field:") ? mode.slice(6) : mode;
+		const values = entry.cloud.fields?.[name];
+		let min = Infinity, max = -Infinity;
+		if (values?.length >= entry.count) for (let i = 0; i < entry.count; i++) {
+			const value = values[i];
+			if (Number.isFinite(value)) {
+				min = Math.min(min, value);
+				max = Math.max(max, value);
+			}
+		}
+		const range = min === Infinity ? null : {
+			min,
+			max
+		};
+		entry.ranges.set(mode, range);
+		return range;
+	}
+	prepareColorState(entries = this.activeClouds || []) {
+		let mode = this.options.colorMode || "height", fallback = null;
+		const field = mode.startsWith("field:") ? mode.slice(6) : mode;
+		const hasRGB = (entry) => this.options.rgbFields?.length === 3 && this.options.rgbFields.every((name) => entry.cloud.fields?.[name]?.length >= entry.count) || entry.cloud.rgb?.length >= entry.count * 3;
+		if (mode === "rgb" && entries.length && !entries.some(hasRGB)) {
+			mode = "height";
+			fallback = t("未找到可用的 RGB 数据，已按高度着色。");
+		}
+		if (mode === "file" && entries.some((entry) => !this.entryFileColor(entry) && this.fileSources(entry.cloud, entry.count) === null)) {
+			mode = "height";
+			fallback = t("未找到完整的点云文件来源信息，已按高度着色。");
+		}
+		if (![
+			"height",
+			"rgb",
+			"solid",
+			"file"
+		].includes(mode) && entries.length && !entries.some((entry) => entry.cloud.fields?.[field]?.length >= entry.count)) {
+			mode = "height";
+			fallback = t("字段 {0} 不存在，已按高度着色。", [field]);
+		}
+		const scalar = ![
+			"rgb",
+			"solid",
+			"file"
+		].includes(mode);
+		const ranges = scalar ? entries.map((entry) => this.entryRange(entry, mode)).filter(Boolean) : [];
+		const auto = ranges.length ? {
+			min: Math.min(...ranges.map((range) => range.min)),
+			max: Math.max(...ranges.map((range) => range.max))
+		} : null;
+		const plan = {
+			mode,
+			fallback,
+			auto,
+			range: scalar && auto ? this.options.range ? { ...this.options.range } : { ...auto } : null,
+			updates: []
+		};
+		try {
+			for (const entry of entries) if (mode === "rgb" || mode === "file" && !this.entryFileColor(entry)) {
+				const signature = mode === "rgb" ? JSON.stringify(["rgb", this.options.rgbFields]) : "file";
+				if (entry.colorKey !== signature) {
+					const colors = mode === "rgb" && !hasRGB(entry) ? new Float32Array(entry.count * 3).fill(.55) : this.buildColors(entry.cloud, entry.count).values;
+					const buffer = entry.count ? this.makeBuffer(colors) : null;
+					plan.updates.push({
+						entry: entry.actual || entry,
+						colors: buffer,
+						colorKey: signature
+					});
+				}
+			} else if (scalar && mode !== "height" && entry.scalarKey !== mode) {
+				const name = mode.startsWith("field:") ? mode.slice(6) : mode, values = entry.cloud.fields?.[name];
+				const base = this.entryRange(entry, mode)?.min || 0, scalars = new Float32Array(entry.count * 2);
+				for (let i = 0; i < entry.count; i++) if (Number.isFinite(values?.[i])) {
+					scalars[i * 2] = values[i] - base;
+					scalars[i * 2 + 1] = 1;
+				}
+				const buffer = entry.count ? this.makeBuffer(scalars) : null;
+				plan.updates.push({
+					entry: entry.actual || entry,
+					scalar: buffer,
+					scalarBase: base,
+					scalarKey: mode
+				});
+			}
+		} catch (error) {
+			this.deleteColorPlan(plan);
+			throw error;
+		}
+		return plan;
+	}
+	deleteColorPlan(plan) {
+		for (const update of plan.updates) for (const name of ["colors", "scalar"]) if (update[name]) this.gl.deleteBuffer(update[name].buffer);
+	}
+	commitColorState(plan) {
+		for (const { entry, ...update } of plan.updates) {
+			for (const name of ["colors", "scalar"]) if (Object.hasOwn(update, name) && entry[name]) this.gl.deleteBuffer(entry[name].buffer);
+			Object.assign(entry, update);
+			entry.gpuBytes = entry.count * (12 + (entry.colors ? 12 : 0) + (entry.scalar ? 8 : 0)) + (entry.sample?.byteLength || 0);
+		}
+		this.dataRange = plan.auto;
+		this.colorRange = plan.range;
+		this.effectiveColorMode = plan.mode;
+		this.colorFallback = plan.fallback;
+		plan.committed = true;
+	}
+	updateColorState() {
+		this.commitColorState(this.prepareColorState());
+	}
+	entryFileColor(entry) {
+		const color = entry.item?.color;
+		return color?.length === 3 && Array.from(color).every(Number.isFinite) ? Array.from(color, (value) => CLOUD_CLAMP(value, 0, 1)) : null;
+	}
+	fileSources(cloud, count) {
+		const sources = Array.isArray(cloud.sources) ? [...cloud.sources].sort((a, b) => (a?.start ?? 0) - (b?.start ?? 0)) : [];
+		let covered = 0;
+		return sources.length > 0 && sources.every((source) => {
+			if (!source || !Number.isSafeInteger(source.start) || !Number.isSafeInteger(source.count) || source.start !== covered || source.count < 0 || source.count > count - covered) return false;
+			if (!Array.isArray(source.color) && !ArrayBuffer.isView(source.color) || source.color.length !== 3 || !Array.from(source.color).every(Number.isFinite)) return false;
+			covered += source.count;
+			return true;
+		}) && covered === count ? sources : null;
+	}
+	buildGrid(bounds, origin) {
+		const width = bounds[1][0] - bounds[0][0], depth = bounds[1][1] - bounds[0][1];
+		const span = Math.max(width, depth, .01) * .65;
+		const rough = span / 12, power = Math.pow(10, Math.floor(Math.log10(rough))), unit = rough / power;
+		const step = (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10) * power;
+		const count = Math.ceil(span / step), extent = count * step;
+		const z = bounds[0][2] - origin[2] - Math.max(width, depth, bounds[1][2] - bounds[0][2], .01) * .001;
+		const values = new Float32Array((2 * count + 1) * 12);
+		let index = 0;
+		for (let k = -count; k <= count; k++) for (const point of [
+			[
+				k * step,
+				-extent,
+				z
+			],
+			[
+				k * step,
+				extent,
+				z
+			],
+			[
+				-extent,
+				k * step,
+				z
+			],
+			[
+				extent,
+				k * step,
+				z
+			]
+		]) for (const value of point) values[index++] = value;
+		return values;
+	}
+	buildColors(cloud, count) {
+		return pointDisplayColors(cloud, count, this.options);
+	}
+	applyColorState(colors) {
+		this.effectiveColorMode = colors.mode;
+		this.colorFallback = colors.fallback;
+		this.colorRange = colors.range;
+	}
+	setOptions(options = {}) {
+		const previous = this.options, next = {
+			...previous,
+			...options
+		};
+		next.pointSize = CLOUD_CLAMP(Number.isFinite(Number(next.pointSize)) ? Number(next.pointSize) : 2, .5, 64);
+		next.pointOpacity = CLOUD_CLAMP(Number.isFinite(Number(next.pointOpacity)) ? Number(next.pointOpacity) : 1, 0, 1);
+		next.colorMode = String(next.colorMode || "height");
+		next.rgbFields = Array.isArray(next.rgbFields) ? [...next.rgbFields] : null;
+		next.palette ||= "current";
+		next.reverse = !!next.reverse;
+		next.range = next.range ? { ...next.range } : null;
+		validatePaletteOptions(next);
+		if (![
+			"disc",
+			"square",
+			"sphere"
+		].includes(next.pointStyle) || !Number.isFinite(next.pointRatio) || next.pointRatio < 1 || next.pointRatio > 100) throw Error(t("无效的点显示参数。"));
+		if (next.pointRatio < 100 && !this.uintIndices && this.activeClouds.some((entry) => entry.count > 65535)) throw Error(t("此浏览器不支持大点云的比例显示抽样。"));
+		if (next.lineStyle !== "native" && !this.styledLines?.ext) throw Error(t("此浏览器不支持立体线，请使用细线。"));
+		this.options = next;
+		try {
+			this.updateColorState();
+		} catch (error) {
+			this.options = previous;
+			this.onError(error.message);
+			throw error;
+		}
+		this.render();
+	}
+	vectorSegments() {
+		const wire = this.wireEntry?.wire;
+		return wire && this.options.showWire ? wire.edges.map((edge) => edge.map((index) => wire.vertices[index].map((v, i) => v - this.origin[i]))) : [];
+	}
+	sampledElements(entry) {
+		const ratio = this.options.pointRatio ?? 100;
+		if (ratio === 100) {
+			if (entry.sample) {
+				this.gl.deleteBuffer(entry.sample.buffer);
+				entry.gpuBytes -= entry.sample.byteLength;
+				entry.sample = null;
+			}
+			return null;
+		}
+		if (entry.sample?.ratio === ratio) return entry.sample;
+		const indices = displaySampleIndices(entry.count, ratio), gl = this.gl;
+		if (indices instanceof Uint32Array && !this.uintIndices) throw Error(t("此浏览器不支持大点云的比例显示抽样。"));
+		const buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+		if (gl.getError() !== gl.NO_ERROR) {
+			gl.deleteBuffer(buffer);
+			throw Error(t("抽样缓冲区分配失败。"));
+		}
+		if (entry.sample) {
+			gl.deleteBuffer(entry.sample.buffer);
+			entry.gpuBytes -= entry.sample.byteLength;
+		}
+		entry.gpuBytes = (entry.gpuBytes || 0) + indices.byteLength;
+		entry.sample = {
+			buffer,
+			count: indices.length,
+			byteLength: indices.byteLength,
+			ratio,
+			type: indices instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT
+		};
+		return entry.sample;
+	}
+	visibleBounds() {
+		return CLOUD_UNION([
+			this.referenceBounds,
+			this.options.showPoints && this.pointCount ? this.cloudBounds : null,
+			this.options.showWire && this.edgeCount ? this.wireBounds : null
+		]);
+	}
+	basis() {
+		return navigationBasis(this);
+	}
+	fit() {
+		this.resetNavigation();
+		const visible = this.visibleBounds();
+		const bounds = visible ? visible.map((point) => point.map((value, axis) => value - this.origin[axis])) : [[
+			-1,
+			-1,
+			-1
+		], [
+			1,
+			1,
+			1
+		]];
+		this.target = bounds[0].map((value, axis) => value + (bounds[1][axis] - value) / 2);
+		const [right, up] = this.basis();
+		let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		for (const x of [bounds[0][0], bounds[1][0]]) for (const y of [bounds[0][1], bounds[1][1]]) for (const z of [bounds[0][2], bounds[1][2]]) {
+			const point = [
+				x,
+				y,
+				z
+			], px = CLOUD_DOT(point, right), py = CLOUD_DOT(point, up);
+			minX = Math.min(minX, px);
+			maxX = Math.max(maxX, px);
+			minY = Math.min(minY, py);
+			maxY = Math.max(maxY, py);
+		}
+		const aspect = Math.max(1, this.canvas.clientWidth) / Math.max(1, this.canvas.clientHeight);
+		this.baseHeight = Math.max(.001, maxY - minY, (maxX - minX) / aspect) * 1.22;
+		this.camera.zoom = 1;
+		this.camera.pan = [0, 0];
+		this.distance = Math.max(.001, this.baseHeight, Math.hypot(...bounds[1].map((v, i) => v - bounds[0][i]))) * 2;
+		this.near = Math.max(1e-6, this.distance * 1e-5);
+		this.render();
+	}
+	setView(view) {
+		this.stopNavigation();
+		const values = {
+			iso: [38, -55],
+			top: [90, -90],
+			front: [0, -90]
+		}[view];
+		if (!values) throw new Error(t("不支持的视角：{0}", [view]));
+		[this.camera.elevation, this.camera.azimuth] = values;
+		this.fit();
+	}
+	zoomBy(factor, precision = false, repivot = true) {
+		this.navigationZoom(factor, precision, repivot);
+	}
+	matrix() {
+		if (this.projection === "perspective") return navigationMatrix(this);
+		const [r, u, t] = this.basis();
+		const height = this.baseHeight / this.camera.zoom, width = height * (this.exportTarget?.width || this.canvas.width) / Math.max(1, this.exportTarget?.height || this.canvas.height);
+		const cx = CLOUD_DOT(this.target, r) + this.camera.pan[0], cy = CLOUD_DOT(this.target, u) + this.camera.pan[1];
+		const extent = this.bounds ? Math.hypot(...this.bounds[1].map((value, axis) => value - this.bounds[0][axis])) : 1;
+		const depth = Math.max(.001, extent) * 4;
+		return new Float32Array([
+			2 * r[0] / width,
+			2 * u[0] / height,
+			-t[0] / depth,
+			0,
+			2 * r[1] / width,
+			2 * u[1] / height,
+			-t[1] / depth,
+			0,
+			2 * r[2] / width,
+			2 * u[2] / height,
+			-t[2] / depth,
+			0,
+			-2 * cx / width,
+			-2 * cy / height,
+			CLOUD_DOT(this.target, t) / depth,
+			1
+		]);
+	}
+	requestRender() {
+		if (this.frame !== null || this.disposed) return;
+		this.frame = requestAnimationFrame(() => {
+			this.frame = null;
+			this.render();
+		});
+	}
+	render() {
+		if (this.disposed || this.contextLost) return;
+		if (this.frame !== null) {
+			cancelAnimationFrame(this.frame);
+			this.frame = null;
+		}
+		this.stepNavigation();
+		const gl = this.gl, canvas = this.canvas, loc = this.locations, rect = canvas.getBoundingClientRect();
+		const dpr = this.exportTarget?.scale || Math.min(window.devicePixelRatio || 1, 2);
+		const width = this.exportTarget?.width || Math.max(1, Math.round(rect.width * dpr)), height = this.exportTarget?.height || Math.max(1, Math.round(rect.height * dpr));
+		if (!this.exportTarget && (canvas.width !== width || canvas.height !== height)) {
+			canvas.width = width;
+			canvas.height = height;
+		}
+		gl.viewport(0, 0, width, height);
+		gl.depthMask(true);
+		gl.depthMask(true);
+		gl.clearColor(this.exportTarget?.transparent ? 0 : .951, this.exportTarget?.transparent ? 0 : .96, this.exportTarget?.transparent ? 0 : .965, this.exportTarget?.transparent ? 0 : 1);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.useProgram(this.program);
+		gl.uniformMatrix4fv(loc.matrix, false, this.matrix());
+		gl.uniform1f(loc.pointSize, CLOUD_CLAMP(this.options.pointSize * dpr, this.pointSizeRange[0], this.pointSizeRange[1]));
+		gl.enable(gl.DEPTH_TEST);
+		gl.depthFunc(gl.LEQUAL);
+		gl.disable(gl.CULL_FACE);
+		gl.enable(gl.BLEND);
+		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		gl.uniform1i(loc.pointStyle, this.options.pointStyle === "sphere" ? 2 : this.options.pointStyle === "square" ? 1 : 0);
+		gl.enableVertexAttribArray(loc.position);
+		gl.uniform3fv(loc["colorStops[0]"], paletteUniforms(this.options.palette, this.options.reverse));
+		const draw = (buffer, primitive, color, opacity, entry = null, mode = 0) => {
+			if (!buffer?.count || opacity <= 0) return;
+			const localOrigin = entry?.origin || this.origin;
+			gl.uniform3fv(loc.originOffset, localOrigin.map((value, axis) => value - this.origin[axis]));
+			gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);
+			gl.vertexAttribPointer(loc.position, 3, gl.FLOAT, false, 12, 0);
+			if (mode === 1 && entry?.colors) {
+				gl.enableVertexAttribArray(loc.color);
+				gl.bindBuffer(gl.ARRAY_BUFFER, entry.colors.buffer);
+				gl.vertexAttribPointer(loc.color, 3, gl.FLOAT, false, 12, 0);
+			} else {
+				gl.disableVertexAttribArray(loc.color);
+				gl.vertexAttrib3f(loc.color, 1, 1, 1);
+			}
+			if (mode === 3 && entry?.scalar) {
+				gl.enableVertexAttribArray(loc.scalar);
+				gl.bindBuffer(gl.ARRAY_BUFFER, entry.scalar.buffer);
+				gl.vertexAttribPointer(loc.scalar, 2, gl.FLOAT, false, 8, 0);
+			} else {
+				gl.disableVertexAttribArray(loc.scalar);
+				gl.vertexAttrib2f(loc.scalar, 0, 0);
+			}
+			const range = this.colorRange, span = range ? range.max - range.min : 0;
+			const base = mode === 2 ? entry.origin[2] : entry?.scalarBase || 0;
+			gl.uniform2f(loc.scalarTransform, span > 0 ? (base - range.min) / span : .5, span > 0 ? 1 / span : 0);
+			gl.uniform1i(loc.colorMode, mode);
+			gl.uniform1i(loc.useVertexColor, mode === 1 ? 1 : 0);
+			gl.uniform3fv(loc.solidColor, color);
+			gl.uniform1f(loc.opacity, opacity);
+			gl.uniform1i(loc.isPoint, primitive === gl.POINTS ? 1 : 0);
+			const sample = primitive === gl.POINTS && entry ? this.sampledElements(entry) : null;
+			if (sample) {
+				gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sample.buffer);
+				gl.drawElements(primitive, sample.count, sample.type, 0);
+			} else gl.drawArrays(primitive, 0, buffer.count);
+		};
+		const anyVisible = this.options.showPoints && this.pointCount && this.options.pointOpacity > 0 || this.options.showWire && this.edgeCount;
+		if (this.options.grid && anyVisible) {
+			gl.depthMask(false);
+			draw(this.buffers.grid, gl.LINES, [
+				.6,
+				.66,
+				.7
+			], .24);
+			gl.depthMask(true);
+		}
+		if (this.options.showPoints) {
+			gl.depthMask(this.options.pointOpacity >= 1);
+			for (const entry of this.activeClouds || []) {
+				const mode = this.effectiveColorMode;
+				const fileColor = displayColorOverride(entry.item?.displayColor) || (mode === "file" ? this.entryFileColor(entry) : null);
+				const kind = mode === "solid" || fileColor ? 0 : mode === "rgb" || mode === "file" ? 1 : mode === "height" ? 2 : 3;
+				draw(entry.points, gl.POINTS, fileColor || CLOUD_HEX(this.options.pointColor, [
+					.33,
+					.49,
+					.6
+				]), this.options.pointOpacity, entry, kind);
+			}
+			gl.depthMask(true);
+		}
+		if (this.options.showWire) {
+			if (this.options.lineStyle === "native") draw(this.wireEntry?.buffer, gl.LINES, CLOUD_HEX(this.options.wireColor, [
+				.93,
+				.56,
+				.28
+			]), 1, this.wireEntry);
+			else this.styledLines.draw({
+				buffer: this.wireEntry?.buffer,
+				matrix: this.matrix(),
+				offset: (this.wireEntry?.origin || this.origin).map((v, i) => v - this.origin[i]),
+				radius: this.options.lineWidth / 2 * this.baseHeight / this.camera.zoom / Math.max(1, rect.height),
+				style: this.options.lineStyle,
+				color: CLOUD_HEX(this.options.wireColor, [
+					.93,
+					.56,
+					.28
+				]),
+				endColor: this.options.lineGradient ? this.options.lineEndColor : null
+			});
+		}
+		gl.depthMask(true);
+		if (this.exportTarget) return;
+		updateSceneGuides(this);
+		this.onViewChange?.(this.getState());
+	}
+	getState() {
+		return {
+			displayedPointCount: this.options.showPoints ? this.activeClouds.reduce((sum, entry) => sum + Math.floor(entry.count * (this.options.pointRatio ?? 100) / 100), 0) : 0,
+			pointCount: this.pointCount,
+			edgeCount: this.edgeCount,
+			colorRange: this.colorRange ? { ...this.colorRange } : null,
+			dataRange: this.dataRange ? { ...this.dataRange } : null,
+			requestedColorMode: this.options.colorMode,
+			effectiveColorMode: this.effectiveColorMode,
+			colorFallback: this.colorFallback,
+			fields: [...new Set((this.activeClouds || []).flatMap((entry) => Object.keys(entry.cloud.fields || {})))],
+			sources: (this.activeClouds || []).map((entry) => ({
+				name: entry.item?.name || "",
+				count: entry.count,
+				totalCount: entry.cloud.totalCount || entry.count,
+				color: this.entryFileColor(entry)
+			})),
+			cache: {
+				entries: this.entityCache?.size || 0,
+				active: this.activeClouds?.length || 0,
+				gpuBytes: [...this.entityCache?.values() || []].reduce((sum, entry) => sum + entry.gpuBytes, 0)
+			},
+			camera: {
+				...this.camera,
+				pan: [...this.camera.pan],
+				target: [...this.target],
+				origin: [...this.origin],
+				baseHeight: this.baseHeight
+			},
+			bounds: this.bounds?.map((point) => [...point]) || null,
+			referenceBounds: this.referenceBounds?.map((point) => [...point]) || null,
+			options: {
+				...this.options,
+				rgbFields: this.options.rgbFields ? [...this.options.rgbFields] : null
+			}
+		};
+	}
+	dispose() {
+		if (this.disposed) return;
+		this.fly?.dispose();
+		if (typeof document !== "undefined") document.removeEventListener("visibilitychange", this.onNavigationVisibility);
+		this.disposed = true;
+		if (this.frame !== null) cancelAnimationFrame(this.frame);
+		this.resizeObserver.disconnect();
+		for (const [name, fn, options] of this.listeners) this.canvas.removeEventListener(name, fn, options);
+		for (const entry of this.entityCache?.values() || []) this.deleteEntity(entry);
+		if (this.wireEntry?.buffer) this.gl.deleteBuffer(this.wireEntry.buffer.buffer);
+		if (this.buffers.grid) this.gl.deleteBuffer(this.buffers.grid.buffer);
+		this.entityCache?.clear();
+		this.activeClouds = [];
+		this.wireEntry = null;
+		this.styledLines?.dispose();
+		this.guideCanvas?.remove();
+		this.sampleLabel?.remove();
+		this.gl.deleteProgram(this.program);
+		this.buffers = {};
+	}
+};
+//#endregion
+//#region src/shared/generate-handoff.js
+var GEN_DB = "BuildingWebViewer.generate";
+var GEN_STORE = "handoff";
+function genOpenDb() {
+	if (!globalThis.indexedDB) return Promise.reject(Error(t("当前环境不能把点云交给查看器，请改用导出 PLY。")));
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.open(GEN_DB, 1);
+		request.onupgradeneeded = () => {
+			const db = request.result;
+			if (!db.objectStoreNames.contains(GEN_STORE)) db.createObjectStore(GEN_STORE);
+		};
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error || Error(t("当前环境不能把点云交给查看器，请改用导出 PLY。")));
+	});
+}
+/** Local handoff from the generator page to the point-cloud viewer. One record, replaced on each send. */
+async function genSaveHandoff(files) {
+	if (!Array.isArray(files) || !files.length || files.some((file) => typeof file?.name !== "string" || !(file.buffer instanceof ArrayBuffer))) throw Error(t("没有可送出的点云"));
+	const db = await genOpenDb();
+	try {
+		await new Promise((resolve, reject) => {
+			const tx = db.transaction(GEN_STORE, "readwrite");
+			tx.objectStore(GEN_STORE).put({
+				files,
+				savedAt: Date.now()
+			}, "latest");
+			tx.oncomplete = resolve;
+			tx.onerror = () => reject(tx.error || Error(t("当前环境不能把点云交给查看器，请改用导出 PLY。")));
+		});
+	} finally {
+		db.close();
+	}
+}
+async function genTakeHandoff() {
+	const db = await genOpenDb();
+	try {
+		return await new Promise((resolve, reject) => {
+			const tx = db.transaction(GEN_STORE, "readwrite");
+			const store = tx.objectStore(GEN_STORE);
+			const request = store.get("latest");
+			let record = null;
+			request.onsuccess = () => {
+				record = request.result || null;
+				if (record) store.delete("latest");
+			};
+			request.onerror = () => reject(request.error || Error(t("当前环境不能把点云交给查看器，请改用导出 PLY。")));
+			tx.oncomplete = () => resolve(record?.files || null);
+			tx.onerror = () => reject(tx.error || Error(t("当前环境不能把点云交给查看器，请改用导出 PLY。")));
+		});
+	} finally {
+		db.close();
+	}
+}
+//#endregion
+export { pointExportSchema as a, defaultPointSettings as c, mountCloudColors as i, pointFieldStats as l, genTakeHandoff as n, writePointExport as o, CloudViewer as r, POINT_COLUMN_TAGS as s, genSaveHandoff as t, semanticPointCloud as u };

@@ -22,5 +22,13 @@
   "generate.html": {
     "title": "点云创作与修订 / Point Cloud Studio · BuildingWebViewer",
     "description": "本地创建和修订点云：三维画笔、框选与套索、可恢复删除、裁剪、属性保留及项目保存。Create and refine point clouds locally with 3D drawing, rectangle/lasso selection, reversible deletion, cropping and editable projects."
+  },
+  "cad.html": {
+    "title": "CAD 查看器 / CAD Viewer · BuildingWebViewer",
+    "description": "本地 CAD 预览：DXF、实验性 DWG、STEP/IGES/BREP，桌面与手机布局、图层、书签、截图及二维估测。Local CAD preview with mobile layout, layers, views, screenshots and approximate 2D measurement."
+  },
+  "cad-editor.html": {
+    "title": "二维绘图实验室 / 2D Editor Lab · BuildingWebViewer",
+    "description": "实验性二维直线编辑：精确坐标、移动、撤销重做及本机 JSON 项目保存。不是 DXF/DWG 编辑器。"
   }
 }

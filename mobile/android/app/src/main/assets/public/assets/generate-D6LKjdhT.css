@@ -1,0 +1,56 @@
+.draw-toolbar{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 10px}.draw-toolbar button{font-size:12px;padding:7px 10px}.draw-toolbar button.active{background:#305b50;color:white;border-color:#305b50}.draw-overlay{position:absolute!important;inset:0;width:100%;height:100%;z-index:3;touch-action:none;background:transparent!important}.draw-status{position:absolute;left:12px;bottom:12px;z-index:4;max-width:calc(100% - 80px);font-size:11px;line-height:1.5;padding:5px 9px;border-radius:7px;background:#fffE;color:#365e50;pointer-events:none}.draw-panel{border:0;border-bottom:1px solid #dbe5df;padding:0 0 14px;margin:0 0 14px}.draw-panel summary,.gen-presets summary{font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px}.draw-panel label{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:8px 0}.draw-panel label.gen-check{flex-direction:row}.draw-panel input:not([type=checkbox]),.draw-panel select{width:100%;min-width:0}.draw-plane-actions,.gen-project-actions{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:8px 0}.draw-plane-actions button,.gen-project-actions button{font-size:11px;padding:6px}.gen-presets{margin:10px 0}.generate-fields textarea{width:100%;resize:vertical;font:11px/1.6 monospace}.generate-fields details{margin:8px 0}.generate-fields input[type=color]{height:30px;padding:2px}.generate-fields #gen-delete{color:#9a4b37}.generate-fields [hidden]{display:none!important}body[data-tool=generate] .empty-state{pointer-events:none}body[data-tool=generate] .scene-note{pointer-events:none}body[data-tool=generate] .gs-fly-hud{z-index:8}
+@media(max-width:700px){.draw-toolbar{gap:4px}.draw-toolbar button{padding:7px;font-size:11px}.draw-status{font-size:10px;bottom:8px;left:8px}.draw-plane-actions button{min-height:36px}}
+
+.draw-panel{display:block}.draw-panel-body{display:grid;grid-template-columns:1fr 1fr;column-gap:8px}.draw-panel-body>.draw-plane-actions,.draw-panel-body>.gen-side-note,.draw-panel-body>.gen-check,.draw-panel-body>label:first-of-type{grid-column:1/-1}.draw-panel [hidden]{display:none!important}.draw-panel label{min-width:0}
+
+/* Workspace: stable object list on the left; contextual tools on the right. */
+.editor-sidebar{display:flex;flex-direction:column;gap:10px!important;padding:18px 14px!important;overflow:hidden!important}
+.editor-sidebar>.sidebar-heading{margin:0 0 4px}.editor-sidebar>.primary{width:100%;min-height:38px}.sidebar-caption{font-size:10px;color:#89958f;margin:0 0 5px;line-height:1.5}
+#editor-objects{flex:1;min-height:90px;overflow:auto;display:flex;flex-direction:column;gap:7px;padding:2px}
+.editor-object{display:flex;align-items:center;gap:10px;border:1px solid transparent;border-radius:9px;padding:8px;background:#f6f8f7;flex:none}.editor-object.active{border-color:#9ebeb0;background:#eaf2ed}.editor-object>input{width:17px;height:17px;flex:none;cursor:pointer}.editor-object-name{border:0;background:transparent;text-align:left;display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;padding:4px}.editor-object-name strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;font-weight:600}.editor-object-name small{font-size:10px;color:#7e9188}
+.editor-project-footer{border-top:1px solid #dde6e0;padding-top:10px;display:flex;flex-direction:column;gap:7px}.editor-project-footer button{font-size:11px;min-height:33px}.editor-project-footer p{font-size:10px;color:#84968b;margin:0;min-height:15px}
+.editor-pair{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0}.editor-pair button{font-size:11px;padding:7px}.editor-project-footer .editor-pair{margin:0}
+.editor-workflow{display:flex;align-items:center;gap:5px;border-bottom:1px solid #dfe8e1;padding:0 0 10px;margin:0 0 10px}.editor-workflow>button{border:0;border-radius:7px;padding:8px 15px;font-size:12px;background:transparent;color:#74897f}.editor-workflow>button.active{background:#305b50;color:white}.editor-history{margin-left:auto;display:flex;gap:5px}.editor-history button{font-size:11px;padding:6px 9px}
+.edit-toolbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:8px 10px;margin:0 0 10px;background:#fff;border:1px solid #e0e7e1;border-radius:8px}.edit-toolbar button{font-size:11px;padding:6px 9px}.edit-counter{font-size:11px;color:#9c6a30;margin-left:auto}.danger-text{color:#a94c37!important}
+.edit-overlay{position:absolute!important;inset:0;width:100%;height:100%;z-index:5;touch-action:none;background:transparent!important;cursor:crosshair}
+.tool-section{padding:15px 0;border-top:1px solid #dfe8e1;margin-top:15px}.tool-section h3{font-size:13px;margin:0 0 14px}.tool-help{font-size:11px;line-height:1.7;color:#7b8f84;margin:8px 0 12px}.object-stat{font-size:12px;color:#47695a;padding:10px;background:#edf3ef;border-radius:7px}.field-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:15px}.field-chips span{font-size:10px;padding:3px 6px;border-radius:4px;background:#edf1ee;color:#667d70}.selection-count{font-size:14px;font-weight:600;padding:12px;border-radius:8px;background:#fcf3e6;color:#aa7130}
+#settings-panel-tools label{display:flex;flex-direction:column;gap:6px;font-size:11px;margin:12px 0;min-width:0}#settings-panel-tools input:not([type=checkbox]),#settings-panel-tools select,#settings-panel-tools textarea{width:100%;min-width:0}#settings-panel-tools input[type=color]{height:34px;padding:3px}#settings-panel-tools textarea{font:11px/1.6 monospace;resize:vertical}#settings-panel-tools details>summary{font-size:12px;cursor:pointer;line-height:1.6}#settings-panel-tools .gen-check{flex-direction:row}#settings-panel-tools button{font-size:11px}
+.editor-drop{outline:3px dashed #73a28b;outline-offset:-5px}.draw-toolbar[hidden],.edit-toolbar[hidden],.draw-overlay[hidden],.edit-overlay[hidden],.draw-status[hidden]{display:none!important}
+@media(max-width:700px){.editor-workflow>button{padding:7px 9px;font-size:11px}.editor-history button{padding:6px;font-size:10px}.edit-toolbar{padding:6px;gap:4px}.edit-toolbar button{padding:7px;font-size:10px}.editor-sidebar{padding:14px!important}.edit-counter{width:100%;margin:2px 0}.editor-workflow{flex-wrap:wrap}.sidebar-caption{font-size:10px}}
+
+.editor-sidebar>.primary{flex:0 0 auto;height:38px}.editor-project-footer>.primary{flex:none}.gs-fly-entry[hidden]{display:none!important}#editor-selection-settings{display:grid;grid-template-columns:1fr 1fr;column-gap:9px}#editor-selection-settings[hidden]{display:none!important}#editor-selection-settings>label:nth-child(3),#editor-selection-settings>details,#editor-selection-settings>.tool-help,#editor-selection-settings>.selection-count,#editor-selection-settings>.editor-pair{grid-column:1/-1}#editor-selection-settings .selection-count{padding:8px 10px;font-size:12px}.editor-project-footer{flex:none}.editor-sidebar .sidebar-heading{flex:none}
+
+/* Drawing tools and draft actions stay separate from camera and property controls. */
+.draw-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:12px 14px;margin:0 0 12px;background:#f6f9f7;border:1px solid #dce7e0;border-radius:12px}
+.draw-tool-group{display:flex;align-items:center;gap:14px;min-width:0}
+.draw-group-label{flex:none;font-size:11px;font-weight:600;color:#6d8579}
+.draw-tool-buttons{display:flex;gap:5px;flex-wrap:wrap}
+.draw-toolbar button{min-height:36px;padding:7px 12px;font-size:12px}
+.draw-tool-buttons button{background:#fff;border-color:#dbe5df}
+.draw-tool-buttons button.active{background:#305b50;color:#fff;border-color:#305b50}
+.draw-draft-group{display:contents}
+
+.draw-draft-info{display:flex;align-items:baseline;gap:10px;min-width:0;flex-basis:100%;order:3;flex-wrap:wrap}
+.draw-draft-info strong{font-size:12px;color:#365e50;font-weight:600}
+.draw-draft-info span{font-size:11px;color:#7a8e83;line-height:1.5}
+.draw-draft-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto}
+.draw-draft-actions button:first-child{border-color:#a7bfb2;color:#305b50;background:#fff}
+.draw-draft-actions .primary{background:#305b50;color:#fff;border-color:#305b50}
+.draw-toolbar [hidden]{display:none!important}
+.draw-overlay{cursor:crosshair}
+#editor-new-sampling{display:grid;grid-template-columns:1fr 1fr;column-gap:10px}
+#editor-new-sampling h3{grid-column:1/-1;margin-bottom:2px}
+.editor-workflow{background:#f6f8f7;border:1px solid #e0e7e2;border-radius:10px;padding:5px;margin-bottom:10px}
+.editor-workflow>button{min-height:36px}
+.editor-history{padding-right:3px}
+@media(max-width:700px){
+ .draw-toolbar{display:grid;padding:10px;gap:9px;border-radius:10px}
+ .draw-tool-group{display:block}.draw-group-label{display:none}
+ .draw-tool-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;width:100%}
+ .draw-toolbar button{min-height:40px;padding:7px 8px;font-size:11px}
+ .draw-draft-info{gap:4px;flex-direction:row;align-items:baseline}.draw-draft-info span{display:none}.draw-draft-group{display:contents}
+ .draw-draft-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-left:0}
+ .draw-draft-actions button:nth-child(n+3){min-height:32px;padding-top:4px;padding-bottom:4px}
+ .editor-workflow{gap:3px}.editor-workflow>button{padding:7px 10px;min-height:38px}
+ .editor-history{margin-left:auto}
+}

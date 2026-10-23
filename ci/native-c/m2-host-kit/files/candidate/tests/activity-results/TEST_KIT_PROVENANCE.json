@@ -1,0 +1,29 @@
+{
+  "source": "main_activity_result_tests_staging/revisions/r1",
+  "freezeSha256": "e2d885ad2aa5e8eadfb5272bdf653cbefc62a46ccf6ebc4f0ff655b66a0ab756",
+  "files": {
+    "BASE_FREEZE.json": "2e6c91d3b32eb01dbbda69610652cefa4b2789da9c11e4cfe4ff5abe71319482",
+    "README.md": "9e7f23fa735ad640b074473f5ecb82e8cbec433f449e7d75bd8dcace29ba5d8d",
+    "baseline/reproduction.java.in": "4badf3b03eb01069931515f91279f550da579bac439cfbe9c6c239e2f091321e",
+    "baseline/reviewer-provenance.json": "82d14d709242caf2c59644c8a312575672d095df1b003c1bf2799410a8fd22e5",
+    "cases.java.in": "026c5a8c342574448a4d1442a748319fffdfbcbf7b54e06c3c677843168eaf9b",
+    "harness.java.in": "46bf7c06205aa2ac65fe630f8a1ed3e3016aaeba286c74d43139d1f438891344",
+    "run_baseline.py": "9c1b467627c49c68b6a7e888da0b7947fb8e8b83db4b465dd6560fc5ef28970a",
+    "run_mutations.py": "55783ade64604333c95225e4cf71aa9b97004fa4c73da533d843ec9b5537f6e9",
+    "run_regression.py": "bd0251f2781ffc45d8d0fd1a8178d36d1845c586f98b66b2d58d0ad4922ae3da",
+    "source_extract.py": "a59fbde96b669a5bbf03209d094d0a07a67db32d16aaf8f107b799188e9ab7fc",
+    "stubs/android/app/Activity.java": "a34542832562362ef5dbc58d0889dcf6d025ca637e2c9e5dc5359eb18c0ef0b6",
+    "stubs/android/content/ClipData.java": "b6bfd0e44b7679453f1913b865e7d7d5df8af3135dc0c08ba34edded8a971dbc",
+    "stubs/android/content/Intent.java": "1d64aed6dd2652b6cccc26b8501c5d334982f3caf5eb95f9d64a89deddfea106",
+    "stubs/android/net/Uri.java": "f1d18cf1e286a7fc22f5e490f7984fef8d1f1a23df01e6e6ec61a54f77827538",
+    "stubs/android/os/Bundle.java": "cf8977c79033eee53675344f4112108f2bfa6505a8d4efb3f3fd9160400b954d",
+    "stubs/android/os/Handler.java": "a4b9e7f6c434bb9a4009d51bd2cfbf2096f1a2933a06aa54640e10822164ad5e",
+    "stubs/android/os/Looper.java": "86e33f84df351ff52975f583c72c894e893132b9e0edf089e957bc99386ecd8d",
+    "stubs/androidx/activity/result/ActivityResult.java": "1e096c082c257cc09bf09b14d5d5c3c1b5478f30333f26efc5381da716a1549b",
+    "stubs/androidx/activity/result/ActivityResultCallback.java": "e5c09e54013c7915976734d4c925f4fa7b5ea1e18a41022da22ff162687f383c",
+    "stubs/androidx/activity/result/ActivityResultLauncher.java": "b511039debaddf67d83c5154ec93f6bcad75da7d4ecfb10b3d900eee4ec477c1",
+    "stubs/androidx/activity/result/ActivityResultRegistry.java": "1bfba6c13f0d718f3d3a41912e0701b7b2e812537e05fbebef7cd5159cb8e0cf",
+    "stubs/androidx/activity/result/contract/ActivityResultContract.java": "e3f6dcd58c7014e10362e0602b53bfea649165bfc53c4e94d8b70d9c8a6a3934",
+    "stubs/androidx/activity/result/contract/ActivityResultContracts.java": "8c8b1c168eca3cd65fc321a2fa8d75b29f5692efa195fbad4e029219190b470e"
+  }
+}

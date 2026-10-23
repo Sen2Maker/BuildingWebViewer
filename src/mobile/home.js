@@ -3,6 +3,13 @@ import { initializeLocale, t } from '../shared/i18n.js';
 import { mobileProjects } from '../shared/mobile-project.js';
 import { initializeMobileUpdates } from './mobile-updates.js';
 initializeLocale();
+const cadDownload=document.getElementById('cad-app-download');
+if(cadDownload)cadDownload.onclick=async()=>{
+  const api=mobileProjects();
+  if(!api?.openCadAppDownload){mobileHomeSay('CAD App 下载地址尚未确认。');return;}
+  try{const result=await api.openCadAppDownload();if(!result?.available)mobileHomeSay('CAD App 下载地址尚未确认。');}
+  catch(error){mobileHomeSay(error.message);}
+};
 document.getElementById('mobile-language').href='?lang='+(document.documentElement.lang==='en'?'zh':'en');
 const mobileHomeAPI=mobileProjects(),mobileHomeList=document.getElementById('projects'),mobileHomeStatus=document.getElementById('status');
 let mobileShowTrash=false;
@@ -29,11 +36,11 @@ async function refreshMobileProjects(){
 document.getElementById('new-project').onclick=async()=>{try{const name=prompt(t('项目名称'),new Date().toLocaleDateString());if(name===null)return;await mobileHomeAPI.createProject({name});await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
 document.getElementById('import-project').onclick=async()=>{try{mobileHomeSay(t('正在导入…'));const result=await mobileHomeAPI.pickFiles({});await refreshMobileProjects();mobileHomeSay(result.cancelled?'':t('导入完成，请选择查看工具'));}catch(error){mobileHomeSay(error.message);await refreshMobileProjects();}};
 document.getElementById('trash').onclick=async()=>{mobileShowTrash=!mobileShowTrash;document.getElementById('trash').textContent=t(mobileShowTrash?'返回项目':'回收站');await refreshMobileProjects();};
-refreshMobileProjects().then(async()=>{if(mobileHomeAPI){await mobileHomeAPI.updateHealthy();await mobileHomeAPI.showReleaseNotes({lang:document.documentElement.lang==='en'?'en':'zh',manual:false});}}).catch(error=>mobileHomeSay(error.message));
-if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobileHomeSay(info.error||t('收到新项目，请选择查看工具'));await refreshMobileProjects();});
+refreshMobileProjects().catch(error=>mobileHomeSay(error.message));
+if(mobileHomeAPI)mobileHomeAPI.addListener('projectsChanged',async info=>{mobileHomeSay(info.error||t('收到新项目，请选择查看工具'));await refreshMobileProjects();}).catch(error=>mobileHomeSay(error.message));
 
-document.getElementById('clean-storage').onclick=async()=>{try{const {freed}=await mobileHomeAPI.cleanupStorage();mobileHomeSay(t('已清理 {0} MB 未引用文件',[(freed/1048576).toFixed(1)]));}catch(error){mobileHomeSay(error.message);}};
-document.getElementById('empty-trash').onclick=async()=>{if(!confirm(t('永久删除回收站内的项目？请先导出需要的项目备份。')))return;try{await mobileHomeAPI.emptyTrash();await refreshMobileProjects();}catch(error){mobileHomeSay(error.message);}};
+document.getElementById('clean-storage').disabled=true;
+document.getElementById('empty-trash').disabled=true;
 document.getElementById('show-diagnostics').textContent=document.documentElement.lang==='en'?'Rendering diagnostics':'渲染诊断';
 document.getElementById('show-diagnostics').onclick=()=>showRenderDiagnostics();
 // Local projects render independently; update failure is intentionally silent.
@@ -43,3 +50,5 @@ if(mobileHomeAPI){
   }).catch(()=>{});
   initializeMobileUpdates(mobileHomeAPI);
 }
+
+document.getElementById('native-recovery').onclick=async()=>{try{if(!mobileHomeAPI)throw new Error('需要 Android App');await mobileHomeAPI.openRecovery();}catch(error){mobileHomeSay(error.message);}};

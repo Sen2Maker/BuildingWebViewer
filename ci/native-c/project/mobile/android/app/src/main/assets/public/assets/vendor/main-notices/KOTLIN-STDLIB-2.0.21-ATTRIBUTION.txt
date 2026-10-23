@@ -1,0 +1,12 @@
+PROPOSED KOTLIN STDLIB ATTRIBUTION
+
+The inspected historical BuildingWebViewer v1.10.0 APK runtime identifies itself as Kotlin 2.0.21. This is not the final new APK's resolved inventory. Source tag v2.0.21 is commit 284e9b4041bd815b5b1b489070bbb1f1db6de35c.
+
+Kotlin: Copyright JetBrains s.r.o. and Kotlin Programming Language contributors. Apache License 2.0; see KOTLIN-2.0.21-LICENSE.txt.
+
+The upstream license inventory identifies these standard-library portions:
+- libraries/stdlib/src/kotlin/collections: derived from GWT, Copyright (C) 2007-08 Google Inc.; Apache 2.0; KOTLIN-GWT-LICENSE.txt.
+- libraries/stdlib/jvm/src/kotlin/util/UnsignedJVM.kt: derived from Guava UnsignedLongs, Copyright 2011 The Guava Authors; Apache 2.0; KOTLIN-GUAVA-LICENSE.txt.
+- libraries/stdlib/jvm/src/kotlin/util/MathJVM.kt: derived from Boost special math functions, Copyright Eric Ford & Hubert Holin 2001; Boost Software License 1.0; KOTLIN-BOOST-LICENSE.txt.
+
+Exact-version source JAR and upstream repository license inventory are retained in the separate source kit. This notice does not claim Kotlin compiler/test/JS/native-only components were shipped. Final artifact resolution and relevant portions must be reconciled before release. Guava-derived code inside Kotlin does not identify the separate Guava ListenableFuture artifact version.

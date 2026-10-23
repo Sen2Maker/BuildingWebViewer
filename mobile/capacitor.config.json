@@ -1,15 +1,14 @@
 {
-  "appId": "io.github.sen2maker.buildingwebviewer.preview",
-  "appName": "BuildingWebViewer Preview",
+  "appId": "io.github.sen2maker.buildingwebviewer",
+  "appName": "BuildingWebViewer",
   "webDir": "web",
   "server": {
     "androidScheme": "https",
-    "appStartPath": "/assets/mobile/index.html",
-    "errorPath": "assets/mobile/webview-required.html"
+    "appStartPath": "/assets/mobile/index.html"
   },
   "android": {
     "allowMixedContent": false,
-    "minWebViewVersion": 60
+    "minWebViewVersion": 111
   },
   "loggingBehavior": "none"
 }

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BuildingWebViewer · 三维数据工具箱</title><!-- site-meta:start -->
+<!-- site-meta:end --><!-- boot-head:start -->
+<!-- boot-head:end --><link rel="icon" href="favicon.ico?v=9db3e16ad754" sizes="16x16 32x32 48x48"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=57fe6ee6fffe"><link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=6fa2af78d567"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=c5a7b3551b38"><link rel="stylesheet" href="assets/css/hub.css"><link rel="stylesheet" href="assets/css/site-footer.css"></head>
+<body><!-- boot-body:start -->
+<!-- boot-body:end -->
+<header><a class="wordmark" href="index.html"><img class="brand" src="favicon.svg?v=6fa2af78d567" width="34" height="34" alt=""> 三维数据工具箱</a><div class="header-actions"><span class="local"><i></i> 完全本地运行</span><button id="language-toggle" class="language-switch" type="button" role="switch" aria-checked="false" aria-label="Switch to English"><span lang="zh-CN">中文</span><span lang="en">EN</span></button></div></header>
+<main>
+  <div class="intro"><div><div class="eyebrow">3D DATA WORKSPACE</div><h1>为每一种三维数据，<br>找到合适的视角。</h1></div><p>在浏览器中查看网格模型、线框、点云与高斯泼溅，也可绘制和修订点云。<br class="mobile-break"> 支持属性编辑、几何计算与导出，数据始终留在本机。</p></div>
+  <div class="tools" aria-label="查看工具">
+    <a class="tool lod" href="lod.html">
+      <div class="card-top"><span class="number">01 / MESH</span><span class="arrow" aria-hidden="true">↗</span></div>
+      <img class="art" src="assets/icons/lod.svg" alt="" width="200" height="168">
+      <div class="card-copy"><h2>网格模型查看器</h2><p>选择 OBJ 网格，检查表面、轮廓与整体形态。</p><div class="tags"><span>OBJ 网格</span><span>多模型比较</span></div></div>
+    </a>
+    <a class="tool wire" href="wireframe.html">
+      <div class="card-top"><span class="number">02 / WIREFRAME</span><span class="arrow" aria-hidden="true">↗</span></div>
+      <img class="art" src="assets/icons/wireframe.svg" alt="" width="200" height="168">
+      <div class="card-copy"><h2>线框查看器</h2><p>按对象目录分组浏览 OBJ，可叠加点云并排比较。</p><div class="tags"><span>多线框对比</span><span>线框 + 点云</span></div></div>
+    </a>
+    <a class="tool cloud" href="pointcloud.html">
+      <div class="card-top"><span class="number">03 / POINT CLOUD</span><span class="arrow" aria-hidden="true">↗</span></div>
+      <img class="art" src="assets/icons/pointcloud.svg" alt="" width="200" height="168">
+      <div class="card-copy"><h2>点云查看器</h2><p>叠加多个点云，按文件、强度、RGB 或数值字段着色。</p><div class="tags"><span>XYZ / PLY / PCD</span><span>属性着色</span></div></div>
+    </a>
+    <a class="tool splat" href="gaussian.html">
+      <div class="card-top"><span class="number">04 / GAUSSIAN</span><span class="arrow" aria-hidden="true">↗</span></div>
+      <img class="art" src="assets/icons/gaussian.svg" alt="" width="200" height="168">
+      <div class="card-copy"><h2>高斯泼溅</h2><p>查看训练得到的三维高斯，沿用项目、相机与截图。</p><div class="tags"><span>3DGS PLY</span><span>训练相机</span></div></div>
+    </a>
+    <a class="tool gen" href="generate.html">
+      <div class="card-top"><span class="number">05 / GENERATE</span><span class="arrow" aria-hidden="true">↗</span></div>
+      <img class="art" src="assets/icons/generate.svg" alt="" width="200" height="168">
+      <div class="card-copy"><h2>点云创作与修订</h2><p>绘制线、面与体生成点云，或导入已有数据，选择、裁剪与精修。</p><div class="tags"><span>三维画笔</span><span>选区修订</span></div></div>
+    </a>
+    <a class="tool cad" data-app-link="cadWeb" href="{{cadWeb}}"><div class="card-top"><span class="number">06 / CAD</span><span class="arrow" aria-hidden="true">↗</span></div><div class="card-copy"><h2>打开 CAD</h2><p>在独立 CAD 应用中预览图纸、模型与二维绘图。文件不会自动传送。</p><div class="tags"><span>独立应用</span><span>DWG / DXF · STEP / IGES</span></div></div></a>
+  </div>
+  <div class="how"><span class="how-title">开始使用</span><span><b>1</b> 选择查看工具</span><span class="step-arrow">→</span><span><b>2</b> 手动打开数据文件夹</span><span class="step-arrow">→</span><span><b>3</b> 选择需要预览的数据</span></div>
+</main>
+<footer><span>不上传文件 · 不预设目录 · 无需安装依赖</span><!-- site-footer:start -->
+<!-- site-footer:end --></footer>
+<script data-viewer-src="assets/js/hub.bundle.js"></script></body></html>

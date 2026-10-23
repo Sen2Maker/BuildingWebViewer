@@ -1,5 +1,12 @@
 // English UI catalog. Keys are source Chinese messages; {0}, {1} are positional values.
 export const EN_MESSAGES = {
+  '打开 CAD': 'Open CAD',
+  '体验更多三维工具': 'Explore more 3D tools',
+  '在独立 CAD 应用中预览图纸、模型与二维绘图。文件不会自动传送。': 'Open drawings, models and 2D editing in the independent CAD app. Files are not transferred automatically.',
+  '独立应用': 'Independent app',
+  "CAD 查看器": "CAD Viewer",
+  "CAD 预览": "CAD Preview",
+  "预览二维图纸与三维模型，查看图层、零件和视图。": "Preview drawings and solid models with layers, parts and saved views.",
   "支持 ID.obj 或 ID 文件夹中的 OBJ；同名或同目录点云按 ID 配对。数据面板可选版本、点云图层与 2 / 3 视窗对比。": "Load ID.obj or OBJ files in ID folders. Points pair by matching ID names or folders. Choose variants, point layers and 2/3 viewports in Data.",
   "导入模型或点云 · 文件仅在本机读取": "Import meshes or points · files stay local",
   "色带与固定范围共用；自动范围按网格和点云分别计算。": "Palette and fixed limits are shared; automatic ranges are calculated separately for meshes and points.",

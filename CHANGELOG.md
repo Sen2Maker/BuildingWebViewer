@@ -4,6 +4,50 @@
 
 ## [Unreleased]
 
+### Main M2 exact-source compile checkpoint
+
+- Replace only the CI native snapshot with reviewed394-file M2, including L1.R1 provider-exception handling and merged recovery caution/ownership. No root app migration.
+- Preserve109 reviewed M2 assets, source-delivery notices,32 exact JUnit records,16 actual-parent lifecycle checks and the unchanged121-task compile/lint/unit guard. Relative to R2, only core runtime, app shell and their public identity/inventory change.
+- Add exact runtime/native/activity/recovery host regressions and installed runtime hash checks. Earlier R2 Android success is not M2 acceptance; device, silent provider loss, APK/signing/install/release remain separate.
+
+- 修正 MainActivity 保存状态覆盖方法的访问级别为 public，与锁定版本 BridgeActivity 一致；实际 Android 编译发现该问题，先前主机检查未覆盖此继承规则。新增真实上游声明审计及会复现 protected 错误的编译负向回归，其他生产逻辑不变。
+- Fix only MainActivity's save-state override visibility to public, matching pinned BridgeActivity after actual Android compilation exposed the access reduction. Audit actual upstream lifecycle declarations and require a source-derived compile probe plus the protected-access negative control. No other production logic or task permissions change.
+
+- 在独立 M1.2 提案上集成经独立审核的单文件 Recovery R1 修正：备份结果绑定不可变请求与文件，恢复只保留无权限路由，拒绝重复、过期和错配结果。加入 21 场景 / 59 断言及四项有效编译负向控制；这是新的集成清单，不是原 M1.2 冻结清单等价物。
+- Integrate the independently reviewed one-file Recovery R1 overlay on M1.2. Bind backup results to immutable request/file ownership and restore routing without file/URI authority; add 21 host scenarios / 59 assertions and four compile-valid negative controls. Record new integration hashes, not equivalence to the original M1.2 freeze.
+- 保留真实资源、32 项精确 JUnit、只读无 APK 任务范围和源码交付说明。恢复期间可能需要关闭选择器和任务再重开；不清除数据，不承诺活动写入取消或进程死亡后续传。提供方活性与真机验证仍单独待验收。
+- Keep real payload bytes, exact 32 JUnit tests, read-only no-APK task scope and preferred-source notices unchanged. Orphan recovery may require closing pickers/the task and reopening without clearing data; accepted-write cancellation, durable continuation, provider liveness and device acceptance are not claimed.
+
+- 将隔离的原生检查快照推进到精确 M1.2：仅改动五个生产文件，新增 UI 线程活动结果所有权协调器；109 个真实离线资源和 32 项 JUnit 合同保持逐字节一致。导航撤销、重复回调、重入、未知启动与恢复预算受到约束，仍需实际 Android CI 和真机验证。
+- Advance the isolated snapshot to exact M1.2 with five production-file changes and a UI-owned activity-result coordinator; retain byte-identical 109 real offline assets and the exact 32-test JUnit contract. Bound navigation, duplicate/reentrant results, uncertain launches and restoration without claiming actual Android/device acceptance.
+- 加入哈希固定的主机所有权回归及 13 项编译有效的负向控制；保留现有只读工作流、三项 Gradle 目标、完整有界 lint 输出和源代码交付说明。Recovery SAF 备份所有权及就绪后的提供方活性另行处理，不生成 APK、不签名、不安装、不发布。
+- Add hash-pinned host ownership regressions and 13 compile-valid negative controls without expanding the existing Gradle task allowlist. Preserve read-only CI, bounded lint reporting and preferred-source delivery notices. Recovery SAF backup ownership and post-readiness provider liveness remain separate; no APK, signing, install or release.
+
+- 将隔离的原生编译快照升级为精确 M1.1 主应用集成：包含 390 个文件和 109 个真实离线网页资源，不再使用合成编译页面；修正原生消息回复的 UI 线程与监听器所有权。仍未生成 APK，也不代表真机或完整功能验收通过。
+- Advance the isolated native compile snapshot to exact M1.1: 390 files with 109 real CAD-free offline assets instead of synthetic pages; correct UI-thread replies and listener ownership. No APK or device/full-function acceptance is implied.
+- CI 校验真实资源和固定的 32 项 JUnit 测试记录，任意跳过、遗漏或替换均失败；输出 30 项源代码指标及独立构建步骤结果，明确区分源码证据与真实启动。保留只读、无签名、无 SDK 安装、无发布范围。
+- Require exact real-payload bytes and all 32 JUnit records with no skips, missing or substituted tests. Report 30 source indicators and independent build-stage results without claiming an Android startup; preserve read-only, no-signing, no-SDK-install and no-release scope.
+
+- 将隔离的原生编译快照从已通过编译、lint 与 28 项 JUnit 检查的 C1.2 升级为精确 204 文件的 C2.2：加入原生自检准入、取消/清理与报告保存隔离，以及导入内容的只读边界。该提交仍需实际 Android CI；不表示 APK、真机或完整应用验收通过。
+- Advance the isolated native compile fixture from the passed C1.2 baseline to the exact 204-file C2.2 source: diagnostic admission/cancellation/report ownership and imported-content data-only boundaries. Actual C2.2 Android CI remains required; this is not APK, device or full-App acceptance.
+- 将合成资源重建结果绑定到 C2.2 冻结清单；lint 日志最多展示 200 个有界问题并明确报告截断，便于完整检查现有 53 条警告。不新增上传、秘密信息、权限、签名、SDK 安装或发布能力。
+- Bind regenerated synthetic assets to the frozen C2.2 manifest and print up to 200 bounded lint diagnostics with explicit truncation counts. No upload, secrets, new permissions, signing, SDK installation or release capability is added.
+
+- 修正 ZIP 校验器的 Android 30 API 兼容性，不提高最低系统版本；CI 独立汇报 lint 与单元测试结果，检查失败仍保持失败。
+- Preserve API 30 ZIP-buffer compatibility and report lint/unit outcomes independently without suppressing failures.
+
+- 修正原生高斯 Activity 的资源会话变量遮蔽错误，并复用已验证的资源快照；继续原生编译验证，不发布安装包。
+- Fix native Gaussian Activity runtime-variable shadowing and reuse the validated resource snapshot; native compilation remains under verification, without APK publication.
+
+- 原生编译 CI 按 AGP 8.13.0 源码审核导航资源、类 JAR 和仅供 lint 使用的库 AAR 中间任务；仅接受已观察的 121 个精确任务路径，新增任务绑定实现类与输出检查，继续禁止 APK/AAB、签名、安装、发布及 SDK/JDK 自动下载。Android 编译结果仍待实际运行。
+- Audit AGP 8.13.0 navigation, class-JAR and local lint-AAR intermediates against pinned sources. Accept only the observed 121 task paths, with added class/output checks; APK/AAB, signing, installation, publication and SDK/JDK auto-download remain forbidden. Actual Android compilation is still pending.
+
+- 修正原生检查工作流的运行器临时目录配置；缓存路径在任务启动后设置，保留只读、无 APK 的验证范围。
+- Fix native CI runtime-cache initialization after runner startup; retain the read-only, no-APK validation scope.
+
+- 新增隔离的原生 C1 编译检查快照与只读 CI：仅使用合成网页资源检查 Java 编译、Android lint 和本地单元测试，不新增 CAD 引擎资源、不改许可证，也不签名、打包 APK 或部署。当前为未发布检查点，根应用版本不变，托管 Android 检查及真机验证尚未执行。
+- Add an isolated native C1 compile checkpoint and read-only CI with synthetic web assets only. No new CAD engine payload, license change, signing, APK packaging or deployment. This is unreleased; the root application version is unchanged, and hosted Android/device validation remains pending.
+
 ## [1.10.0] - 2026-10-18
 
 - 本地验证：148 项网页回归、5 个工具导航测试、23 个 Android 脚本兼容检查和 Android Debug 编译 / 单元测试通过；已核对中英文、390 像素布局及三栏 PNG 导出。未进行真机触摸与大数据压力测试。

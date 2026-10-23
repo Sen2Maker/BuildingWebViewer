@@ -1,0 +1,27 @@
+{
+  "name": "building-web-viewer-main-integration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "python3 scripts/prepare.py && vite build && node scripts/finalize.mjs && python3 scripts/package.py --check",
+    "dev": "python3 scripts/prepare.py && vite",
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm test && npm run build",
+    "package": "python3 scripts/package.py",
+    "release:check": "python3 scripts/package.py --release-check",
+    "test:artifacts": "node scripts/probe-artifacts.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "version": "1.0.0",
+  "description": "Private extraction candidate; not a published release or licensing declaration.",
+  "author": {
+    "name": "Senjer Feng",
+    "url": "https://github.com/Sen2Maker"
+  },
+  "devDependencies": {
+    "vite": "8.3.5"
+  }
+}

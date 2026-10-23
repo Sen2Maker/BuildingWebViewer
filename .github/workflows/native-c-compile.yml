@@ -1,0 +1,112 @@
+# Exact reviewed M2 liveness + recovery integration with the real CAD-free offline main payload.
+# Compile/lint/JVM tests only; no publishing, signing, SDK install or APK/AAB.
+name: Main M2 native compile only
+on:
+  push:
+    branches: [ci/native-v1-compile]
+    paths: ['ci/native-c/**', '.github/workflows/native-c-compile.yml']
+  pull_request:
+    paths: ['ci/native-c/**', '.github/workflows/native-c-compile.yml']
+permissions:
+  contents: read
+concurrency:
+  group: native-c-compile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-source-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      CAP_PUBLISH: 'false'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, official SHA verified
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set ephemeral Gradle cache after the runner starts
+        shell: bash
+        run: printf 'GRADLE_USER_HOME=%s/bwv-native-gradle\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Verify exact frozen 394-file Main M2 integration snapshot
+        id: source
+        run: |
+          python3 -B ci/native-c/verify-native-allowlist.py ci/native-c/project ci/native-c/native-files.json
+      - name: Reject synthetic assets and validate all real offline pages and shaders
+        id: payload
+        run: python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json
+      - name: Report 30 source-only startup and transport indicators without simulating an Android launch
+        id: indicators
+        run: python3 -B ci/native-c/check-main-source-indicators.py ci/native-c/project ci/native-c/main-source-indicators.json
+      - name: Run source, payload, result and strict JUnit record gate regressions
+        id: guards
+        run: |
+          python3 -B ci/native-c/test-ci-guards.py
+          python3 -B ci/native-c/test-main-payload.py
+          python3 -B ci/native-c/test-m2-host-regressions.py
+      - name: Require preinstalled full Java 21 and Android 36 tools
+        id: preflight
+        run: bash ci/native-c/preflight-hosted-native.sh ci/native-c/project
+      - name: Install integrity-locked public npm dependencies without lifecycle scripts
+        id: dependencies
+        working-directory: ci/native-c/project/mobile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      # The exact finalized full payload is already reviewed. This 394-file subset
+      # is not the separate 810-file Vite source tree: do not rebuild or synthesize it.
+      - name: Apply the exact reviewed M2 Java and runtime Capacitor overlays only
+        id: overlay
+        working-directory: ci/native-c/project/mobile
+        run: python3 -B scripts/apply-capacitor-root-lock.py
+      - name: Recheck real payload, installed transport and actual lifecycle visibility
+        id: installed
+        run: |
+          python3 -B ci/native-c/verify-main-payload.py ci/native-c/project ci/native-c/native-files.json --installed
+          python3 -B ci/native-c/check-lifecycle-visibility.py ci/native-c/project "$RUNNER_TEMP/bwv-m2-lifecycle-visibility"
+      - name: Exercise exact M2 runtime, native transport, activity and recovery host regressions
+        id: host
+        run: |
+          python3 -B ci/native-c/run-m2-host-regressions.py \
+            --project ci/native-c/project --output "$RUNNER_TEMP/bwv-m2-host-regressions"
+      - name: Review guarded compile lint local-unit task graph before actions
+        id: graph
+        working-directory: ci/native-c/project/mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache \
+            -I ../../../guard-native-task-graph.gradle \
+            -Pandroid.builder.sdkDownload=false \
+            -Porg.gradle.java.installations.auto-download=false \
+            --dry-run \
+            :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
+      - name: Compile real native sources and full payload lint then run exact JVM tests
+        id: compile
+        working-directory: ci/native-c/project/mobile/android
+        run: |
+          bash ./gradlew --no-daemon --console=plain --no-configuration-cache --continue \
+            -I ../../../guard-native-task-graph.gradle \
+            -Pandroid.builder.sdkDownload=false \
+            -Porg.gradle.java.installations.auto-download=false \
+            :app:compileReleaseJavaWithJavac :app:lintRelease :app:testReleaseUnitTest
+      - name: Report bounded build-stage forensics without runtime or user data
+        if: always()
+        env:
+          SOURCE: ${{ steps.source.outcome }}
+          PAYLOAD: ${{ steps.payload.outcome }}
+          INDICATORS: ${{ steps.indicators.outcome }}
+          GUARDS: ${{ steps.guards.outcome }}
+          PREFLIGHT: ${{ steps.preflight.outcome }}
+          HOST: ${{ steps.host.outcome }}
+          DEPENDENCIES: ${{ steps.dependencies.outcome }}
+          OVERLAY: ${{ steps.overlay.outcome }}
+          INSTALLED: ${{ steps.installed.outcome }}
+          GRAPH: ${{ steps.graph.outcome }}
+          COMPILE: ${{ steps.compile.outcome }}
+        run: |
+          python3 -B - <<'PY'
+          import json, os
+          names = ['SOURCE', 'PAYLOAD', 'INDICATORS', 'GUARDS', 'PREFLIGHT', 'HOST', 'DEPENDENCIES', 'OVERLAY', 'INSTALLED', 'GRAPH', 'COMPILE']
+          outcomes = {name: os.environ.get(name, 'unknown') for name in names}
+          print('NATIVE_CI_STAGE_FORENSICS=' + json.dumps({'outcomes': outcomes, 'android_runtime_started': False, 'user_data_read': False, 'scope': 'Build-stage evidence only, not App startup or device acceptance'}, sort_keys=True))
+          PY
+      - name: Require exact 32 JUnit records with no skips and report all bounded lint diagnostics
+        if: always()
+        run: python3 -B ci/native-c/check-native-results.py ci/native-c/project ci/native-c/expected-junit.json
+# Original Gradle failures stay failures. No upload/cache/deploy/release action.

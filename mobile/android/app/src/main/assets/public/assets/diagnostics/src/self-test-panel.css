@@ -1,0 +1,10 @@
+.bwv-selftest { margin: 1rem 0; padding: 1rem; border: 1px solid #64748b; border-radius: .75rem; color: inherit; }
+.bwv-selftest [hidden] { display: none !important; }
+.bwv-selftest button { min-height: 44px; min-width: 44px; padding: .6rem .9rem; touch-action: manipulation; }
+.bwv-selftest button:focus-visible { outline: 3px solid #38bdf8; outline-offset: 3px; }
+.bwv-selftest button:disabled { opacity: .55; }
+.bwv-selftest progress { width: 100%; height: 1rem; }
+.bwv-selftest p, .bwv-selftest li { overflow-wrap: anywhere; line-height: 1.6; }
+.bwv-selftest li { padding: .35rem 0; }
+.bwv-selftest [data-status="FAIL"] { font-weight: 700; }
+.bwv-selftest-actions { display: flex; gap: .6rem; flex-wrap: wrap; }

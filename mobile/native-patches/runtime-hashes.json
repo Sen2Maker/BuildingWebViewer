@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "version": "8.5.3",
+  "files": [
+    {
+      "path": "@capacitor/android/capacitor/src/main/assets/native-bridge.js",
+      "payload": "runtime/native-bridge.js",
+      "before": "44ae55c944c91d5ebeb1ca2374e831d7920d1af6464faef8f0001a96252109bc",
+      "after": "4184de35ea5fd42a2b2f2b6f26cefd603ee4823c40c867c89b05611d0c2d49ed",
+      "previous": "0e8b3fc68e3d12bfdd8abac8bf53788fcdc03269d335b556621b2a28f46c784a"
+    },
+    {
+      "path": "@capacitor/core/dist/capacitor.js",
+      "payload": "runtime/capacitor.js",
+      "before": "3333389c8cccd266c26399aaf7fc2a695c110684dd6340aea47935416be86a0c",
+      "after": "aba953dae321d3320df7674895391c8e50e6066d33da02e3e2e9c6f6c3622353"
+    }
+  ]
+}

@@ -1,38 +1,6 @@
-# Generated output
-dist/
-_site/
-__pycache__/
-*.py[cod]
 node_modules/
-*.log
-.DS_Store
-Thumbs.db
-.env
-.env.*
-
-# Keep local datasets out of the code repository
-local/
-screenshots/
-data/
-datasets/
-models/
-*.obj
-*.mtl
-*.xyz
-*.pts
-*.ply
-*.pcd
-*.las
-*.laz
-*.npy
-*.npz
-*.zip
-
-# Local Android toolchain, licenses and caches
-.local-build/
-
-# Never commit update signing keys or generated update payloads
-*.pem
-*.key
-*.p12
-*.bwvupdate
+.vite-input/
+.vite-public/
+dist/
+packages/
+__pycache__/

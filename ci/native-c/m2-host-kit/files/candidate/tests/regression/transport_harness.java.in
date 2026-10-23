@@ -1,0 +1,89 @@
+package com.getcapacitor;
+import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
+public final class TransportMethodRegression {
+ static final Thread UI=Thread.currentThread(); static int checks;
+ static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
+ static void worker(Runnable work)throws Exception{Throwable[] failure={null};Thread t=new Thread(()->{try{work.run();}catch(Throwable e){failure[0]=e;}},"project-or-diagnostic-IO");t.start();t.join();if(failure[0]!=null)throw new AssertionError(failure[0]);}
+ static final class QueueHandler {final Queue<Runnable> queue=new ConcurrentLinkedQueue<>();void post(Runnable task){queue.add(task);}void drain(){Runnable task;while((task=queue.poll())!=null)task.run();}}
+ static final class Logger {static boolean shouldLog(){return false;}static String tags(String tag){return tag;}static void verbose(Object... s){}static void debug(Object... s){}static void error(Object... s){}}
+ static final class PluginLoadException extends Exception {private static final long serialVersionUID=1;}
+ static final class InvalidPluginMethodException extends Exception {private static final long serialVersionUID=1;}
+ static final class PluginResult {final Map<String,Object> data=new LinkedHashMap<>();void put(String k,Object v){data.put(k,v);}public String toString(){return data.toString();}}
+ static final class JavaScriptReplyProxy {int delivered,wrongThread;boolean fail;final List<String> values=new ArrayList<>();void postMessage(String value){if(Thread.currentThread()!=UI){wrongThread++;throw new IllegalStateException("UI required");}if(fail)throw new IllegalStateException("provider failure");delivered++;values.add(value);}}
+ static final class PluginCall {static final String CALLBACK_ID_DANGLING="-1";final String id,plugin,method;final Map<String,String> data=new HashMap<>();final MessageHandler message;boolean keep;int releases;
+ PluginCall(MessageHandler message,String id,String plugin,String method){this.message=message;this.id=id;this.plugin=plugin;this.method=method;}
+ String getString(String key){return data.get(key);}String getCallbackId(){return id;}String getPluginId(){return plugin;}String getMethodName(){return method;}Map<String,String> getData(){return data;}boolean isKeptAlive(){return keep;}void setKeepAlive(Boolean value){keep=value;}void release(Bridge b){keep=false;b.releaseCall(this);releases++;}void resolve(){message.sendResponseMessage(this,null,null);}void reject(String value){PluginResult result=new PluginResult();result.put("message",value);message.sendResponseMessage(this,null,result);}void errorCallback(String value){reject(value);}}
+ static final class App {int restored;void fireRestoredResult(PluginResult result){restored++;}}
+ static final class Bridge {final Object webView=new Object();final QueueHandler taskHandler=new QueueHandler(),ui=new QueueHandler();final App app=new App();final Map<String,PluginCall> savedCalls=new HashMap<>();final MessageHandler msgHandler=new MessageHandler(this);final Candidate candidate=new Candidate(this);final PluginHandle handle=new PluginHandle(this);String page="https://localhost/assets/mobile/index.html";String nonce;int recoveries;java.util.function.Consumer<PluginCall> transportFailureListener=call->{check(Thread.currentThread()==UI,"Recovery observer on UI");recoveries++;candidate.documentStarted();BwvBridgeCallGuard.destroyed(webView);};
+ Bridge(){navigate();}void navigate(){BwvBridgeCallGuard.documentStarted(webView,page);nonce=BwvBridgeCallGuard.authorizeDocument(webView,page);candidate.documentStarted();}Object getWebView(){return webView;}App getApp(){return app;}PluginHandle getPlugin(String name){return handle;}void executeOnMainThread(Runnable task){ui.post(task);}void drain(){ui.drain();}void tasks()throws Exception{worker(taskHandler::drain);}
+ @@BRIDGE_NOTIFY@@
+ @@BRIDGE_CALL@@
+ @@BRIDGE_SAVE@@
+ @@BRIDGE_GET@@
+ @@BRIDGE_RELEASE@@
+ @@BRIDGE_RELEASE_ID@@
+ }
+ static final class MessageHandler {final Bridge bridge;final Object webView;final Map<PluginCall,JavaScriptReplyProxy> replies=Collections.synchronizedMap(new WeakHashMap<>());MessageHandler(Bridge bridge){this.bridge=bridge;webView=bridge.webView;}
+ @@MESSAGE_SEND@@
+ @@MESSAGE_RELEASE@@
+ }
+ static class Base {final Bridge bridge;final Map<String,List<PluginCall>> eventListeners=new HashMap<>();Base(Bridge b){bridge=b;}void addEventListener(String event,PluginCall call){eventListeners.computeIfAbsent(event,k->new ArrayList<>()).add(call);}void removeEventListener(String event,PluginCall call){List<PluginCall> calls=eventListeners.get(event);if(calls!=null)calls.remove(call);}int listeners(){return eventListeners.values().stream().mapToInt(List::size).sum();}void notifyListeners(){for(PluginCall call:new ArrayList<>(eventListeners.getOrDefault("projectsChanged",List.of())))call.resolve();}
+ @@BASE_ADD@@
+ @@BASE_REMOVE@@
+ @@BASE_REMOVE_ALL_CALL@@
+ @@BASE_REMOVE_ALL@@
+ protected void handleOnDestroy(){}
+ }
+ static final class Activity {final Bridge bridge;Activity(Bridge b){bridge=b;}void runOnUiThread(Runnable task){if(Thread.currentThread()==UI)task.run();else bridge.ui.post(task);}}
+ static final class Candidate extends Base {boolean destroyed;Candidate(Bridge b){super(b);}Activity getActivity(){return new Activity(bridge);}boolean authorized(PluginCall call){if(destroyed||!BwvBridgeCallGuard.current(call,bridge.webView)){call.reject("STALE_OR_UNAUTHORIZED_DOCUMENT");return false;}return true;}
+ @@LISTENER_FIELD@@
+ @@CANDIDATE_ADD@@
+ @@CANDIDATE_REMOVE@@
+ @@CANDIDATE_REMOVE_ALL_CALL@@
+ @@CANDIDATE_REMOVE_ALL@@
+ @@CANDIDATE_START@@
+ @@CANDIDATE_DESTROY@@
+ }
+ static final class PluginHandle {final Bridge bridge;int calls;PluginHandle(Bridge b){bridge=b;}String getId(){return "BWVProjects";}void invoke(String method,PluginCall call)throws PluginLoadException,InvalidPluginMethodException{calls++;if(Thread.currentThread()!=UI&&FIXED)throw new AssertionError("App invocation outside UI");switch(method){case "addListener"->bridge.candidate.addListener(call);case "removeListener"->bridge.candidate.removeListener(call);case "removeAllListeners"->bridge.candidate.removeAllListeners(call);case "runtimeSnapshot"->call.resolve();default->throw new InvalidPluginMethodException();}}}
+ static final boolean FIXED=@@FIXED@@,HAS_FAILURE=@@HAS_FAILURE@@;
+ record Bound(Bridge bridge,PluginCall call,JavaScriptReplyProxy reply){}
+ static Bound call(Bridge b,String id,String plugin,String method){PluginCall c=new PluginCall(b.msgHandler,id,plugin,method);check(BwvBridgeCallGuard.register(c,b.webView,"https://localhost","https://localhost",b.page,true,plugin,method,b.nonce),"registration");JavaScriptReplyProxy r=new JavaScriptReplyProxy();b.msgHandler.replies.put(c,r);return new Bound(b,c,r);}
+ static Bound call(Bridge b,String id,String method){return call(b,id,"BWVProjects",method);}
+ static Bound listener(Bridge b,String id)throws Exception{Bound l=call(b,id,"addListener");l.call.data.put("eventName","projectsChanged");b.callPluginMethod("BWVProjects","addListener",l.call);return l;}
+ static Bound remove(Bridge b,String id,String target){Bound r=call(b,id,"removeListener");r.call.data.put("eventName","projectsChanged");r.call.data.put("callbackId",target);b.candidate.removeListener(r.call);return r;}
+ static void response(Bound b){b.bridge.msgHandler.sendResponseMessage(b.call,new PluginResult(),null);}
+ static void baseline()throws Exception{
+  Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");worker(()->response(x));check(x.reply.wrongThread==1&&x.reply.delivered==0&&x.call.releases==1,"Original worker reply defect");
+  Bound control=call(b,"2","runtimeSnapshot");response(control);check(control.reply.delivered==1&&control.call.releases==1,"UI positive control");
+  Bound l=listener(b,"3");b.tasks();check(b.getSavedCall("3")==null,"No early saved call");b.drain();check(b.candidate.listeners()==1&&l.call.keep&&b.getSavedCall("3")==null,"Original delayed listener publication defect");
+  System.out.println(checks+" original M1 assertions PASS: reproduced both defects, including UI positive control");
+ }
+ static void fixed()throws Exception{
+  for(boolean error:new boolean[]{false,true}){Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");worker(()->{if(error)x.call.reject("synthetic failure");else response(x);});check(x.reply.delivered==0&&x.call.releases==0,"Retain until queued delivery");b.drain();check(x.reply.wrongThread==0&&x.reply.delivered==1&&x.call.releases==1,"Worker reply delivered once on UI");check(x.reply.values.get(0).contains("success="+!error),"Success/error unchanged");check(b.msgHandler.replies.isEmpty(),"Retire proxy");}
+  {Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");worker(()->{response(x);response(x);});b.drain();check(x.reply.delivered==1&&x.call.releases==1,"Duplicate terminal replies suppressed");}
+  for(boolean destroy:new boolean[]{false,true}){Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");worker(()->response(x));if(destroy)BwvBridgeCallGuard.destroyed(b.webView);else b.navigate();b.drain();check(x.reply.delivered==0&&x.call.releases==1,"Queued reply invalidated");check(b.msgHandler.replies.isEmpty(),"Stale reply retired");}
+  {Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");x.reply.fail=true;worker(()->response(x));b.drain();check(x.reply.wrongThread==0&&x.reply.delivered==0&&x.call.releases==1,"Provider failure retired on UI");}
+  {Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");worker(()->response(x));x.call.release(b);b.drain();check(x.reply.delivered==0&&x.call.releases==1,"Explicit retirement wins queued delivery");}
+  {Bridge b=new Bridge();Bound x=call(b,"-1","runtimeSnapshot");worker(()->response(x));b.drain();check(x.reply.delivered==0&&x.call.releases==1&&b.app.restored==0,"No restored authority bypass");}
+  {Bridge b=new Bridge();b.page="https://localhost/assets/mobile/self-test.html";b.navigate();Bound x=call(b,"1","BWVSelfTest","runtimeSnapshot");b.callPluginMethod("BWVSelfTest","runtimeSnapshot",x.call);check(b.taskHandler.queue.isEmpty()&&x.reply.delivered==0,"Diagnostic admission queued on UI");b.drain();check(x.reply.delivered==1&&x.call.releases==1,"Diagnostic dispatch and response");}
+  {Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");b.callPluginMethod("BWVProjects","runtimeSnapshot",x.call);b.navigate();b.drain();check(b.handle.calls==0&&x.reply.delivered==0&&x.call.releases==1,"Queued invocation rejected before side effect");}
+  for(String action:new String[]{"remove","removeAll","navigate","destroy","reset"}){Bridge b=new Bridge();Bound l=listener(b,"1");check(b.candidate.listeners()==0&&b.getSavedCall("1")==null,"Delayed registration remains unpublished");check(b.taskHandler.queue.isEmpty(),"App plugin not on task thread");b.drain();check(b.candidate.listeners()==1&&b.getSavedCall("1")==l.call&&l.call.keep,"Listener registration and saved ownership atomic on UI");worker(()->{response(l);response(l);});b.drain();check(l.reply.delivered==2&&l.call.releases==0,"Kept listener replies retained");worker(()->response(l));switch(action){case "remove"->remove(b,"2","1");case "removeAll"->{Bound all=call(b,"2","removeAllListeners");b.candidate.removeAllListeners(all.call);}case "navigate"->b.navigate();case "destroy"->{BwvBridgeCallGuard.destroyed(b.webView);b.candidate.handleOnDestroy();}case "reset"->{b.savedCalls.clear();b.candidate.removeAllListeners();}default->throw new AssertionError();}b.drain();check(l.reply.delivered==2&&l.call.releases==1,"Retired listener never receives queued event: "+action);check(b.candidate.listeners()==0&&b.savedCalls.isEmpty(),"Listener storage cleared: "+action);b.candidate.removeAllListeners();check(l.call.releases==1,"Idempotent listener cleanup");}
+  {Bridge b=new Bridge();Bound l=listener(b,"1");b.navigate();b.drain();check(b.handle.calls==0&&b.candidate.listeners()==0&&b.savedCalls.isEmpty()&&l.call.releases==1,"Reload before listener admission");}
+  {Bridge b=new Bridge();Bound l=call(b,"1","addListener");l.call.data.put("eventName","other");b.callPluginMethod("BWVProjects","addListener",l.call);b.drain();check(b.savedCalls.isEmpty()&&b.candidate.listeners()==0&&l.reply.delivered==1&&!l.call.keep,"Unknown listener rejected before retention");}
+  {Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");b.saveCall(x.call);Bound r=remove(b,"2","1");b.drain();check(b.getSavedCall("1")==x.call&&r.reply.values.get(0).contains("UNKNOWN_LISTENER"),"Only tracked listener can be removed");x.call.release(b);}
+  {Bridge b=new Bridge();Bound l=listener(b,"1");b.drain();remove(b,"2","1");Bound repeated=remove(b,"3","1");b.drain();check(l.call.releases==1&&repeated.reply.delivered==1&&repeated.reply.values.get(0).contains("UNKNOWN_LISTENER"),"Duplicate removal fails closed");}
+  {Bridge b=new Bridge();Bound x=call(b,"1","runtimeSnapshot");worker(()->response(x));b.navigate();Bound fresh=listener(b,"1");b.drain();check(x.reply.delivered==0&&x.call.releases==1&&b.getSavedCall("1")==fresh.call,"Old reply does not remove reused callback ID");x.call.release(b);check(b.getSavedCall("1")==fresh.call,"Identity-safe explicit old release");b.candidate.removeAllListeners();}
+  {Bridge b=new Bridge();Bound l=listener(b,"1");b.drain();worker(()->response(l));b.releaseCall("1");b.drain();check(l.reply.delivered==0&&b.msgHandler.replies.isEmpty(),"ID retirement invalidates queued proxy");b.candidate.removeAllListeners();}
+  {Bridge b=new Bridge();Bound old=call(b,"1","runtimeSnapshot");b.navigate();Bound fresh=listener(b,"1");worker(()->response(old));b.drain();check(old.reply.delivered==0&&old.call.releases==1&&b.getSavedCall("1")==fresh.call,"Old queued response delivered after fresh same-ID publication cannot steal ownership");b.candidate.removeAllListeners();}
+  for(int i=0;i<1000;i++){Bridge b=new Bridge();Bound l=listener(b,"repeat");b.drain();worker(()->response(l));b.navigate();Bound fresh=listener(b,"repeat");b.drain();check(l.reply.delivered==0&&l.call.releases==1&&b.getSavedCall("repeat")==fresh.call,"Reload cannot steal fresh callback");worker(()->response(fresh));remove(b,"remove","repeat");b.drain();b.candidate.removeAllListeners();check(fresh.reply.delivered==0&&fresh.call.releases==1&&b.savedCalls.isEmpty()&&b.msgHandler.replies.isEmpty()&&b.candidate.listeners()==0,"No listener, saved-call or proxy growth");}
+  if(HAS_FAILURE){
+   {Bridge b=new Bridge();Bound l=listener(b,"listener");b.drain();Bound pending=call(b,"pending","runtimeSnapshot"),failed=call(b,"failed","runtimeSnapshot");failed.reply.fail=true;worker(()->{response(failed);response(pending);});b.drain();check(b.recoveries==1&&b.msgHandler.replies.isEmpty()&&b.savedCalls.isEmpty()&&b.candidate.listeners()==0,"Failure exposes native recovery and retires same-document owners");check(l.call.releases==1&&pending.call.releases==1&&failed.call.releases==1,"Owner retirement exactly once");check(pending.reply.delivered==0&&!BwvBridgeCallGuard.current(failed.call,b.webView),"Failure never claims pending result delivered");}
+   {Bridge b=new Bridge();Bound old=call(b,"id","runtimeSnapshot");old.reply.fail=true;worker(()->response(old));b.navigate();Bound current=call(b,"id","runtimeSnapshot");b.drain();check(b.recoveries==0&&BwvBridgeCallGuard.current(current.call,b.webView),"Old queued failure cannot recover replacement document");response(current);b.drain();check(current.reply.delivered==1,"Replacement still works");}
+   {Bridge b=new Bridge();Bound failed=call(b,"id","runtimeSnapshot");failed.reply.fail=true;b.transportFailureListener=null;response(failed);b.drain();check(!BwvBridgeCallGuard.current(failed.call,b.webView)&&b.msgHandler.replies.isEmpty(),"Missing observer still revokes and retires");}
+   {Bridge b=new Bridge();Bound failed=call(b,"id","runtimeSnapshot");failed.reply.fail=true;b.transportFailureListener=call->{throw new IllegalStateException("observer");};response(failed);b.drain();check(!BwvBridgeCallGuard.current(failed.call,b.webView)&&b.msgHandler.replies.isEmpty(),"Throwing observer cannot preserve broken authority");}
+  }
+  System.out.println(checks+" M1.1 actual-method threading/ownership assertions PASS, including 1000 reload/remove races; host doubles, not Android WebView");
+ }
+ public static void main(String[] args)throws Exception{if(FIXED)fixed();else baseline();}
+}

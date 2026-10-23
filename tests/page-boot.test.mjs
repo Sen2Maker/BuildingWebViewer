@@ -20,7 +20,7 @@ state.window.BuildingViewerBoot.ready();assert.equal(state.classes.size,0);
 assert.equal(start('?lang=en',null,true).root.lang,'en');assert.equal(start('',null,true).root.lang,'zh-CN');
 console.log('PASS locale chosen synchronously; delayed/failed scripts keep shell hidden; successful translation reveals it; blocked storage works');
 for(const page of ['index','lod','wireframe','pointcloud']) {
- const html=fs.readFileSync(new URL(`../${page}.html`,import.meta.url),'utf8');
+ const html=fs.readFileSync(new URL(`../.vite-input/${page}.html`,import.meta.url),'utf8');
  assert(html.indexOf(boot)<html.indexOf('<body'));
  assert(html.indexOf('html.boot-pending body>:not(#page-boot)')<html.indexOf('rel="stylesheet"'));
  assert.equal((html.match(/id="page-boot"/g)||[]).length,1);

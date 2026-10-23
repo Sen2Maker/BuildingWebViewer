@@ -1,0 +1,95 @@
+// R2: exact observed graph plus source-audited AGP intermediate classes.
+// Runs before task actions; it is NOT a sandbox for configuration code.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import org.gradle.api.GradleException
+
+if (System.getenv('CAP_PUBLISH') != 'false') {
+    throw new GradleException('Native CI requires CAP_PUBLISH=false before project configuration')
+}
+for (String key : ['android.builder.sdkDownload', 'org.gradle.java.installations.auto-download']) {
+    if (gradle.startParameter.projectProperties[key] != 'false') {
+        throw new GradleException('Explicit no-download command property required: ' + key)
+    }
+}
+if (!gradle.startParameter.excludedTaskNames.isEmpty()) {
+    throw new GradleException('Task exclusions cannot bypass the native validation targets')
+}
+
+gradle.taskGraph.whenReady { graph ->
+    File policyFile = new File(gradle.rootProject.projectDir, '../../../native-task-allowlist.json')
+    byte[] policyBytes = policyFile.bytes
+    String digest = MessageDigest.getInstance('SHA-256').digest(policyBytes).encodeHex().toString()
+    if (digest != '83d3d578968cd4900809a193bf01616e7a8cea9affc731cd35c9fa237e585c05') {
+        throw new GradleException('Native task policy changed without matching review')
+    }
+    def policy = new JsonSlurper().parse(policyBytes)
+    if (policy.schema != 1 || policy.agpVersion != '8.13.0' || policy.gradleVersion != '8.14.3') {
+        throw new GradleException('Unexpected native task policy version')
+    }
+    def targets = policy.targets as Set
+    def requested = gradle.startParameter.taskNames
+    if (requested.size() != 3 || (requested as Set) != targets) {
+        throw new GradleException('Only the three approved native compile/lint/unit targets may run')
+    }
+    def allowedPaths = policy.allowedPaths as Set
+    def tasks = graph.allTasks
+    def paths = tasks.collect { it.path }
+    println('NATIVE_REVIEW_TASK_GRAPH=' + JsonOutput.toJson(paths))
+    def details = []
+    def unsafe = []
+    def missing = allowedPaths - (paths as Set)
+    if (!missing.isEmpty() || paths.size() != (paths as Set).size()) {
+        unsafe.add('Missing or duplicate reviewed task paths: ' + missing)
+    }
+    tasks.each { task ->
+        def classNames = []
+        for (Class type = task.class; type != null; type = type.superclass) {
+            classNames.add(type.name)
+        }
+        details.add([path: task.path, type: task.class.name, baseTypes: classNames.take(3), actions: task.actions.size()])
+        if (!allowedPaths.contains(task.path) ||
+                task instanceof org.gradle.api.tasks.Exec || task instanceof org.gradle.api.tasks.JavaExec) {
+            unsafe.add(task.path + ': unknown path or process-execution task')
+            return
+        }
+        def rule = policy.typedIntermediates[task.path]
+        if (rule == null) return
+        if (!classNames.contains(rule['class'])) {
+            unsafe.add(task.path + ': unexpected implementation ' + task.class.name)
+            return
+        }
+        def outputs = task.outputs.files.files
+        if (rule.kind == 'anchor') {
+            if (!(task.class.name in ['org.gradle.api.DefaultTask', 'org.gradle.api.DefaultTask_Decorated']) ||
+                    !task.actions.isEmpty() || !outputs.isEmpty()) {
+                unsafe.add(task.path + ': generated-assets anchor has actions/outputs or a non-default class')
+            }
+            return
+        }
+        def buildRoot = task.project.buildDir.canonicalFile.toPath()
+        if (outputs.isEmpty() || outputs.any { file ->
+            !file.canonicalFile.toPath().startsWith(buildRoot) ||
+                file.name.toLowerCase(Locale.ROOT) ==~ /.*\.(apk|aab|apks|jks|keystore|p12|pfx)/
+        }) {
+            unsafe.add(task.path + ': non-intermediate, installable, or missing declared outputs')
+            return
+        }
+        if (rule.kind == 'jar' && !outputs.any { it.name.endsWith('.jar') }) {
+            unsafe.add(task.path + ': expected class/resource JAR output')
+        }
+        if (rule.kind == 'lintAar') {
+            File archive = task.archiveFile.get().asFile
+            if (task.forLint.get() != true || archive.name != 'out.aar' ||
+                    !archive.canonicalFile.toPath().startsWith(buildRoot) || !outputs.contains(archive)) {
+                unsafe.add(task.path + ': not the source-reviewed local lint out.aar')
+            }
+        }
+    }
+    println('NATIVE_REVIEW_TASK_CLASSES=' + JsonOutput.toJson(details))
+    if (!unsafe.isEmpty()) {
+        throw new GradleException('Unreviewed task graph, NO task actions permitted: ' + unsafe.join(', '))
+    }
+    println('NATIVE_REVIEW_TASK_GRAPH_ACCEPTED. Local lint AARs/class JARs only; no installable package or device test.')
+}

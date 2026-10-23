@@ -1,4 +1,4 @@
-name: Check source and release package
+name: Check Vite source and frozen App identity
 on:
   push:
     branches: [main]
@@ -6,13 +6,17 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
-    runs-on: ubuntu-latest
+  source:
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          fetch-depth: 0
-      - run: python3 scripts/check.py
-      - run: python3 mobile/test-signing.py
-      - run: python3 build.py --zip
-      - run: python3 scripts/release.py
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - run: python3 scripts/check-root-native.py
+      - run: python3 ci/native-c/verify-main-payload.py . ci/root-native-payload.json

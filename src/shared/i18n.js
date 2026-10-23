@@ -1,3 +1,4 @@
+import { initializeAppLinks } from './app-navigation.js';
 import { EN_MESSAGES } from '../locales/en.js';
 
 const LANGUAGE_KEY = 'BuildingWebViewer.language';
@@ -56,10 +57,14 @@ export function initializeLocale(doc = document) {
   globalThis.BuildingViewerBoot?.ready();
   // URL propagation also works when browser storage is disabled, including file:// usage.
   for(const link of doc.querySelectorAll('a[href]')) {
+    if(link.hasAttribute?.('data-app-link'))continue;
     const href=link.getAttribute('href');
     const url=new URL(href,doc.baseURI), name=url.pathname.split('/').pop();
-    if(!/^(index|lod|wireframe|pointcloud|gaussian|generate)\.html$/.test(name))continue;
+    if(!/^(index|lod|wireframe|pointcloud|gaussian|generate|cad|cad-editor)\.html$/.test(name))continue;
+    const base=new URL('./',doc.baseURI);
+    if(url.origin!==base.origin||new URL('./',url).pathname!==base.pathname)continue;
     url.searchParams.set('lang',currentLanguage);
     link.setAttribute('href',name + url.search + url.hash);
   }
+  initializeAppLinks(doc);
 }

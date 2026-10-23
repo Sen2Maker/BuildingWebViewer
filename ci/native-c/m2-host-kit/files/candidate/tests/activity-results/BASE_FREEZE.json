@@ -1,0 +1,5 @@
+{
+  "base_freeze": "../../FREEZE.json",
+  "sha256": "a205c223db4d5a382f52b8ec9d949baf605301ea18000ca282d317da1985e8cf",
+  "scope": "Bounded restored-orphan budget only; original freeze preserved."
+}
