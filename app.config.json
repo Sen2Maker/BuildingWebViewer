@@ -79,7 +79,8 @@
     "assets/vendor/main-notices/MEDIABUNNY-1.61.4-LICENSE.txt",
     "assets/vendor/main-notices/NDK-R28B-ZLIB-REFERENCE-NOTICE.txt",
     "assets/vendor/main-notices/NOTICE.txt",
-    "assets/vendor/main-notices/STATIC-ZLIB-STATUS.txt"
+    "assets/vendor/main-notices/STATIC-ZLIB-STATUS.txt",
+    "assets/icons/drafting.svg"
   ],
   "icons": [
     "favicon.svg",

@@ -54,8 +54,10 @@ for name in config['pages']:
   if not config['productionHomepage'].startswith('https://'):raise ValueError('Production homepage must be HTTPS')
   metadata+='\n<link rel="canonical" href="'+html.escape(config['productionHomepage'].rstrip('/')+'/'+('' if name=='index.html' else name),quote=True)+'">'
  text=replace(text,'site-meta',metadata)
- footer='<span>Local extraction candidate · not published · licensing review pending</span>'
- if config['repositoryUrl']:footer+='<a href="'+html.escape(config['repositoryUrl'],quote=True)+'" target="_blank" rel="noopener noreferrer">项目仓库 ↗</a>'
+ footer=(ROOT/'src/shared/site-footer.html').read_text()
+ for key,value in {'author':pkg['author']['url'],'account':urlparse(pkg['author']['url']).path.strip('/'),'repository':config['repositoryUrl']}.items():
+  if key != 'account' and urlparse(value).scheme != 'https':raise ValueError('Footer links must be HTTPS')
+  footer=footer.replace('{{'+key+'}}',html.escape(value,quote=True))
  text=replace(text,'site-footer',footer)
  for kind in ['mainWeb','cadWeb']:
   target=config['links'][kind]
