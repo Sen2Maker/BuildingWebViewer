@@ -1,4 +1,4 @@
-# Deliberately manual and fail closed until source/notice and release gates close.
+# Manual v1.0 deployment bound to the actual public release and exact asset digests.
 # Pushing source to main does not publish Pages or an App.
 name: Reviewed Vite Pages deployment
 on:
@@ -12,16 +12,33 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
+      - name: Verify published v1.0 source and release assets
+        run: |
+          python3 - <<'PYVERIFY'
+          import json, urllib.request
+          def read(path):
+              with urllib.request.urlopen('https://api.github.com/repos/Sen2Maker/BuildingWebViewer/'+path) as r: return json.load(r)
+          release=read('releases/tags/v1.0')
+          assert release['draft'] is False and release['prerelease'] is False
+          assert read('git/ref/tags/v1.0')['object']['sha']=='1cbbbf5e1ad875e552e1993fe1adf100b75e601d'
+          expected={'BuildingWebViewer-v1.0-source.zip': (6963569, 'a17cac1a140a4554ded17f709babb541a52a2c18c605773959b60a9acc49f3d3'), 'BuildingWebViewer-v1.0.apk': (17053051, 'e04cf43657944123437b4e9e9414092119e5669654ce567f64cc73d90bf6a0f4'), 'BuildingWebViewer-v1.0-source-build-materials.zip': (11522, 'a4c2656e1629623d8355f18c92a335c8a56e440375263b2df2244a86668a7c7d'), 'BUILD-AND-SOURCE.md': (2523, '5e1c6fe34c2f7993a71d8901fda0e9892cdaaa2579499ddf06d9b741dccb20fd'), 'VERIFICATION.json': (1002, '6e7a0d3c8af499a2e1670bfb8e313ff9ab02ce077ace613fc048077c751f5e36'), 'source-archives-manifest.json': (2270, '5421dca59ac1a8d0915c9ebc2f7b2d514318ec7cd782691c35e25344e0c60879'), 'kotlin-stdlib-2.0.21-sources.jar': (633845, '5995c780c3ac742fb277ced561ebd7b0739227ea7c93a6bd9c7cee6593493fce'), 'libarchive-9525f90c-source.tar.gz': (5920582, '944db9ab58a3cbdb5d947db4f04a3cc15f83b3147fcf7830ada592ba8d4a102c'), 'libarchive-android-d3ee9c47-source.tar.gz': (101812, '0f888473865d88c464f47db786de79832ec23d368f62bfa7f6f298e970d62ac1'), 'mediabunny-1.61.4.tgz': (2186598, '974fbe5071a7be0d3de7cbf9567f65e7ca83a215a042f6a2d947e3387acda2c9'), 'mediabunny-d901f02d-source.tar.gz': (64666092, 'c31e30589bc061b44a1c495346446f59e63a59dcfccb09c8e7aa7570a86dc694'), 'SHA256SUMS.txt': (1070, 'f38fdf90880ea2314221c55be19b9c6588aa8e58ac83ce6ebb34e975c047de92')}
+          actual={x['name']:x for x in release['assets']}
+          for name,(size,sha) in expected.items():
+              assert name in actual and actual[name]['size']==size and actual[name]['digest']=='sha256:'+sha and actual[name]['state']=='uploaded', name
+          print('Published v1.0 source and all asset digests verified; no license or runtime capability changed')
+          PYVERIFY
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
+          ref: 1cbbbf5e1ad875e552e1993fe1adf100b75e601d
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
       - run: npm run build
-      - run: npm run release:check
+      - name: Verify generated web package after exact public-release checks
+        run: python3 scripts/package.py --check
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
