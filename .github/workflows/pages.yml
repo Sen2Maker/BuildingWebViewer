@@ -25,17 +25,17 @@ jobs:
           actual={x['name']:x for x in release['assets']}
           for name,(size,sha) in expected.items():
               assert name in actual and actual[name]['size']==size and actual[name]['digest']=='sha256:'+sha and actual[name]['state']=='uploaded', name
-          comparison=read('compare/b6cf02e672a026b98a61a2cbd7c32b5f71e54edf...9ae24f37781e76f2dfc0b3042ada1fa3aab86f4a')
+          comparison=read('compare/f796655a4ae7a9763173f94c70845184671b0583...b27f5a1c093457497e07e8979cba7551cb5bf9de')
           assert comparison['status']=='ahead' and comparison['total_commits']==1
-          expected_web_delta={'docs/online-preview.md': 'd68ab4a60d3fdc641f1698a69e3c9c24f1b3172e', 'scripts/check-preview-resources.mjs': 'e970c7187c06bd857db87e3373c0357d8e280e3b', 'scripts/pack-preview-xyz.mjs': 'be67cf92c542c0ae93415f629146a55e12963d0a', 'scripts/preview-fixtures.mjs': '24875e8fa5db0d0a0d588927518e00e755aa1b2f', 'src/cloud/cloud-app.js': '9ac0f34e8d385125d68b15b5b79e0fa439ff4097', 'src/hub/hub.js': 'aa1498c1e435492a9ff859b3bbf2c80b116429e2', 'src/lod/app.js': '30f36af448768a935ab0ff0d9fe619ffb758d49a', 'src/shared/animation-controls.js': '202b2631e41b8620f06c1ad0d7e57708e9bdf298', 'src/shared/camera-controls.js': '2879f22b92e2d54ff8ce029c20684474eaf07cff', 'src/shared/fly-controls.js': 'b8ba8acf9bd9efd0bbf67a7cb8397e8c058377a1', 'src/shared/i18n.js': '0067b86c2c940cd3d1b43632f4475c54edfb4787', 'src/shared/navigation-adapter.js': '03b4e3d3ff353e8d6665bba231185976324215b2', 'src/shared/online-preview-core.js': 'b884be7c7b4a703a04d28b69260e269ba563f1e5', 'src/shared/online-preview-data.js': '002740fd26b1b5f5ae11ba76cd638a3587c61bba', 'src/shared/online-preview-source.js': '0cbd3a24fcdb32305bd563b001a817e92a3feeec', 'src/shared/online-preview.css': '56b31031003740f12e795a727dc8f17fa8ea58fb', 'src/shared/online-preview.js': '2361e4fbadb61def999a2105fa9d5ff1d95baa6d', 'src/shared/page-boot.js': '4de4f1d5e3507005335a0bd4a114a6f3d5a64807', 'src/shared/palettes.js': 'ece5f67ca7614a5442703d882f24d3274220e63e', 'src/shared/preference-storage.js': 'bc897e788df42e40721b670164fb5b5943e9cc3f', 'src/shared/render-diagnostics.js': '53c9980ea0e346ef65353e695e21530bfdc2100d', 'src/shared/render-style.js': 'ba52aadfa1720b1478821b84085bda2bf1a465de', 'src/shared/sidebar.js': '62e3b4b458f3c467d315048a15f67674349a8c07', 'tests/helpers/preview-resource-server.mjs': '7a137698a0f7e7a4fbbd66ec158f0ba110227ff4', 'tests/online-preview-chunks.test.mjs': '3d27801beedb8724c29cf853618fd2a2e6b62f9f', 'tests/online-preview-core.test.mjs': 'a67a225a0cc78d0ba20ff017456acde9fc40b7d4', 'tests/online-preview-http.test.mjs': '7c097d9bef1a0c1d71e4cfe737579634bd0e588b', 'tests/online-preview-pack.test.mjs': 'ee52d36d190de821cda4146f5a752bd0b6905e03', 'tests/online-preview-parser.test.mjs': '9543f95be3b8bcd44d65f2bcd966239a686d4592', 'tests/online-preview-preflight.test.mjs': '229f06174c4bea2880929fad57a32b8ee77cb9f0', 'tests/online-preview-runtime.test.mjs': 'a9652db4f3be399a4c99ddd987adb74043177b2e', 'tests/online-preview-session.test.mjs': '4d82a405b3cd0351fc3b20743063456e1327647a', 'tests/online-preview-source.test.mjs': '402a344c6676d60e3a8e8bb9eaa1519358104993'}
+          expected_web_delta={'docs/online-preview.md': 'cbd85f58e4c9111274984dae68aa14c485eff9b2', 'src/shared/online-preview-directory.js': 'fa5460a18dfeeb9e4864d2e23053be18888d5cac', 'src/shared/online-preview.js': '39f71f1a9941bcef4cddd9dc9b6aa4473a2a5ba8', 'tests/online-preview-directory.test.mjs': 'f9c9b461c1c7eb1ac671e05d9a6983e8d2123aaa', 'tests/online-preview-runtime.test.mjs': 'b56dd9d0318aa15fb76e5d63cda5320c2edffb96'}
           assert {x['filename']:x['sha'] for x in comparison['files']}==expected_web_delta, 'Unreviewed source changes'
           assert all(x['status'] in ['modified','added'] for x in comparison['files'])
-          print('Exact 33 reviewed online-preview source files verified; App release unchanged')
+          print('Exact five reviewed catalog-cache source files verified; App release unchanged')
           PYVERIFY
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-          ref: 9ae24f37781e76f2dfc0b3042ada1fa3aab86f4a
+          ref: b27f5a1c093457497e07e8979cba7551cb5bf9de
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -45,7 +45,7 @@ jobs:
       - name: Verify reviewed web output separately from unchanged App release
         run: |
           python3 scripts/package.py --check
-          echo "edfe922e8f98a853b1dc04d4600f6d365f207df1b7d23a7859cdc74b26ccf66f  dist/asset-inventory.json" | sha256sum --check
+          echo "83a72bce385493d3927a95a19a1bc2e59283581fd352dc14f06d8097fd87ded1  dist/asset-inventory.json" | sha256sum --check
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
