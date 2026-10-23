@@ -29,7 +29,7 @@ gradle.taskGraph.whenReady { graph ->
     tasks.each { task ->
         if (!(task.project.path in [':app', ':capacitor-android', ':capacitor-cordova-android-plugins']) ||
             (task.path.toLowerCase(Locale.ROOT) =~ /(sign|publish|upload|install|connected|keystore)/).find() ||
-            (task.name.toLowerCase(Locale.ROOT).contains('debug') && task.name != 'stripReleaseDebugSymbols') ||
+            (task.name.toLowerCase(Locale.ROOT).contains('debug') && !(task.name in ['stripReleaseDebugSymbols', 'mergeReleaseNativeDebugMetadata'])) ||
             task instanceof org.gradle.api.tasks.Exec || task instanceof org.gradle.api.tasks.JavaExec) {
             throw new GradleException('Unexpected task in unsigned graph: ' + task.path)
         }
