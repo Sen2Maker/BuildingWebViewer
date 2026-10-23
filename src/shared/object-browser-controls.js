@@ -5,6 +5,15 @@ export function mountObjectBrowserControls({root = document} = {}) {
   if (!controls || !heading) return;
   heading.classList.add('object-browser-heading');
   heading.append(controls);
+  if (controls.dataset.objectBrowser === 'mesh') {
+    const navigation = controls.querySelector('[data-object-navigation]');
+    const actions = heading.querySelector('.button-row');
+    if (navigation) {
+      heading.classList.add('centered-object-heading');
+      heading.append(navigation);
+    }
+    if (actions) controls.prepend(actions);
+  }
   const help = controls.querySelector('details');
   root.addEventListener('click', event => {
     if (help.open && !help.contains(event.target)) help.open = false;

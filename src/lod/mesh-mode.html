@@ -1,6 +1,12 @@
 <div class="object-browser-controls" data-object-browser="mesh">
   <select id="mesh-mode-select" aria-label="网格显示模式"><option value="single">单个 ID</option><option value="multiple" selected>多个 ID 陈列</option></select>
-  <div class="object-id-navigation" data-object-navigation><button id="previous-mesh-id" type="button" aria-label="上一个 ID" title="上一个 ID" disabled>‹</button><button id="next-mesh-id" type="button" aria-label="下一个 ID" title="下一个 ID" disabled>›</button></div>
+  <div class="object-id-navigation" data-object-navigation role="group" aria-label="模型切换">
+    <button id="previous-mesh-id" type="button" aria-label="上一个 ID" title="上一个 ID" disabled hidden>‹</button>
+    <button id="previous-group" type="button" aria-label="上一组" title="查看上一组编号" disabled>‹</button>
+    <span id="mesh-navigation-position" class="object-navigation-position" role="status" aria-live="polite" aria-atomic="true">0 / 0</span>
+    <button id="next-mesh-id" type="button" aria-label="下一个 ID" title="下一个 ID" disabled hidden>›</button>
+    <button id="next-group" type="button" aria-label="下一组" title="查看下一组编号" disabled>›</button>
+  </div>
   <label class="object-variant">OBJ<select id="mesh-file-select" aria-label="OBJ 版本" disabled></select></label>
-  <details class="object-browser-help"><summary aria-label="显示模式说明" title="显示模式说明">?</summary><div><p id="mesh-mode-note"></p><p>版本按文件名沿用，当前 ID 缺少同名文件时使用可用版本。</p></div></details>
+  <details class="object-browser-help"><summary aria-label="显示模式说明" title="显示模式说明">?</summary><div><p id="mesh-mode-note"></p><p id="mesh-version-note">版本按文件名沿用，当前 ID 缺少同名文件时使用可用版本。</p></div></details>
 </div>

@@ -25,7 +25,7 @@ export function meshComparisonFrame(mesh) {
  */
 export class PairedComparisonRenderer {
   constructor(cloudCanvas, meshCanvas, {preset = {}, onError = () => {}} = {}) {
-    this.id = null; this.meshData = null; this.cloudData = null; this.frame = null; this.disposed = false;
+    this.id = null; this.meshData = null; this.cloudData = null; this.cloudParts = []; this.frame = null; this.disposed = false;
     this.cloud = new CloudViewer(cloudCanvas, {onError: message => onError('cloud', message)});
     try { this.mesh = new MeshViewer(meshCanvas, {onError: message => onError('mesh', message)}); }
     catch (error) { this.cloud.dispose(); throw error; }
@@ -43,7 +43,7 @@ export class PairedComparisonRenderer {
 
   select(id) {
     if (this.disposed) return;
-    this.id = id; this.meshData = null; this.cloudData = null; this.frame = null;
+    this.id = id; this.meshData = null; this.cloudData = null; this.cloudParts = []; this.frame = null;
     this.comparison.pause(() => {
       this.cloud.setClouds([], {preserveView: false});
       // Parsed neighbors belong to the bounded session cache, not a second GPU cache.
@@ -59,8 +59,9 @@ export class PairedComparisonRenderer {
     this.comparison.pause(() => {
       // A single real-scale model has zero synthetic XY placement and unit scale.
       this.mesh.setModels([mesh], {referenceModels: [mesh]});
+      this.mesh.camera.zoom = 1.25; this.mesh.render();
       this.frame = frame; this.meshData = mesh;
-      this.cloud.setClouds(this.cloudData ? [{key: id, name: id, cloud: this.cloudData}] : [],
+      this.cloud.setClouds(this.cloudParts,
         {bounds: frame.bounds, origin: frame.origin, preserveView: false});
     });
     this.comparison.sync(this.mesh);
@@ -70,7 +71,8 @@ export class PairedComparisonRenderer {
   setCloud(id, cloud) {
     if (this.disposed || id !== this.id) return false;
     this.comparison.pause(() => {
-      this.cloud.setClouds([{key: id, name: id, cloud}], this.frame
+      this.cloudParts = [{key: id, name: id, cloud}];
+      this.cloud.setClouds(this.cloudParts, this.frame
         ? {bounds: this.frame.bounds, origin: this.frame.origin, preserveView: true}
         : {preserveView: false});
       this.cloudData = cloud;
@@ -80,9 +82,25 @@ export class PairedComparisonRenderer {
     return true;
   }
 
+  appendCloud(id, nodeId, cloud) {
+    if(this.disposed || id!==this.id || this.cloudParts.some(part=>part.key===`${id}/${nodeId}`))return false;
+    const parts=[...this.cloudParts,{key:`${id}/${nodeId}`,name:id,cloud}];
+    this.comparison.pause(()=>this.cloud.setClouds(parts, this.frame
+      ? {bounds:this.frame.bounds,origin:this.frame.origin,preserveView:true} : {preserveView:true}));
+    this.cloudParts=parts;
+    this.comparison.sync(this.meshData ? this.mesh : this.cloud);
+    return true;
+  }
+
+  resetView() {
+    if (this.disposed) return;
+    if (this.meshData) this.setMesh(this.id, this.meshData);
+    else if (this.cloudData) this.setCloud(this.id, this.cloudData);
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true; this.cloud.dispose(); this.mesh.destroy();
-    this.meshData = null; this.cloudData = null; this.frame = null;
+    this.meshData = null; this.cloudData = null; this.cloudParts = []; this.frame = null;
   }
 }

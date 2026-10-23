@@ -1,3 +1,4 @@
+import {normalizeBwvpcCatalog, normalizeBwvpcManifest, decodeBwvpcNode, refinementOrder} from './bwvpc.js';
 import { METADATA_MAX_BYTES, normalizeManifest, normalizePublicUrl } from '../shared/online-preview-core.js';
 import { fetchPreviewSource } from '../shared/online-preview-source.js';
 import { fetchPreviewDataset } from '../shared/online-preview-data.js';
@@ -11,11 +12,12 @@ const MAX_CACHE_PAIRS = 3;
 const abortError = () => new DOMException('Comparison selection cancelled', 'AbortError');
 const checkAbort = signal => { if (signal?.aborted) throw abortError(); };
 const fileName = entry => `${entry.id}.${entry.format}`;
-const descriptor = entry => ({schemaVersion: entry.chunks ? 2 : 1, ...entry});
+const descriptor = entry => ({schemaVersion: entry.chunks ? 2 : 1, ...entry, ...(['bpc','bwvpc'].includes(entry.format)?{format:'ply'}:{})});
 
 /** Preserve first appearance in the original index. A missing side is an error
  * in that pane, never an excuse to combine two unrelated building IDs. */
 export function normalizeComparisonCatalog(value, options) {
+  if(value?.schemaVersion===3)return normalizeBwvpcCatalog(value);
   const pairs = new Map();
   for (const entry of normalizeManifest(value, options)) {
     const match = /^(.+)\/(mesh|point_cloud)$/.exec(entry.id);
@@ -45,16 +47,17 @@ function makeWorker() {
  * always use the existing credential-free bounded transport and exact digests.
  */
 export function createComparisonSession({
-  manifest, initialId, preset, maxPoints = COMPARISON_DEFAULT_MAX_POINTS,
-  onCatalog = () => {}, onMesh = () => {}, onCloud = () => {},
+  manifest, initialId, preset, buildingIds, maxPoints = COMPARISON_DEFAULT_MAX_POINTS,
+  onCatalog = () => {}, onMesh = () => {}, onCloud = () => {}, onRefinement = () => {},
   onState = () => {}, onError = () => {},
   fetchImpl, fetchSource, fetchDataset = fetchPreviewDataset,
   parseMesh = parseOBJ, parseCloud = readPointCloud, workerFactory = makeWorker,
-  cacheBudgetBytes = COMPARISON_CACHE_BYTES, prefetch = true, host = globalThis, parseTimeoutMs = 60000,
+  cacheBudgetBytes = COMPARISON_CACHE_BYTES, prefetch = true, host = globalThis, parseTimeoutMs = 60000, refinementPointBudget = (host.innerWidth < 700 ? 500000 : 2000000),
 } = {}) {
   if (!Number.isSafeInteger(maxPoints) || maxPoints < 1 || maxPoints > COMPARISON_MAX_POINTS) throw Error('Comparison maxPoints must be between 1 and 1000000');
   if (!Number.isInteger(parseTimeoutMs) || parseTimeoutMs < 1 || parseTimeoutMs > 120000) throw Error('Comparison parse timeout must be between 1 and 120000 ms');
   if (!Number.isSafeInteger(cacheBudgetBytes) || cacheBudgetBytes < 0 || cacheBudgetBytes > COMPARISON_CACHE_BYTES) throw Error('Comparison cache budget must be between 0 and 32 MiB');
+  if(!Number.isSafeInteger(refinementPointBudget)||refinementPointBudget<1||refinementPointBudget>10000000)throw Error('Invalid refinement point budget');
   const transport = fetchImpl || globalThis.fetch;
   const source = fetchSource || ((url, options) => fetchPreviewSource(url, {...options, fetchImpl: transport}));
   const speculativeSource = fetchSource || ((url, options) => fetchPreviewSource(url, {...options,
@@ -63,7 +66,7 @@ export function createComparisonSession({
   const cache = new Map();
   let cacheBytes = 0, generation = 0, disposed = false, catalog = null, catalogPromise = null;
   let catalogController = null, catalogNotified = false, foreground = null, background = null;
-  let attempts = new Set(), activeWorker = null;
+  let attempts = new Set(), activeWorker = null, refinement = null, currentTree = null;
   let state = {id: null, index: -1, total: 0, mesh: 'idle', cloud: 'idle', phase: 'idle', parseMode: null};
   const current = token => !disposed && token === generation;
   const snapshot = () => ({...state, cacheBytes, reservedBytes: background?.reserved || 0, cachePairs: [...cache.keys()]});
@@ -116,6 +119,7 @@ export function createComparisonSession({
   }
   function cancelSelection() {
     foreground?.controller.abort();
+    refinement?.controller?.abort(); refinement = null; currentTree = null;
     activeWorker?.cancel();
     background?.controller.abort();
   }
@@ -133,6 +137,7 @@ export function createComparisonSession({
         try { value = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(bytes)); }
         catch { throw Error('Comparison index is not valid UTF-8 JSON. / 对比索引不是有效的 UTF-8 JSON。'); }
         catalog = normalizeComparisonCatalog(value, {manifestUrl});
+        if(buildingIds){const byId=new Map(catalog.map(item=>[item.id,item]));if(buildingIds.some(id=>!byId.has(id)))throw Error('展示范围中有不存在的建筑 / Building selection contains missing IDs');catalog=buildingIds.map(id=>byId.get(id));}
         return catalog;
       })().finally(() => { catalogPromise = null; });
     }
@@ -147,7 +152,7 @@ export function createComparisonSession({
       update(token, {parseMode: 'main-thread'});
       checkAbort(signal);
       // Existing readPointCloud yields between bounded input chunks and checks signal.
-      const cloud = await parseCloud(new File([bytes], fileName(entry)), {maxPoints, signal});
+      const cloud = entry.format === 'bpc' ? decodeBwvpcNode(bytes, entry) : await parseCloud(new File([bytes], fileName(entry)), {maxPoints, signal});
       checkAbort(signal);
       return {cloud, parseMode: 'main-thread'};
     }
@@ -190,7 +195,7 @@ export function createComparisonSession({
       try {
         // Never transfer the cache's own buffer: revisiting must retain exact bytes.
         const buffer = bytes.slice().buffer;
-        worker.postMessage({type: 'parse', id: token, buffer, filename: fileName(entry), maxPoints}, [buffer]);
+        worker.postMessage({type: 'parse', id: token, buffer, filename: fileName(entry), maxPoints, expected: entry.format === 'bpc' ? {points:entry.points,bounds:entry.bounds} : undefined}, [buffer]);
       } catch (error) { finish(error); }
     });
   }
@@ -203,7 +208,7 @@ export function createComparisonSession({
       checkAbort(controller.signal);
       let bytes = touch(pair.id)?.[pane];
       if (!bytes) {
-        const pending = fetchDataset(descriptor(entry), {signal: controller.signal, fetchSource: source});
+        const pending = fetchDataset(descriptor(entry), {signal: controller.signal, fetchSource: source, onProgress: progress => update(token, {[`${pane}Progress`]: progress})});
         // The current cloud is issued first. Only then may a single low-priority
         // neighbor mesh compete for bandwidth while that foreground request runs.
         if (pane === 'cloud') schedulePrefetch();
@@ -221,10 +226,18 @@ export function createComparisonSession({
         if (!current(token)) return;
         await onMesh({id: pair.id, mesh, entry, preset});
       } else {
-        const {cloud, parseMode} = await parsePoints(bytes, entry, operation);
+        let pointEntry = entry;
+        if (entry.format === 'bwvpc') {
+          currentTree = normalizeBwvpcManifest(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)), entry.url);
+          pointEntry = currentTree.root;
+          bytes = await fetchNode(pointEntry, operation.controller.signal, progress => update(token,{cloudProgress:progress}));
+          checkAbort(operation.controller.signal); if(!current(token))return;
+        }
+        const {cloud, parseMode} = await parsePoints(bytes, pointEntry, operation);
         checkAbort(controller.signal);
         if (!current(token)) return;
-        await onCloud({id: pair.id, cloud, entry, preset, parseMode});
+        await onCloud({id: pair.id, cloud, entry, preset, parseMode, bounds:currentTree?.bounds||cloud.bounds});
+        update(token,{cloudPoints:cloud.count, totalCloudPoints:currentTree?.total || cloud.totalCount});
       }
       update(token, {[pane]: 'ready'});
     } catch (error) {
@@ -234,7 +247,7 @@ export function createComparisonSession({
     }
   }
   function schedulePrefetch() {
-    if (disposed || foreground && foreground.stage !== 'cloud' || background || !prefetch || !cacheBudgetBytes || !catalog || state.index < 0 || host.navigator?.connection?.saveData) return;
+    if (disposed || refinement && refinement.next < refinement.parts.length || foreground && foreground.stage !== 'cloud' || background || !prefetch || !cacheBudgetBytes || !catalog || state.index < 0 || host.navigator?.connection?.saveData) return;
     try { available(); } catch { return; }
     const nearby = neighbors(), panes = foreground ? ['mesh'] : ['mesh', 'cloud'];
     const eligible = nearby.some(pair => panes.some(pane => {
@@ -279,6 +292,68 @@ export function createComparisonSession({
       if (!disposed) { emit(); schedulePrefetch(); }
     });
   }
+  async function fetchNode(entry, signal, onProgress) {
+    // Strip node-only metadata before the strict existing transport descriptor validation.
+    const {id,url,bytes,sha256}=entry;
+    return fetchDataset({schemaVersion:1,id,url,bytes,sha256,viewer:'pointcloud',format:'ply'},
+      {signal,fetchSource:source,onProgress});
+  }
+  function refinementState(job, status, extra={}) {
+    if(refinement!==job || !current(job.token))return;
+    update(job.token,{refinement:status, refinementCompleted:job.next, refinementTotal:job.parts.length,
+      refinementBytes:job.bytes, cloudPoints:job.points, totalCloudPoints:job.total, ...extra});
+  }
+  function pauseRefinement(reason='user') {
+    const job=refinement;if(!job || job.next===job.parts.length)return;
+    job.paused=true; job.controller?.abort(); activeWorker?.cancel();
+    refinementState(job,'paused',{refinementReason:reason});
+  }
+  function resumeRefinement() {
+    const job=refinement;if(!job || !current(job.token))return;
+    if(job.points + (job.parts[job.next]?.points || 0)>job.budget)job.budget=Math.min(10000000,job.budget+500000);
+    job.paused=false; refinementState(job,'loading',{refinementReason:null,refinementError:null});
+    if(job.running) return job.running.finally(()=>{if(refinement===job&&!job.paused)void refine(job);});
+    return refine(job);
+  }
+  function startRefinement(tree,token) {
+    const parts=refinementOrder(tree);if(!parts.length)return;
+    background?.controller.abort();
+    const job=refinement={token,id:state.id,parts,next:0,points:state.cloudPoints,total:tree.total,bytes:0,
+      budget:refinementPointBudget,paused:false,running:null,controller:null};
+    const connection=host.navigator?.connection;
+    if(connection?.saveData || ['slow-2g','2g'].includes(connection?.effectiveType))pauseRefinement('connection');
+    else void refine(job);
+  }
+  async function refine(job) {
+    if(job.running || job.paused || refinement!==job || !current(job.token))return;
+    const operation={token:job.token,controller:new AbortController()};job.controller=operation.controller;
+    job.running=(async()=>{
+      while(job.next<job.parts.length && !job.paused && refinement===job && current(job.token)) {
+        if(host.document?.visibilityState==='hidden'){pauseRefinement('hidden');return;}
+        const entry=job.parts[job.next];
+        if(job.points+entry.points>job.budget){pauseRefinement('budget');return;}
+        refinementState(job,'loading');
+        try {
+          const bytes=await fetchNode(entry,operation.controller.signal,progress=>refinementState(job,'loading',{refinementProgress:progress}));
+          checkAbort(operation.controller.signal);if(refinement!==job||!current(job.token))return;
+          const {cloud}=await parsePoints(bytes,entry,operation);
+          checkAbort(operation.controller.signal);if(refinement!==job||!current(job.token))return;
+          if(cloud.count!==entry.points)throw Error('BWVPC node count mismatch');
+          await onRefinement({id:job.id,nodeId:entry.id,cloud,entry});
+          if(refinement!==job||!current(job.token))return;
+          job.next++;job.points+=cloud.count;job.bytes+=bytes.length;
+          refinementState(job,job.next===job.parts.length?'complete':'loading',{refinementProgress:null});
+          // Let the completed node paint before downloading the next one. One request at a time
+          // naturally adapts throughput to the connection; no full-cloud assembly is retained.
+          await new Promise(resolve=>setTimeout(resolve,32));
+        } catch(error) {
+          if(!current(job.token)||refinement!==job||operation.controller.signal.aborted)return;
+          job.paused=true;refinementState(job,'error',{refinementError:error.message});return;
+        }
+      }
+    })().finally(()=>{job.running=null;if(refinement===job&&job.next===job.parts.length)schedulePrefetch();});
+    return job.running;
+  }
   async function select(id) {
     if (disposed) return snapshot();
     const token = ++generation;
@@ -308,6 +383,7 @@ export function createComparisonSession({
       operation.stage = 'cloud';
       await loadPane(buildings[index], 'cloud', operation);
       update(token, {phase: state.mesh === 'ready' && state.cloud === 'ready' ? 'ready' : 'error'});
+      if(current(token) && state.cloud==='ready' && currentTree) startRefinement(currentTree, token);
     } catch (error) {
       if (current(token) && !operation.controller.signal.aborted) {
         update(token, {phase: 'error'});
@@ -322,7 +398,7 @@ export function createComparisonSession({
     start: () => select(initialId), select,
     previous: () => state.index > 0 ? select(catalog[state.index - 1].id) : Promise.resolve(snapshot()),
     next: () => catalog && state.index >= 0 && state.index + 1 < catalog.length ? select(catalog[state.index + 1].id) : Promise.resolve(snapshot()),
-    getState: snapshot,
+    getState: snapshot, pauseRefinement, resumeRefinement,
     dispose() {
       if (disposed) return;
       disposed = true; generation++;

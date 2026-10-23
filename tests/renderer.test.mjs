@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import {MeshViewer} from '../src/lod/renderer.js';
 const uploads=[], deleted=[], attributes=[], shaders=[]; const buffers=new Map(); let bound,serial=0,draws=0,labels=[];
-const gl = new Proxy({OUT_OF_MEMORY:1285,createBuffer:()=>({id:++serial}),deleteBuffer:buffer=>deleted.push(buffer),
+const gl = new Proxy({OUT_OF_MEMORY:1285,ALIASED_POINT_SIZE_RANGE:33901,MAX_VERTEX_ATTRIBS:34921,createBuffer:()=>({id:++serial}),deleteBuffer:buffer=>deleted.push(buffer),
   bindBuffer:(_,buffer)=>{bound=buffer;},bufferData:(_,values)=>{uploads.push(bound);buffers.set(bound,new Float32Array(values));},
   createShader:()=>({}),createProgram:()=>({}),shaderSource:(_,text)=>shaders.push(text),getShaderParameter:()=>true,getProgramParameter:()=>true,
-  getError:()=>0,getAttribLocation:(_,name)=>['position','normal','buildingColor','vertexHeight'].indexOf(name),
+  getError:()=>0,getParameter:key=>key===33901?[1,64]:8,getAttribLocation:(_,name)=>['position','normal','buildingColor','vertexHeight'].indexOf(name),
   vertexAttribPointer:(...args)=>attributes.push(args),drawArrays:()=>draws++,
 },{get:(object,name)=>object[name]??(()=>{})});
 globalThis.window={devicePixelRatio:2}; globalThis.ResizeObserver=class{observe(){}disconnect(){}};
@@ -49,6 +49,26 @@ viewer.setModels([box('offset',2,3,100)],{referenceModels:[{id:'offset',vertices
 const offsetData=buffers.get(viewer.buffers.triangles.buffer),offsetHeights=Array.from({length:offsetData.length/10},(_,i)=>offsetData[i*10+9]);
 assert.equal(Math.min(...offsetHeights),0);assert.equal(Math.max(...offsetHeights),3);assert.deepEqual(viewer.getState().dataRange,{min:0,max:3});
 console.log('PASS comparison union bounds preserve each mesh original relative-height colors');
+const cloudRoot={id:'offset',cloud:{count:2,positions:new Float64Array([0,0,100,1,1,101]),fields:{}},colorBounds:[[-10,-10,50],[10,10,200]]};
+const cloudChild={id:'offset',cloud:{count:1,positions:new Float64Array([2,2,103]),fields:{}},colorBounds:cloudRoot.colorBounds};
+viewer.setClouds([cloudRoot]);
+viewer.camera.azimuth=17;viewer.camera.elevation=62;viewer.camera.zoom=3;viewer.camera.pan=[2,-4];viewer.target=[5,6,7];
+const meshBuffers=viewer.buffers,meshBufferHandles=Object.values(meshBuffers).map(item=>item.buffer),camera=structuredClone(viewer.camera),target=[...viewer.target];
+const baseHeight=viewer.baseHeight,sceneBounds=viewer.sceneBounds,edgePositions=viewer.edgePositions,navigationTriangles=viewer.navigationTriangles;
+const rootEntry=viewer.pointLayer.entries[0],appendStart=uploads.length,deleteStart=deleted.length,sceneReference=viewer.sceneData.referenceModels;
+viewer.setClouds([cloudRoot,cloudChild]);
+assert.equal(viewer.buffers,meshBuffers);assert.equal(viewer.pointLayer.entries[0],rootEntry);assert.equal(viewer.getState().pointCount,3);
+assert.deepEqual(viewer.camera,camera);assert.deepEqual(viewer.target,target);assert.equal(viewer.baseHeight,baseHeight);assert.equal(viewer.sceneBounds,sceneBounds);
+assert.equal(viewer.edgePositions,edgePositions);assert.equal(viewer.navigationTriangles,navigationTriangles);assert.equal(viewer.getState().triangleCount,12);
+assert.equal(viewer.sceneData.referenceModels,sceneReference);assert.deepEqual(viewer.sceneData.clouds,[cloudRoot,cloudChild]);
+assert(!uploads.slice(appendStart).some(handle=>meshBufferHandles.includes(handle)||handle===rootEntry.position||handle===rootEntry.color));
+assert.equal(deleted.length,deleteStart);
+const childEntry=viewer.pointLayer.entries[1];
+assert.deepEqual(Array.from(buffers.get(childEntry.position)),[2,2,53],'appended blocks use the original model reference transform');
+viewer.setClouds([]);
+assert.equal(viewer.buffers,meshBuffers);assert.equal(viewer.getState().pointCount,0);assert.deepEqual(viewer.camera,camera);assert.deepEqual(viewer.target,target);
+assert(deleted.includes(rootEntry.position));assert(deleted.includes(childEntry.position));assert(!deleted.slice(deleteStart).some(handle=>meshBufferHandles.includes(handle)));
+console.log('PASS incremental point blocks preserve mesh buffers, reference alignment and the active camera');
 draws=0;viewer.setModels([]);assert.equal(draws,0);assert.deepEqual(labels,[]);assert.equal(viewer.getState().dataRange,null);assert.equal(viewer.getState().colorRange,null);
 viewer.destroy();
 console.log('PASS clearing and disposal remove previous geometry and height ranges');

@@ -51,7 +51,7 @@ export function mountPaletteControls({container, onChange = () => {}, getOptions
   for (const input of [select, reverse, auto, low, high]) input.addEventListener('change', change);
   for (const input of [low, high]) input.addEventListener('input', change);
   refresh();
-  return {getOptions: () => normalizePaletteOptions(state), setScalarEnabled(value) {enabled = !!value; refresh();},
+  return {getOptions: () => normalizePaletteOptions(state), setOptions(value) {state=normalizePaletteOptions(value);restoreInputs();refresh();onChange(normalizePaletteOptions(state));}, setScalarEnabled(value) {enabled = !!value; refresh();},
     setDataRange(range) {if (auto.checked && range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.min <= range.max) {
       low.value = range.min; high.value = range.max === range.min ? range.min + 1 : range.max;
     }}, destroy() {details.remove();}};

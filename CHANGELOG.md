@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Online comparison, guided sharing and BWVPC web update
+
+- Integrate online comparison into the existing Mesh viewer and its two viewports through `lod.html?dataset=bwv-test4000&building=1`: show the online mode indicator and building navigation in the original page, preserving its display and camera controls. Keep old `compare.html` links as same-directory redirects.
+- Add consistent local/online home modes and aligned CAD card artwork. Share the original heading's Previous/Next controls across local single-ID, local group and online navigation, including a center position counter and mobile support.
+- Introduce BWVPC v1 disjoint additive octrees: a spatially sampled root, local-origin binary XYZ nodes, verified bounded downloads, Worker parsing and incremental GPU display. Preserve camera alignment while detail arrives; support pause/resume/retry and conservative narrow-screen point budgets.
+- Keep original source data and ordinary local viewers intact. Add an offline packer, a format specification and regressions for partition coverage, precision, integrity, cancellation, point budgets and progressive rendering.
+- Add the shared connect/verify/configure/share workflow, 100 selected homepage examples, actual field/color mapping and fixed palette ranges in links, plus a compact full-catalog report preset.
+- This is a web update. No App version/signature/permission or third-party license change is included.
+
+
 ### Main M2 exact-source compile checkpoint
 
 - Replace only the CI native snapshot with reviewed394-file M2, including L1.R1 provider-exception handling and merged recovery caution/ownership. No root app migration.

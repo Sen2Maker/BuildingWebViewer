@@ -16,3 +16,21 @@ switchLanguage.onclick = () => {
 renderHubLanguage();
 
 mountOnlineBuilder();
+
+const localMode = document.getElementById('local-mode'), onlineMode = document.getElementById('online-mode');
+function selectMode(online) {
+  const supported = /^https?:$/.test(location.protocol) && !globalThis.Capacitor?.isNativePlatform?.();
+  online = Boolean(online && supported);
+  localMode.setAttribute('aria-pressed', String(!online)); onlineMode.setAttribute('aria-pressed', String(online));
+  document.getElementById('local-tools').hidden = online;
+  document.getElementById('online-tools').hidden = !online;
+  document.querySelector('.how').hidden = online;
+  document.querySelector('main').classList.toggle('is-online', online);
+  onlineMode.disabled = !supported;
+  const url = new URL(location.href);
+  if (online) url.searchParams.set('mode', 'online'); else url.searchParams.delete('mode');
+  try { history.replaceState(null, '', url); } catch {}
+}
+localMode.onclick = () => selectMode(false);
+onlineMode.onclick = () => selectMode(true);
+selectMode(new URLSearchParams(location.search).get('mode') === 'online');

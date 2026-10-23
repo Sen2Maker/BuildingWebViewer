@@ -202,8 +202,10 @@ body{height:100vh;height:100dvh;overflow:hidden}
 .main-heading>.object-browser-controls{flex:0 1 auto}
 .object-browser-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto;min-width:0;max-width:100%}
 .object-browser-controls select{width:auto;max-width:180px;min-width:0;padding:7px 9px;font-size:12px;text-overflow:ellipsis}
-.object-browser-controls .object-id-navigation{display:flex;gap:3px}
-.object-browser-controls button,.object-browser-help>summary{min-width:32px;height:32px;padding:0 8px;font-size:18px;line-height:1;border:1px solid #dce6e1;border-radius:7px;background:#f8fbf9;color:#496e61}
+.object-id-navigation{display:flex;align-items:center;gap:3px;flex:none}
+.object-navigation-position{min-width:58px;padding:0 5px;text-align:center;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:#72867c}
+.object-id-navigation #previous-group,.object-id-navigation #next-group{display:block}
+.object-browser-controls button,.object-id-navigation button,.object-browser-help>summary{min-width:32px;height:32px;padding:0 8px;font-size:18px;line-height:1;border:1px solid #dce6e1;border-radius:7px;background:#f8fbf9;color:#496e61}
 .object-browser-controls .object-variant{display:flex;align-items:center;gap:6px;font-size:11px;color:#72867c;min-width:0}
 .object-variant select{max-width:170px}
 .object-browser-help{position:relative;flex:none}
@@ -214,7 +216,7 @@ body{height:100vh;height:100dvh;overflow:hidden}
 .object-browser-help p{margin:0}.object-browser-help p+p{margin-top:8px}
 .object-browser-controls [hidden]{display:none!important}
 @media(max-width:700px){.object-browser-controls{margin-left:0}.object-browser-controls select{max-width:160px}.object-variant select{max-width:145px}}
-@media(pointer:coarse){.object-browser-controls select,.object-browser-controls button,.object-browser-help>summary{min-height:44px}.object-browser-controls button,.object-browser-help>summary{min-width:44px}}
+@media(pointer:coarse){.object-browser-controls select,.object-browser-controls button,.object-id-navigation button,.object-browser-help>summary{min-height:44px}.object-browser-controls button,.object-id-navigation button,.object-browser-help>summary{min-width:44px}}
 
 /* Common data/display/camera/bookmarks navigation across every tool. */
 .viewer-heading{flex-wrap:wrap;gap:8px 14px}.viewer-heading>.point-main-actions{flex:0 1 auto;margin-left:auto;max-width:100%}
@@ -245,4 +247,18 @@ body[data-tool="lod"] .viewer-grid:not([data-panels="1"]) .scene-note{display:no
  .object-browser-heading>div:first-child{flex:1 0 100%}
  body[data-tool="lod"] .main-heading>.button-row{display:none}
  .object-browser-heading>.object-browser-controls{margin-left:0}
+}
+
+/* Equal side columns keep browsing centered regardless of the controls on either side. */
+.main-heading.centered-object-heading{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px 12px}
+.centered-object-heading>div:first-child{grid-column:1;grid-row:1;min-width:0}
+.centered-object-heading>.object-id-navigation{grid-column:2;grid-row:1;justify-self:center}
+.centered-object-heading>.object-browser-controls{grid-column:3;grid-row:1;justify-self:end;justify-content:flex-end;margin:0;width:100%}
+.centered-object-heading .object-browser-controls select{max-width:100%}
+.centered-object-heading .button-row{flex:none;margin:0}.centered-object-heading .button-row:empty{display:none}
+@media(max-width:700px){
+ .main-heading.centered-object-heading{gap:6px}
+ .centered-object-heading>div:first-child p{max-width:100%}
+ .centered-object-heading>.object-browser-controls{gap:4px}
+ .centered-object-heading .object-browser-controls select{font-size:10px;padding:7px 4px}
 }
