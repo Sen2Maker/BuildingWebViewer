@@ -18,6 +18,18 @@ class Tests(unittest.TestCase):
   self.make()
   responses=[subprocess.CompletedProcess([],0,badging,''),subprocess.CompletedProcess([],code,'',error)]
   with patch.object(v.subprocess,'run',side_effect=responses):return v.inspect(self.apk,self.root,Path('aapt'),Path('apksigner'))
+ def profiles(self):
+  for name,rel in [('baseline.prof','binary_art_profile'),('baseline.profm','binary_art_profile_metadata')]:
+   b=('generated '+name).encode();self.entries['assets/dexopt/'+name]=b
+   p=self.root/('mobile/android/app/build/intermediates/'+rel+'/release/compileReleaseArtProfile/'+name);p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b)
+ def test_generated_profiles(self):
+  self.profiles();self.assertEqual(len(self.runcheck()['generatedProfiles']),2)
+ def test_tampered_profiles(self):
+  self.profiles();self.entries['assets/dexopt/baseline.prof']=b'tampered'
+  with self.assertRaises(ValueError):self.runcheck()
+ def test_one_profile(self):
+  self.profiles();del self.entries['assets/dexopt/baseline.profm']
+  with self.assertRaises(ValueError):self.runcheck()
  def test_good_fixture(self):self.assertEqual(self.runcheck()['assetFilesVerified'],1)
  def test_signed(self):
   with self.assertRaises(ValueError):self.runcheck(code=0,error='')

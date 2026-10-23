@@ -25,7 +25,20 @@ def inspect(apk, root, aapt, apksigner):
    if name.lower().endswith(('.jks','.keystore','.p12','.pfx')): raise ValueError('Signing material in APK')
   if any(x not in names for x in ['AndroidManifest.xml','classes.dex','resources.arsc']): raise ValueError('Not a compiled APK')
   actual={n for n in names if n.startswith('assets/') and not n.endswith('/')}
-  if actual!=set(expected): raise ValueError('APK asset entry set differs from frozen111 assets')
+  profiles={
+   'assets/dexopt/baseline.prof':'mobile/android/app/build/intermediates/binary_art_profile/release/compileReleaseArtProfile/baseline.prof',
+   'assets/dexopt/baseline.profm':'mobile/android/app/build/intermediates/binary_art_profile_metadata/release/compileReleaseArtProfile/baseline.profm',
+  }
+  extra=actual-set(expected);missing=set(expected)-actual
+  if missing or (extra and extra!=set(profiles)):
+   raise ValueError('APK asset set mismatch: '+json.dumps({'missing':sorted(missing),'extra':sorted(extra)}))
+  generated=[]
+  for name in sorted(extra):
+   source=root/profiles[name]
+   if not source.is_file() or source.is_symlink() or source.stat().st_size>16*1024*1024: raise ValueError('Missing/bounded AGP profile output: '+name)
+   b=z.read(name)
+   if b!=source.read_bytes(): raise ValueError('Generated profile mismatch: '+name)
+   generated.append({'path':name,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()})
   for name,row in expected.items():
    b=z.read(name)
    if len(b)!=row['bytes'] or hashlib.sha256(b).hexdigest()!=row['sha256']: raise ValueError('APK asset mismatch: '+name)
@@ -38,7 +51,7 @@ def inspect(apk, root, aapt, apksigner):
  if signature.returncode==0: raise ValueError('APK unexpectedly verifies as signed')
  if 'Missing META-INF/MANIFEST.MF' not in signature.stderr+signature.stdout and 'No JAR signatures' not in signature.stderr+signature.stdout:
   raise ValueError('apksigner failed for an unrecognized reason: '+(signature.stderr+signature.stdout)[:500])
- return {'schema':1,'scope':'Unsigned root release APK, NOT installable production or device acceptance','apk':apk.name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'assetFilesVerified':len(expected),'nativeLibraries':native,'signingVerifiedAbsent':True,'deviceTested':False,'releaseApproved':False}
+ return {'schema':1,'scope':'Unsigned root release APK, NOT installable production or device acceptance','apk':apk.name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'assetFilesVerified':len(expected),'nativeLibraries':native,'generatedProfiles':generated,'signingVerifiedAbsent':True,'deviceTested':False,'releaseApproved':False}
 
 if __name__=='__main__':
  apk,root,aapt,apksigner,out=map(Path,sys.argv[1:])
