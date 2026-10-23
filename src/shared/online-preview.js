@@ -1,3 +1,4 @@
+import { createPreviewDirectoryIndex } from './online-preview-directory.js';
 import { validateDescriptor, normalizeManifest, recommendedPreviewPreset, METADATA_MAX_BYTES, FILE_MAX_BYTES } from './online-preview-core.js';
 import { fetchPreviewSource, classifyPreviewSource } from './online-preview-source.js';
 import { fetchPreviewDataset } from './online-preview-data.js';
@@ -30,12 +31,13 @@ function help(parent){
 }
 function field(parent,label,tag='input'){const row=el('label',label,parent), input=el(tag,'',row);return input;}
 function directory(parent,entries,preset={},manifest=null){
+  const index=createPreviewDirectoryIndex(entries);
   const search=field(parent,text('搜索目录','Search datasets'));search.type='search';
   const type=field(parent,text('筛选数据类型','Filter resource type'),'select');
   for(const [value,label] of [['all',text('全部类型','All types')],['pointcloud',text('点云','Point clouds')],['lod',text('网格','Meshes')],['wireframe',text('线框','Wireframes')]]){const option=el('option',label,type);option.value=value;}type.value='all';
   const summary=statusNode(parent), list=el('ul','',parent), controls=el('div','',parent);let page=0;
   const prev=el('button',text('上一页','Previous'),controls),next=el('button',text('下一页','Next'),controls),pageSize=40;
-  function render(){const matches=entries.filter(e=>(type.value==='all'||e.viewer===type.value)&&`${e.name||''} ${e.id} ${e.format}`.toLowerCase().includes(search.value.trim().toLowerCase()));page=Math.min(page,Math.max(0,Math.ceil(matches.length/pageSize)-1));list.replaceChildren();
+  function render(){const matches=index.search(search.value,type.value);page=Math.min(page,Math.max(0,Math.ceil(matches.length/pageSize)-1));list.replaceChildren();
     for(const entry of matches.slice(page*pageSize,(page+1)*pageSize)){const li=el('li','',list),a=el('a',`${entry.id}${entry.name&&entry.name!==entry.id?' · '+entry.name:''} · ${entry.viewer} · ${entry.format}${entry.chunks?' · '+entry.chunks.length+' '+text('块','chunks'):''}${entry.bytes ? ' · '+(entry.bytes/1048576).toFixed(2)+' MiB':''}`,li);a.href=previewLink(manifest?{schemaVersion:1,manifest,entry:entry.id,viewer:entry.viewer,preset:{...recommendedPreviewPreset(entry.viewer),...entry.preset,...preset}}:{...entry,schemaVersion:entry.chunks?2:1,preset:{...entry.preset,...preset}});}
     if(!matches.length)el('li',text('没有匹配的数据，请调整关键词或类型筛选。','No matching resources. Change the search or type filter.'),list);
     summary.textContent=`${matches.length} ${text('项；只显示当前页，未下载图纸','entries; only this page is displayed, data not downloaded')} · ${page+1}/${Math.max(1,Math.ceil(matches.length/pageSize))}`;prev.disabled=!page;next.disabled=(page+1)*pageSize>=matches.length;
