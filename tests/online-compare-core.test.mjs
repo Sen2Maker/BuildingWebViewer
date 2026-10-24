@@ -13,8 +13,8 @@ test('comparison descriptor handles unusual own-property accessors without invok
 test('compact dataset links select a validated preview or original without inherited private parameters',()=>{
  const link=new URL(demonstrationLink('367','https://viewer.example/BuildingWebViewer/index.html?lang=en&project=private'));
  assert.equal(link.pathname,'/BuildingWebViewer/lod.html');assert.equal(link.searchParams.get('project'),null);assert.equal(link.searchParams.get('lang'),'en');
- const preview=readCompareDescriptor('',link.search);assert.equal(preview.buildingId,'367');assert.match(preview.manifest,/bwvpc-v1\/index.json$/);
- const original=readCompareDescriptor('','?dataset=bwv-test4000&building=367&quality=original');assert.doesNotMatch(original.manifest,/bwvpc-v1/);
+ const preview=readCompareDescriptor('',link.search);assert.equal(preview.buildingId,'367');assert.match(preview.manifest,/bwvpc-fine-8000-v1\/index.json$/);
+ const original=readCompareDescriptor('','?dataset=bwv-test4000&building=367&quality=original');assert.doesNotMatch(original.manifest,/bwvpc-fine-8000-v1/);
  assert.throws(()=>readCompareDescriptor('','?dataset=unknown'));
  assert.throws(()=>readCompareDescriptor('','?dataset=bwv-test4000&quality=unknown'));
 });

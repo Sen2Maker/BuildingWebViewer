@@ -75,6 +75,12 @@ building/
 
 单请求队列随真实下载速度自然推进，不使用估算网速一次发出大量请求。当前还没有屏幕误差优先调度、视锥剔除、按空间区域卸载/重载、持久缓存或带宽预测。这些适合作为下一版优化；v1 不称为完整 Potree/COPC 替代品。
 
+## 当前展示集合
+
+内置 `bwv-test4000` 集合使用全量细分目录 `https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/bwvpc-fine-8000-v1/index.json`。根节点和子节点均最多 8,000 点；单块最多 96,064 字节。报告分享入口的 dataset/building/presentation 参数保持相同，通过内置集合解析到新目录。
+
+原始点云与最终 Mesh 保留为数据源，细分点块采用独立目录。更换粒度后需重新打包并完整校验，先上传全部点块和单云索引，最后发布集合目录，再切换网页入口，避免用户读到不完整数据。
+
 ## 生成与接入
 
 转换脚本需要 Python 3 与 NumPy；通用输入模式还需要 Node.js ≥ 22.12，复用网页现有读取器。本版集合打包入口读取现有 `index.json` 的 `buildings`、XYZ `point_cloud` 及 OBJ `mesh` 元数据。单个点云可直接调用脚本中的 `pack_cloud(points, output)`；完整 CLI 后续可扩展到任意格式。

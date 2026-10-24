@@ -17,21 +17,6 @@ body:not([data-tool])>footer{flex-wrap:wrap;row-gap:3px}
 .workspace>main>footer .footer-hints>span{flex:none;max-width:none;width:auto;white-space:nowrap;overflow:visible;font-size:inherit}
 .resource-notices{margin:14px 0 0;padding-top:10px;border-top:1px solid #e1e9e4;font-size:10px}
 .resource-notices a{color:#668477;text-decoration:none}
-.render-diagnostics-lite{margin-top:14px;padding-top:12px;border-top:1px solid #e1e9e4}
-.render-diagnostics-lite button{min-height:36px;font-size:11px}
-.render-diagnostics-lite textarea{display:block;box-sizing:border-box;width:100%;min-height:150px;max-height:240px;margin:8px 0;font:10px/1.5 monospace;white-space:pre;overflow:auto}
-.diagnostic-previews{display:flex;gap:8px;margin:8px 0}
-.diagnostic-previews:empty{display:none}.diagnostic-previews figure{margin:0;flex:1;min-width:0}
-.diagnostic-previews figcaption{font-size:10px;margin-bottom:4px}.diagnostic-previews img{display:block;width:100%;height:auto;max-height:160px;object-fit:contain;border:1px solid #dce6e1;border-radius:5px;background:#f3f5f6}
 @media(max-width:700px){body:not([data-tool]){grid-template-rows:60px minmax(0,1fr) 72px}.project-links{column-gap:12px;row-gap:4px}.workspace>main>footer .project-links{justify-content:flex-end}}
 @media(max-width:700px){.workspace>main>footer>.footer-hints{font-size:9px}.workspace>main>footer>.project-links{width:auto;font-size:9px;gap:8px}}
 
-/* A self-contained, screenshot-friendly report for browsers that block downloads. */
-.resource-panel.diagnostic-focus > :not(.resource-heading):not(.render-diagnostics-lite){display:none}
-.diagnostic-card[hidden]{display:none}
-.diagnostic-card > p{font-size:11px;line-height:1.5;margin:6px 0}
-.diagnostic-card select{width:100%;min-height:36px;margin:4px 0;font-size:12px}
-.diagnostic-summary{white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.45 monospace;user-select:text;-webkit-user-select:text;margin:8px 0;color:inherit}
-.diagnostic-card details{margin:8px 0}.diagnostic-card details > summary{font-size:12px;cursor:pointer}
-.diagnostic-card .diagnostic-previews img{max-height:100px}
-.diagnostic-focus .render-diagnostics-lite{margin-top:6px;padding-top:6px}

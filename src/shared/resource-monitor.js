@@ -1,5 +1,4 @@
 import { t } from './i18n.js';
-import { mountRenderDiagnostics } from './render-diagnostics-lite.js';
 import { mountFooterHints } from './footer-hints.js';
 
 export function viewerResourceStats(viewers) {
@@ -47,7 +46,7 @@ export function mountResourceMonitor({root=document, getViewers=()=>[]}) {
   }
   const note=make('p',t('JS 堆内存不是页面总内存；几何缓冲仅统计已上传的数据（含缓存），不含驱动、纹理和帧缓冲，也不是显存总占用。数据规模按各视窗合计。'));
   const rateNote=make('p',t('刷新率用于观察界面响应，不等于模型渲染帧率。仅展开时采样；后台暂停。系统占用请使用任务管理器。'));
-  panel.append(heading,list,note,rateNote);mountRenderDiagnostics(panel,getViewers);
+  panel.append(heading,list,note,rateNote);
   const notice=footer.querySelector('.project-links a[href$="/notices.html"]');
   if(notice){const links=make('nav');links.className='resource-notices';links.setAttribute('aria-label',t('第三方声明'));links.append(notice);panel.append(links);}
   details.append(summary,panel);footer.prepend(details);

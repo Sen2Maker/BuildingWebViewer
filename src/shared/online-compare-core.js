@@ -3,7 +3,7 @@ const allowed=new Set(['schemaVersion','manifest','buildingId','preset','maxPoin
 // Public demonstration resources. Geometry stays on object storage, outside the app bundle.
 export const BUILDING_DEMO = Object.freeze({
   id: 'bwv-test4000',
-  manifest: 'https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/bwvpc-v1/index.json',
+  manifest: 'https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/bwvpc-fine-8000-v1/index.json',
   originalManifest: 'https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/index.json',
   preset: Object.freeze({grid:false,palette:'viridis',reverse:false,pointSize:2,pointOpacity:1,colorMode:'height'}),
 });
