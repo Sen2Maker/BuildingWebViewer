@@ -7,6 +7,14 @@ export const BUILDING_DEMO = Object.freeze({
   originalManifest: 'https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/index.json',
   preset: Object.freeze({grid:false,palette:'viridis',reverse:false,pointSize:2,pointOpacity:1,colorMode:'height'}),
 });
+const PREVIOUS_DEMO_MANIFESTS = new Set([
+  'https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/bwvpc-v1/index.json',
+  'https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/preview-v1/index.json',
+]);
+function comparisonManifest(value){
+  const url=normalizePublicUrl(value);
+  return PREVIOUS_DEMO_MANIFESTS.has(url)?BUILDING_DEMO.manifest:url;
+}
 export function demonstrationLink(buildingId='1',base=globalThis.location?.href,quality='preview') {
   const url=new URL('lod.html',base);
   url.search=new URLSearchParams({dataset:BUILDING_DEMO.id,building:String(buildingId)}).toString();
@@ -20,7 +28,7 @@ export function validateCompareDescriptor(value){
   if(!value||typeof value!=='object'||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Comparison configuration must be an object');
   for(const [key,property] of Object.entries(Object.getOwnPropertyDescriptors(value)))if(!allowed.has(key)||!Object.hasOwn(property,'value')||!property.enumerable)throw Error('Unsupported comparison configuration');
   if(Object.getOwnPropertySymbols(value).length||value.schemaVersion!==1)throw Error('Comparison requires schemaVersion: 1');
-  const manifest=normalizePublicUrl(value.manifest),buildingId=value.buildingId;
+  const manifest=comparisonManifest(value.manifest),buildingId=value.buildingId;
   if(typeof buildingId!=='string'||!buildingId.trim()||buildingId.length>240||/[\u0000-\u001f\u007f]/u.test(buildingId))throw Error('Comparison requires a valid building ID');
   const maxPoints=value.maxPoints===undefined?250000:value.maxPoints;
   if(!Number.isSafeInteger(maxPoints)||maxPoints<1000||maxPoints>1000000)throw Error('Comparison point sample must be 1000–1000000');

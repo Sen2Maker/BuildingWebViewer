@@ -77,7 +77,7 @@ building/
 
 ## 当前展示集合
 
-内置 `bwv-test4000` 集合使用全量细分目录 `https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/bwvpc-fine-8000-v1/index.json`。根节点和子节点均最多 8,000 点；单块最多 96,064 字节。报告分享入口的 dataset/building/presentation 参数保持相同，通过内置集合解析到新目录。
+内置 `bwv-test4000` 集合使用全量细分目录 `https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/bwvpc-fine-8000-v1/index.json`。根节点和子节点均最多 8,000 点；单块最多 96,064 字节。报告分享入口的 dataset/building/presentation 参数保持相同，通过内置集合解析到新目录。历史分享链接若引用此集合已知的 `bwvpc-v1/index.json` 或 `preview-v1/index.json`，网页也将其更新为细分目录，并保留建筑选择和显示配置；其他自定义目录保持原地址。
 
 原始点云与最终 Mesh 保留为数据源，细分点块采用独立目录。更换粒度后需重新打包并完整校验，先上传全部点块和单云索引，最后发布集合目录，再切换网页入口，避免用户读到不完整数据。
 

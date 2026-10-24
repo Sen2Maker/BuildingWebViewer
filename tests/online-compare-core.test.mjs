@@ -32,3 +32,13 @@ test('ordinary local and native Mesh pages retain their existing saved profile',
   {location:{pathname:'/lod.html',search:'?dataset=bwv-test4000',hash:''},localStorage,Capacitor:{isNativePlatform:()=>true}},
  ]) {assert.equal(isPreviewSession(host),false);assert.equal(preferenceStorage(host),localStorage);}
 });
+
+
+test('previous built-in share links migrate to fine trees while preserving the selected building and settings',()=>{
+ for(const name of ['bwvpc-v1','preview-v1']){
+  const old={...config(),manifest:`https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/${name}/index.json`,buildingId:'194',buildingIds:['194','367'],preset:{grid:false,palette:'inferno',pointSize:4},maxPoints:120000};
+  const value=readCompareDescriptor('#'+new URLSearchParams({compare:JSON.stringify(old)}));
+  assert.match(value.manifest,/bwvpc-fine-8000-v1\/index.json$/);assert.equal(value.buildingId,'194');assert.deepEqual(value.buildingIds,['194','367']);assert.equal(value.preset.pointSize,4);assert.equal(value.preset.palette,'inferno');assert.equal(value.maxPoints,120000);
+ }
+ for(const manifest of ['https://data.example/BWV_Test4000/bwvpc-v1/index.json','https://meshbuild.cn-nb1.rains3.com/BWV_Test4000/bwvpc-v1/index.json?revision=frozen'])assert.equal(validateCompareDescriptor({...config(),manifest}).manifest,manifest);
+});
