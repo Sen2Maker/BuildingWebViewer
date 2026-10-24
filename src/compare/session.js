@@ -343,9 +343,9 @@ export function createComparisonSession({
           if(refinement!==job||!current(job.token))return;
           job.next++;job.points+=cloud.count;job.bytes+=bytes.length;
           refinementState(job,job.next===job.parts.length?'complete':'loading',{refinementProgress:null});
-          // Let the completed node paint before downloading the next one. One request at a time
-          // naturally adapts throughput to the connection; no full-cloud assembly is retained.
-          await new Promise(resolve=>setTimeout(resolve,32));
+          // Yield to UI work without adding a fixed 32 ms delay per small block.
+          // The next fetch can overlap the scheduled paint; only one node fetch is in flight.
+          await new Promise(resolve=>setTimeout(resolve,0));
         } catch(error) {
           if(!current(job.token)||refinement!==job||operation.controller.signal.aborted)return;
           job.paused=true;refinementState(job,'error',{refinementError:error.message});return;

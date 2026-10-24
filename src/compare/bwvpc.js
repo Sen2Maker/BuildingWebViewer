@@ -3,6 +3,9 @@ import {normalizeManifest, normalizePublicUrl} from '../shared/online-preview-co
 export const BWVPC_NODE_LIMIT = 120000;
 export const BWVPC_MAX_POINTS = 10000000;
 export const BWVPC_HEADER_BYTES = 64;
+export const BWVPC_MAX_NODES = 4096;
+export const BWVPC_MAX_DEPTH = 32;
+export const BWVPC_MANIFEST_MAX_BYTES = 5 * 1024 * 1024;
 const fail = message => { throw Error(`BWVPC: ${message}`); };
 function count(value, max, name) { if(!Number.isSafeInteger(value)||value<1||value>max) fail(`invalid ${name}`); return value; }
 function bounds(value) {
@@ -23,7 +26,7 @@ export function normalizeBwvpcCatalog(value) {
     const id=item?.id;
     if(typeof id!=='string'||!id.trim()||id.length>240||/[\u0000-\u001f\u007f]/.test(id)||ids.has(id))fail('invalid or duplicate building ID');ids.add(id);
     const cloud=resource(item.pointCloud,id+'/point_cloud');
-    if(cloud.bytes>1024*1024)fail('manifest exceeds 1 MiB');
+    if(cloud.bytes>BWVPC_MANIFEST_MAX_BYTES)fail('manifest exceeds 5 MiB');
     return {id,mesh:resource(item.mesh,id+'/mesh','obj'),cloud:{...cloud,format:'bwvpc'}};
   });
 }
@@ -31,11 +34,11 @@ export function normalizeBwvpcCatalog(value) {
 export function normalizeBwvpcManifest(value, manifestUrl) {
   if(value?.format!=='BWVPC'||value.version!==1||value.refinement!=='additive-disjoint'||value.root!=='r')fail('unsupported point-cloud format');
   const total=count(value.pointCount,BWVPC_MAX_POINTS,'total point count'),box=bounds(value.bounds);
-  if(!Array.isArray(value.nodes)||!value.nodes.length||value.nodes.length>128)fail('invalid node table');
+  if(!Array.isArray(value.nodes)||!value.nodes.length||value.nodes.length>BWVPC_MAX_NODES)fail('invalid node table');
   const base=new URL('.',normalizePublicUrl(manifestUrl));
   const nodes=new Map();
   for(const raw of value.nodes) {
-    if(!raw||typeof raw.id!=='string'||!/^r[0-7]{0,16}$/.test(raw.id)||nodes.has(raw.id)||raw.path!==raw.id+'.bpc')fail('invalid node ID/path');
+    if(!raw||typeof raw.id!=='string'||!/^r[0-7]*$/.test(raw.id)||raw.id.length>BWVPC_MAX_DEPTH+1||nodes.has(raw.id)||raw.path!==raw.id+'.bpc')fail('invalid node ID/path');
     const points=count(raw.points,BWVPC_NODE_LIMIT,'node point count'),subtree=count(raw.subtreePoints,total,'subtree point count');
     if(raw.bytes!==BWVPC_HEADER_BYTES+points*12)fail('node length does not match point count');
     if(!Array.isArray(raw.children)||raw.children.length>8||new Set(raw.children).size!==raw.children.length||raw.children.some(id=>typeof id!=='string'||id.length!==raw.id.length+1||!id.startsWith(raw.id)||!/[0-7]$/.test(id)))fail('invalid children');

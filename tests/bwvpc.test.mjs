@@ -85,3 +85,20 @@ test('worker decodes bounded BWVPC nodes and transfers the resulting position ar
  await parseComparisonCloudMessage({type:'parse',id:4,buffer:data.buffer,filename:'r.bpc',maxPoints:120000,expected:node},(message,buffers)=>replies.push({message,buffers}));
  assert.equal(replies[0].message.type,'result');assert.equal(replies[0].message.cloud.count,2);assert.equal(replies[0].buffers.length,1);
 });
+
+test('fine trees above 128 nodes remain valid, with bounded depth and node table',()=>{
+ const nodes=[],box=[[0,0,0],[1,1,1]];
+ function add(id,depth){
+  const node={id,path:id+'.bpc',points:1,subtreePoints:1,bounds:box,bytes:76,sha256:'a'.repeat(64),children:[]};nodes.push(node);
+  if(depth<3)for(let i=0;i<8;i++){node.children.push(id+i);node.subtreePoints+=add(id+i,depth+1);}
+  return node.subtreePoints;
+ }
+ const total=add('r',0),manifest={format:'BWVPC',version:1,refinement:'additive-disjoint',pointCount:total,root:'r',bounds:box,nodes};
+ const tree=normalizeBwvpcManifest(manifest,'https://fixture.example/cloud.bwvpc.json');
+ assert.equal(tree.nodes.size,585);assert.equal(refinementOrder(tree).length,584);
+ const tooMany=structuredClone(manifest);tooMany.nodes=Array(4097).fill(nodes[0]);assert.throws(()=>normalizeBwvpcManifest(tooMany,'https://fixture.example/cloud.bwvpc.json'),/node table/);
+ const chain=Array.from({length:33},(_,i)=>({id:'r'+'0'.repeat(i),path:'r'+'0'.repeat(i)+'.bpc',points:1,subtreePoints:33-i,bounds:box,bytes:76,sha256:'a'.repeat(64),children:i<32?['r'+'0'.repeat(i+1)]:[]}));
+ assert.equal(normalizeBwvpcManifest({...manifest,pointCount:33,nodes:chain},'https://fixture.example/cloud.bwvpc.json').nodes.size,33);
+ chain[32].id='r'+'0'.repeat(33);chain[32].path=chain[32].id+'.bpc';
+ assert.throws(()=>normalizeBwvpcManifest({...manifest,pointCount:33,nodes:chain},'https://fixture.example/cloud.bwvpc.json'),/node ID/);
+});
