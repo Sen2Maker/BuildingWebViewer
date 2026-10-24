@@ -25,3 +25,13 @@ body:not([data-tool])>footer{flex-wrap:wrap;row-gap:3px}
 .diagnostic-previews figcaption{font-size:10px;margin-bottom:4px}.diagnostic-previews img{display:block;width:100%;height:auto;max-height:160px;object-fit:contain;border:1px solid #dce6e1;border-radius:5px;background:#f3f5f6}
 @media(max-width:700px){body:not([data-tool]){grid-template-rows:60px minmax(0,1fr) 72px}.project-links{column-gap:12px;row-gap:4px}.workspace>main>footer .project-links{justify-content:flex-end}}
 @media(max-width:700px){.workspace>main>footer>.footer-hints{font-size:9px}.workspace>main>footer>.project-links{width:auto;font-size:9px;gap:8px}}
+
+/* A self-contained, screenshot-friendly report for browsers that block downloads. */
+.resource-panel.diagnostic-focus > :not(.resource-heading):not(.render-diagnostics-lite){display:none}
+.diagnostic-card[hidden]{display:none}
+.diagnostic-card > p{font-size:11px;line-height:1.5;margin:6px 0}
+.diagnostic-card select{width:100%;min-height:36px;margin:4px 0;font-size:12px}
+.diagnostic-summary{white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.45 monospace;user-select:text;-webkit-user-select:text;margin:8px 0;color:inherit}
+.diagnostic-card details{margin:8px 0}.diagnostic-card details > summary{font-size:12px;cursor:pointer}
+.diagnostic-card .diagnostic-previews img{max-height:100px}
+.diagnostic-focus .render-diagnostics-lite{margin-top:6px;padding-top:6px}

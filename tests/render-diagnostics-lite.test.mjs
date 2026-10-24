@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectRenderDiagnostics,renderDiagnosticSummary} from '../src/shared/render-diagnostics-lite.js';
+import {collectRenderDiagnostics,renderDiagnosticSummary,copyDiagnosticText} from '../src/shared/render-diagnostics-lite.js';
 
 function fixture({lost=false,fail=false,hidden=false}={}) {
   const queue=[1282,0],calls={renders:0,reads:0};
@@ -22,7 +22,7 @@ test('diagnostic separates pre-existing GL errors from a requested redraw and pr
   const {viewer,calls,camera}=fixture(),saved=structuredClone(camera);
   const report=collectRenderDiagnostics([viewer],{navigator:{userAgent:'QQ/test'}}).panes[0];
   assert.deepEqual(report.errorsBefore,['0x502']);assert.deepEqual(report.errorsAfterRedraw,[]);
-  assert.equal(report.redraw,'completed');assert.equal(calls.renders,1);assert.equal(calls.reads,9);
+  assert.equal(report.redraw,'completed');assert.equal(calls.renders,1);assert.equal(calls.reads,10);
   assert.deepEqual(camera,saved);assert.equal(report.webgl.attributes.antialias,true);
   assert.equal(report.geometry.points,1896);assert.equal(report.canvas.width,390);
 });
@@ -30,7 +30,7 @@ test('diagnostic separates pre-existing GL errors from a requested redraw and pr
 test('lost or folded canvases are not sampled; failure in one pane does not hide other panes',()=>{
   const lost=fixture({lost:true}),hidden=fixture({hidden:true}),failed=fixture({fail:true});
   const report=collectRenderDiagnostics([lost.viewer,hidden.viewer,failed.viewer,fixture().viewer],{});
-  assert.equal(lost.calls.renders,0);assert.equal(lost.calls.reads,0);assert.equal(hidden.calls.reads,0);
+  assert.equal(lost.calls.renders,0);assert.equal(lost.calls.reads,0);assert.equal(hidden.calls.reads,1);
   assert.equal(report.panes.length,4);assert.equal(report.panes[2].renderError,'driver draw failure');
   assert.equal(report.panes[3].redraw,'completed');
 });
@@ -42,4 +42,37 @@ test('clipboard summary keeps every pane and failure while excluding verbose met
   assert.match(summary,/视窗 1/);assert.match(summary,/视窗 2/);assert.match(summary,/0x502/);
   assert.match(summary,/driver draw failure/);assert(!summary.includes('ExtraPrivateMetadata'));
   assert(!summary.includes('fragmentHighFloat'));assert.match(renderDiagnosticSummary(report,true),/Pane 2/);
+});
+
+
+test('diagnostic records ancestors and unobstructed center without changing canvas styles',()=>{
+  const {viewer}=fixture();viewer.canvas.parentElement.tagName='DIV';
+  const host={innerWidth:500,innerHeight:600,getComputedStyle:node=>({display:'block',visibility:'visible',opacity:node===viewer.canvas?'1':'0'}),document:{getElementById:()=>null,elementsFromPoint:()=>[viewer.canvas]}};
+  const report=collectRenderDiagnostics([viewer],host);
+  assert.equal(report.diagnosticVersion,'qq-v2');assert.equal(report.panes[0].hitTest.stack[0].isCanvas,true);
+  assert.equal(report.panes[0].ancestors[0].css.opacity,'0');
+  assert.match(renderDiagnosticSummary(report),/ancestorHidden=true top=canvas/);
+});
+
+test('short report includes user observation without image data or URLs',()=>{
+  const report=collectRenderDiagnostics([fixture().viewer,fixture().viewer],{});
+  report.observation='blank';report.panes[0].preview={status:'captured',data:'data:image/png;base64,PRIVATE'};
+  const text=renderDiagnosticSummary(report);assert.match(text,/肉眼看到: 两个都空白/);assert(text.length<1500);assert(!text.includes('PRIVATE'));
+});
+
+test('copy first uses the active user gesture and does not require clipboard API',async()=>{
+  let selected=false,wrote=false;
+  const output={value:'short',focus(){},select(){selected=true;},setSelectionRange(){}};
+  const doc={execCommand:()=>selected,defaultView:{navigator:{clipboard:{writeText:async()=>{wrote=true;}}}}};
+  assert.equal(await copyDiagnosticText(output,doc),true);assert.equal(wrote,false);
+});
+
+test('blocked copy falls back to selected text, and API copy remains available',async()=>{
+  let selected=false;
+  const output={value:'short',focus(){},select(){selected=true;}};
+  assert.equal(await copyDiagnosticText(output,{execCommand:()=>false,defaultView:{navigator:{}}}),false);
+  assert.equal(selected,true);
+  let copied;
+  assert.equal(await copyDiagnosticText(output,{execCommand:()=>false,defaultView:{navigator:{clipboard:{writeText:async text=>{copied=text;}}}}}),true);
+  assert.equal(copied,'short');
 });
