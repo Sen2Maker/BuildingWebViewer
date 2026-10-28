@@ -1,21 +1,74 @@
-# BuildingWebViewer
+<div align="center">
 
-CAD-free 3D web tools and an Android application, built from Vite sources. The CAD application is maintained separately at https://github.com/Sen2Maker/WebCadToolBox.
+<h1>BuildingWebViewer</h1>
+<p>三维数据工具箱：在浏览器中查看网格、线框、点云与三维高斯，支持点云创作、属性处理，以及在线数据预览与分享。</p>
+<p><a href="https://sen2maker.github.io/BuildingWebViewer/">在线使用 ↗</a> · <a href="https://github.com/Sen2Maker/BuildingWebViewer/releases/latest">Android 下载</a> · <a href="https://sen2maker.github.io/WebCadToolBox/">CAD 网页版 ↗</a></p>
 
-## Development
+</div>
 
-Use Node 22.12+ and Python 3. Run `npm ci --ignore-scripts`, `npm test`, `npm run build`, then `npm run preview`. Sources are in `src/`, generated web output in `dist/`. Do not hand-edit generated assets.
+![中文界面：点云与相机设置](docs/preview.zh.jpg)
 
-## Android
+## 开始使用
 
-The application uses the retained Main signing identity and package `io.github.sen2maker.buildingwebviewer`. Version 1.0.0/code2 succeeds the internal code1 builds. Actual-root CI compiles, lints, tests and assembles an unsigned release-variant APK, then verifies package identity and frozen resources. Signing and public release are separate steps; a green source build is not evidence of publication.
+**网页**：打开[三维数据工具箱](https://sen2maker.github.io/BuildingWebViewer/)，选择需要的工具。首页可切换中文 / English，电脑使用鼠标操作，手机支持触摸旋转、缩放与平移。
 
-External content updates remain disabled. Destructive native cleanup remains disabled. Android may deny creation of hardlink test fixtures: diagnostics report UNSUPPORTED, not PASS, while ordinary single-link storage checks remain separate. A code1 device report verified the corrected restricted-capability semantics; it does not certify every device or recovery scenario. Never uninstall an existing installation containing important data merely to resolve a signing conflict; export and verify backups first.
+- **本地模式**：选择本地文件或文件夹，在对应工具中浏览和处理。文件不会因导入而自动上传。
+- **在线模式**：进入“在线数据预览与分享”，选择工具和数据地址，先验证能否打开，再调整显示参数并生成分享链接。
 
-## Licensing and sources
+**Android App**：从 [GitHub Releases](https://github.com/Sen2Maker/BuildingWebViewer/releases/latest) 下载已发布的 APK；同页提供对应版本说明及源码材料。主 App 与 CAD 网页版独立，主 App 不包含 CAD 引擎和二维工作室。
 
-This repository does not add a license grant for project-owned code. Existing rights are retained; public source availability is not a claim that all code is open-source or freely licensed for commercial use. Third-party components retain their own licenses, notices and source rights; these are not overridden by the project's licensing status. See `assets/mobile/notices.html`, `assets/vendor/NOTICE.txt` and `assets/vendor/main-notices/NOTICE.txt`. Complete version-pinned third-party source archives and build materials are prepared separately for release delivery; do not claim they are published until their actual download links have been verified.
+## 工具
 
-## Publication
+| 工具 | 输入或用途 | 主要功能 |
+| --- | --- | --- |
+| **网格模型查看器** | OBJ 三角网格，可叠加点云 | 多模型排列、实体 / 线框、相对高度与面朝向着色、双视窗对比 |
+| **线框查看器** | OBJ，可选叠加点云 | 按对象 ID 浏览、多组线框比较、上一项 / 下一项切换 |
+| **点云查看器** | TXT · XYZ · CSV · PTS · PLY · PCD | 多文件叠加、RGB / HSV / 标量着色、属性整理与计算、合并导出 |
+| **三维高斯** | 含 3DGS 属性的 PLY | 透视 / 正交查看、球谐颜色、训练相机与视图操作 |
+| **点云创作与修订** | 从空白创建或导入点云 | 绘制与采样、框选 / 套索、裁剪、染色、项目保存与 PLY 导出 |
+| **CAD 图纸与模型（独立网页版）** | CAD 图纸与实体模型 | 图纸与模型查看；电脑端二维工作室正在开发中 |
 
-The web destinations are https://sen2maker.github.io/BuildingWebViewer/ and https://sen2maker.github.io/WebCadToolBox/. The Main App contains no CAD engine/editor. CAD App downloading remains unavailable until a verified production destination is configured. Release review metadata is not a substitute for component-specific evidence or an authorization to change licenses. Historical migration documents describe earlier states and do not override current runtime restrictions.
+文本点云可在导入后指定 RGB、HSV、法向量、强度或自定义字段，并调整导出列顺序。普通 XYZ 点云与三维高斯是不同的数据类型；3DGS 还需要不透明度、尺度、旋转和颜色等属性。具体支持范围见[点云处理说明](docs/PROCESSING.md)与[线框说明](docs/WIREFRAME.md)。
+
+## 在线数据预览与分享
+
+1. 在首页切换到**在线模式**，打开“在线数据预览与分享”。
+2. 选择点云 + 网格配对展示，或网格、线框、点云等工具，填写公开数据文件或索引地址。
+3. 点击**打开数据**，通过验证后进入现有工具页面；无法访问或格式不符时，页面会反馈错误。
+4. 在**配置与分享**中调整布局、颜色字段、点大小、图层、相机等支持的选项，生成可直接打开当前配置的链接。
+
+在线与本地模式使用相同的查看器和工具栏。配对展示在电脑端左右排列，手机端上下排列，可切换前一个 / 后一个建筑。首页示例使用同一套功能。
+
+在线数据需要支持浏览器访问及跨域读取。在线点云与网格配对展示中的 BWVPC 点云会先显示轻量预览，再逐步加载细节；普通文件是否能渐进读取取决于相应格式与加载器。分享链接保存数据地址和支持的视图配置，不会自动上传本地文件。
+
+详见[在线数据接入与分享](docs/online-preview.md)和 [BWVPC 渐进点云格式](docs/BWVPC.md)。
+
+## CAD 网页版与代码范围
+
+[打开 CAD 网页版](https://sen2maker.github.io/WebCadToolBox/)。CAD 工具作为独立网页应用开放使用，电脑端支持查看和二维绘图；手机网页以查看为主，不提供二维编辑工作室。
+
+**本仓库提供的是 CAD 网页版的使用入口，不提供底层 CAD 库或 SDK 的独立开源发行。** 网页使用入口与底层库的发布范围不同；各组件的源码与使用权利以其已有许可说明为准。
+
+## 数据与使用说明
+
+- **本地与在线数据**：本地模式读取自行选择的文件；在线模式从配置的地址下载数据。分享链接本身不是访问权限控制。
+- **项目与书签**：网页中的本地文件选择通常属于当前会话，刷新后可能需要重新选择；书签和项目文件可按工具提供的功能保存、导入或导出。App 项目备份可能包含已导入的数据。
+- **坐标与着色**：叠加数据需使用一致的坐标系，本工具不自动进行坐标系转换。相对高度与面朝向配色是显示方式，不代表屋顶、墙体等语义分类。
+- **容量**：加载能力取决于文件格式、点数和设备内存。导入或显示采样不等于原始数据被改写，也不一定减少下载量；大点云宜使用分块数据。
+
+## 源码开发
+
+当前主项目使用 Vite，需 Node.js **22.12+** 与 Python 3：
+
+```bash
+npm ci --ignore-scripts
+npm test
+npm run build
+npm run preview
+```
+
+打开终端显示的预览地址。源码位于 `src/`，网页构建产物位于 `dist/`；请修改源码后重新构建，不要直接修改生成资源。日常开发可使用 `npm run dev`。Android 构建另需相应 JDK 与 Android SDK，网页构建不生成 APK。
+
+项目自有代码沿用现有授权范围；源码可见不代表自动获得任意使用或商业授权。第三方组件保留各自许可证、版权及对应源码权利，见[第三方声明](assets/mobile/notices.html)。
+
+更多说明：[相机操作](docs/CAMERA-NAVIGATION.md) · [相机动画时间轴](docs/CAMERA-ANIMATION.md) · [更新日志](CHANGELOG.md)。
